@@ -21,6 +21,8 @@ interface TagActions {
   addTagToVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
   removeTagFromVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
   setVideoCategory: (db: Database, videoId: number, categoryId: number | null) => Promise<void>;
+  addTagToMultiple: (db: Database, videoIds: number[], tagId: number) => Promise<void>;
+  setCategoryMultiple: (db: Database, videoIds: number[], categoryId: number | null) => Promise<void>;
 }
 
 export const useTagStore = create<TagState & TagActions>((set, get) => ({
@@ -128,5 +130,21 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
 
   setVideoCategory: async (db, videoId, categoryId) => {
     await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryId, videoId]);
+  },
+
+  addTagToMultiple: async (db, videoIds, tagId) => {
+    for (const videoId of videoIds) {
+      await db.execute(
+        'INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)',
+        [videoId, tagId]
+      );
+    }
+    await get().fetchAllVideoTags(db);
+  },
+
+  setCategoryMultiple: async (db, videoIds, categoryId) => {
+    for (const videoId of videoIds) {
+      await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryId, videoId]);
+    }
   },
 }));

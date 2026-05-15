@@ -13,11 +13,15 @@ import { PlaylistModal } from "./components/Library/PlaylistModal";
 import { AddToPlaylistModal } from "./components/Library/AddToPlaylistModal";
 import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
+import { BulkDeleteModal } from "./components/Library/BulkDeleteModal";
+import { BulkTagModal } from "./components/Library/BulkTagModal";
+import { BulkCategoryModal } from "./components/Library/BulkCategoryModal";
 import type { Video, Playlist } from "./types";
 
 type SortBy = 'created_at' | 'duration' | 'rating';
 type SortOrder = 'desc' | 'asc';
 type SidebarTab = 'category' | 'playlist';
+type BulkModal = 'delete' | 'tag' | 'category' | null;
 
 function App() {
   const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
@@ -34,12 +38,15 @@ function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
   const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
   const [addToPlaylistVideo, setAddToPlaylistVideo] = useState<Video | null>(null);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
+  const [bulkModal, setBulkModal] = useState<BulkModal>(null);
 
   const closeAllModals = useCallback(() => {
     setShowSettings(false);
     setDetailVideo(null);
     setActivePlaylist(null);
     setAddToPlaylistVideo(null);
+    setBulkModal(null);
   }, []);
 
   useKeyboardShortcuts({ onEscape: closeAllModals });
@@ -97,6 +104,11 @@ function App() {
       return sortOrder === 'desc' ? bv - av : av - bv;
     });
   }, [videos, searchQuery, selectedCategoryId, selectedTagIds, videoTags, sortBy, sortOrder]);
+
+  const selectedVideos = useMemo(
+    () => videos.filter((v) => selectedVideoIds.has(v.id)),
+    [videos, selectedVideoIds]
+  );
 
   return (
     <main className="flex flex-col min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -239,12 +251,51 @@ function App() {
                 </div>
               </div>
 
+              {/* バッチ操作バー */}
+              {selectedVideoIds.size > 0 && (
+                <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <span className="text-xs font-medium text-blue-700 dark:text-blue-300 shrink-0">
+                    {selectedVideoIds.size} 件選択中
+                  </span>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                    onClick={() => setBulkModal('tag')}
+                  >
+                    タグ設定
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
+                    onClick={() => setBulkModal('category')}
+                  >
+                    カテゴリ設定
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
+                    onClick={() => setBulkModal('delete')}
+                  >
+                    削除
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-auto text-xs text-blue-500 dark:text-blue-400 hover:underline"
+                    onClick={() => setSelectedVideoIds(new Set())}
+                  >
+                    選択解除
+                  </button>
+                </div>
+              )}
+
               <LibraryGrid
                 videos={filteredVideos}
                 currentVideoId={currentVideo?.id ?? null}
                 onPlay={play}
                 onShowDetail={setDetailVideo}
                 onAddToPlaylist={setAddToPlaylistVideo}
+                selectedIds={selectedVideoIds}
+                onSelectionChange={setSelectedVideoIds}
               />
             </>
           )}
@@ -272,6 +323,33 @@ function App() {
         <AddToPlaylistModal
           video={addToPlaylistVideo}
           onClose={() => setAddToPlaylistVideo(null)}
+        />
+      )}
+
+      {bulkModal === 'delete' && selectedVideos.length > 0 && (
+        <BulkDeleteModal
+          videos={selectedVideos}
+          onClose={() => setBulkModal(null)}
+          onDone={() => {
+            setBulkModal(null);
+            setSelectedVideoIds(new Set());
+          }}
+        />
+      )}
+
+      {bulkModal === 'tag' && (
+        <BulkTagModal
+          videoIds={Array.from(selectedVideoIds)}
+          onClose={() => setBulkModal(null)}
+          onDone={() => setBulkModal(null)}
+        />
+      )}
+
+      {bulkModal === 'category' && (
+        <BulkCategoryModal
+          videoIds={Array.from(selectedVideoIds)}
+          onClose={() => setBulkModal(null)}
+          onDone={() => setBulkModal(null)}
         />
       )}
     </main>

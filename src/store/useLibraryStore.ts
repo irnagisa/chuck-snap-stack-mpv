@@ -26,6 +26,7 @@ interface LibraryActions {
   updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
+  removeMultiple: (videoIds: number[]) => Promise<void>;
   addVideoFromPath: (path: string, title: string) => Promise<void>;
   removeVideoByPath: (path: string) => Promise<void>;
 }
@@ -287,5 +288,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         return { videoTags: next };
       });
     }
+  },
+
+  removeMultiple: async (videoIds: number[]) => {
+    const { db } = get();
+    if (!db || videoIds.length === 0) return;
+    for (const videoId of videoIds) {
+      await db.execute('DELETE FROM playlist_items WHERE video_id = ?', [videoId]);
+      await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
+      await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+    }
+    const idSet = new Set(videoIds);
+    set((state) => ({ videos: state.videos.filter((v) => !idSet.has(v.id)) }));
+    useTagStore.setState((state) => {
+      const next = { ...state.videoTags };
+      for (const id of videoIds) delete next[id];
+      return { videoTags: next };
+    });
   },
 }));

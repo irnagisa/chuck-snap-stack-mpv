@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { TagBadge } from './TagBadge';
 import { DeleteVideoModal } from './DeleteVideoModal';
+import { useState } from 'react';
 
 interface Props {
   videos: Video[];
@@ -11,12 +12,45 @@ interface Props {
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
+  selectedIds: Set<number>;
+  onSelectionChange: (ids: Set<number>) => void;
 }
 
-export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAddToPlaylist }: Props) {
+export function LibraryGrid({
+  videos,
+  currentVideoId,
+  onPlay,
+  onShowDetail,
+  onAddToPlaylist,
+  selectedIds,
+  onSelectionChange,
+}: Props) {
   const { videoTags, categories } = useTagStore();
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
+  const lastSelectedIdxRef = useRef<number | null>(null);
   const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+  const handleCheckbox = (e: React.MouseEvent, video: Video, idx: number) => {
+    e.stopPropagation();
+    const next = new Set(selectedIds);
+
+    if (e.shiftKey && lastSelectedIdxRef.current !== null) {
+      const from = Math.min(lastSelectedIdxRef.current, idx);
+      const to = Math.max(lastSelectedIdxRef.current, idx);
+      for (let i = from; i <= to; i++) {
+        next.add(videos[i].id);
+      }
+    } else {
+      if (next.has(video.id)) {
+        next.delete(video.id);
+      } else {
+        next.add(video.id);
+      }
+      lastSelectedIdxRef.current = idx;
+    }
+
+    onSelectionChange(next);
+  };
 
   if (videos.length === 0) {
     return (
@@ -29,8 +63,9 @@ export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAd
   return (
     <>
     <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-      {videos.map((v) => {
+      {videos.map((v, idx) => {
         const isPlaying = v.id === currentVideoId;
+        const isSelected = selectedIds.has(v.id);
         const hasProgress = v.progress > 0;
         const progressPercent =
           v.duration && v.duration > 0
@@ -43,9 +78,11 @@ export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAd
           <div
             key={v.id}
             className={`group cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
-              isPlaying
-                ? 'border-blue-500'
-                : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+              isSelected
+                ? 'border-blue-400 dark:border-blue-500'
+                : isPlaying
+                  ? 'border-blue-500'
+                  : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
             }`}
           >
             {/* カテゴリカラーストライプ */}
@@ -68,6 +105,25 @@ export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAd
                   ▶
                 </div>
               )}
+
+              {/* チェックボックス (左上) */}
+              <div
+                className={`absolute top-1 left-1 transition-opacity ${
+                  isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                }`}
+                onClick={(e) => handleCheckbox(e, v, idx)}
+              >
+                <div
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center text-white text-xs font-bold transition-colors ${
+                    isSelected
+                      ? 'bg-blue-500 border-blue-500'
+                      : 'bg-black/40 border-white/70 hover:bg-black/60'
+                  }`}
+                >
+                  {isSelected && '✓'}
+                </div>
+              </div>
+
               {isPlaying && (
                 <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
                   再生中

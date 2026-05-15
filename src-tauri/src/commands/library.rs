@@ -124,3 +124,16 @@ pub async fn generate_thumbnail(
 pub async fn delete_video_file(path: String) -> Result<(), String> {
     fs::remove_file(&path).map_err(|e| format!("ファイル削除失敗: {e}"))
 }
+
+/// 複数の動画ファイルを一括削除する。各ファイルの削除成否を (path, success) の配列で返す。
+#[tauri::command]
+pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(String, bool)>, String> {
+    let results = paths
+        .into_iter()
+        .map(|path| {
+            let ok = fs::remove_file(&path).is_ok();
+            (path, ok)
+        })
+        .collect();
+    Ok(results)
+}
