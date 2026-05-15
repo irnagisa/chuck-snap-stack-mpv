@@ -20,6 +20,7 @@ interface LibraryActions {
   scanAndImport: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
+  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
 }
 
@@ -187,6 +188,21 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       videos: state.videos.map((v) =>
         v.id === videoId ? { ...v, progress } : v
       ),
+    }));
+  },
+
+  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => {
+    const { db } = get();
+    if (!db) return;
+    const fields = Object.keys(updates) as (keyof typeof updates)[];
+    if (fields.length === 0) return;
+    const setClauses = fields.map((f) => `${f} = ?`).join(', ');
+    await db.execute(
+      `UPDATE videos SET ${setClauses} WHERE id = ?`,
+      [...fields.map((f) => updates[f]), videoId]
+    );
+    set((state) => ({
+      videos: state.videos.map((v) => v.id === videoId ? { ...v, ...updates } : v),
     }));
   },
 

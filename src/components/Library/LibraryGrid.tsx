@@ -10,10 +10,10 @@ interface Props {
   videos: Video[];
   currentVideoId: number | null;
   onPlay: (video: Video) => void;
-  onEditTags: (video: Video) => void;
+  onShowDetail: (video: Video) => void;
 }
 
-export function LibraryGrid({ videos, currentVideoId, onPlay, onEditTags }: Props) {
+export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail }: Props) {
   const { videoTags, categories } = useTagStore();
   const { deleteVideo } = useLibraryStore();
   const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
@@ -79,10 +79,10 @@ export function LibraryGrid({ videos, currentVideoId, onPlay, onEditTags }: Prop
                 <button
                   type="button"
                   className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
-                  onClick={(e) => { e.stopPropagation(); onEditTags(v); }}
-                  title="タグ・カテゴリを編集"
+                  onClick={(e) => { e.stopPropagation(); onShowDetail(v); }}
+                  title="動画の詳細を表示"
                 >
-                  タグ
+                  詳細
                 </button>
                 <button
                   type="button"

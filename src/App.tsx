@@ -6,7 +6,7 @@ import { useTagStore } from "./store/useTagStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
-import { VideoTagsModal } from "./components/Library/VideoTagsModal";
+import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import type { Video } from "./types";
 import "./App.css";
@@ -20,7 +20,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
-  const [editingVideo, setEditingVideo] = useState<Video | null>(null);
+  const [detailVideo, setDetailVideo] = useState<Video | null>(null);
 
   useEffect(() => {
     initDb();
@@ -142,7 +142,7 @@ function App() {
                 videos={filteredVideos}
                 currentVideoId={currentVideo?.id ?? null}
                 onPlay={play}
-                onEditTags={setEditingVideo}
+                onShowDetail={setDetailVideo}
               />
             </>
           )}
@@ -151,10 +151,11 @@ function App() {
 
       <PlayerControls />
 
-      {editingVideo && (
-        <VideoTagsModal
-          video={editingVideo}
-          onClose={() => setEditingVideo(null)}
+      {detailVideo && (
+        <VideoDetailModal
+          key={detailVideo.id}
+          video={detailVideo}
+          onClose={() => setDetailVideo(null)}
         />
       )}
     </main>
