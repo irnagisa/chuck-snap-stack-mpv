@@ -185,7 +185,7 @@ function App() {
         )}
 
         {/* メインコンテンツ */}
-        <div className="flex-1 min-w-0">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           {!isDbReady && !dbError && (
             <p className="text-gray-500 text-sm dark:text-gray-400">DB 初期化中...</p>
           )}
@@ -194,9 +194,9 @@ function App() {
           )}
 
           {isDbReady && (
-            <>
+            <div className="flex flex-col flex-1 min-h-0">
               {/* フィルタ・ソートバー */}
-              <div className="flex items-start gap-2 mb-3">
+              <div className="flex items-start gap-2 mb-3 shrink-0">
                 {/* タグフィルタ */}
                 <div className="flex flex-wrap gap-1 flex-1 min-w-0">
                   {tags.length > 0 ? (
@@ -253,7 +253,7 @@ function App() {
 
               {/* バッチ操作バー */}
               {selectedVideoIds.size > 0 && (
-                <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg shrink-0">
                   <span className="text-xs font-medium text-blue-700 dark:text-blue-300 shrink-0">
                     {selectedVideoIds.size} 件選択中
                   </span>
@@ -288,16 +288,18 @@ function App() {
                 </div>
               )}
 
-              <LibraryGrid
-                videos={filteredVideos}
-                currentVideoId={currentVideo?.id ?? null}
-                onPlay={play}
-                onShowDetail={setDetailVideo}
-                onAddToPlaylist={setAddToPlaylistVideo}
-                selectedIds={selectedVideoIds}
-                onSelectionChange={setSelectedVideoIds}
-              />
-            </>
+              <div className="flex-1 min-h-0">
+                <LibraryGrid
+                  videos={filteredVideos}
+                  currentVideoId={currentVideo?.id ?? null}
+                  onPlay={play}
+                  onShowDetail={setDetailVideo}
+                  onAddToPlaylist={setAddToPlaylistVideo}
+                  selectedIds={selectedVideoIds}
+                  onSelectionChange={setSelectedVideoIds}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
