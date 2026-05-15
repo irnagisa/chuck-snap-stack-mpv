@@ -11,6 +11,9 @@ import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import type { Video } from "./types";
 import "./App.css";
 
+type SortBy = 'created_at' | 'duration' | 'rating';
+type SortOrder = 'desc' | 'asc';
+
 function App() {
   const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
   const { play, currentVideo } = usePlayerStore();
@@ -21,6 +24,8 @@ function App() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [detailVideo, setDetailVideo] = useState<Video | null>(null);
+  const [sortBy, setSortBy] = useState<SortBy>('created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   useEffect(() => {
     initDb();
@@ -54,8 +59,26 @@ function App() {
         (videoTags[v.id] ?? []).some((t) => selectedTagIds.includes(t.id))
       );
     }
-    return result;
-  }, [videos, searchQuery, selectedCategoryId, selectedTagIds, videoTags]);
+
+    return [...result].sort((a, b) => {
+      let av: number;
+      let bv: number;
+      switch (sortBy) {
+        case 'duration':
+          av = a.duration ?? -1;
+          bv = b.duration ?? -1;
+          break;
+        case 'rating':
+          av = a.rating;
+          bv = b.rating;
+          break;
+        default:
+          av = new Date(a.created_at).getTime();
+          bv = new Date(b.created_at).getTime();
+      }
+      return sortOrder === 'desc' ? bv - av : av - bv;
+    });
+  }, [videos, searchQuery, selectedCategoryId, selectedTagIds, videoTags, sortBy, sortOrder]);
 
   return (
     <main className="flex flex-col min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -110,33 +133,61 @@ function App() {
 
           {isDbReady && (
             <>
-              {/* タグフィルタバー */}
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {tags.map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      className={`px-1.5 py-px rounded-full text-[10px] font-medium text-white transition-opacity ${
-                        selectedTagIds.includes(tag.id) ? 'opacity-100 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950' : 'opacity-40 hover:opacity-70'
-                      }`}
-                      style={{ backgroundColor: tag.color }}
-                      onClick={() => toggleTag(tag.id)}
-                    >
-                      {tag.name}
-                    </button>
-                  ))}
-                  {selectedTagIds.length > 0 && (
-                    <button
-                      type="button"
-                      className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
-                      onClick={() => setSelectedTagIds([])}
-                    >
-                      クリア
-                    </button>
-                  )}
+              {/* フィルタ・ソートバー */}
+              <div className="flex items-start gap-2 mb-3">
+                {/* タグフィルタ */}
+                <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+                  {tags.length > 0 ? (
+                    <>
+                      {tags.map((tag) => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          className={`px-1.5 py-px rounded-full text-[10px] font-medium text-white transition-opacity ${
+                            selectedTagIds.includes(tag.id)
+                              ? 'opacity-100 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950'
+                              : 'opacity-40 hover:opacity-70'
+                          }`}
+                          style={{ backgroundColor: tag.color }}
+                          onClick={() => toggleTag(tag.id)}
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                      {selectedTagIds.length > 0 && (
+                        <button
+                          type="button"
+                          className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
+                          onClick={() => setSelectedTagIds([])}
+                        >
+                          クリア
+                        </button>
+                      )}
+                    </>
+                  ) : null}
                 </div>
-              )}
+
+                {/* ソートコントロール */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <select
+                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortBy)}
+                  >
+                    <option value="created_at">追加日</option>
+                    <option value="duration">長さ</option>
+                    <option value="rating">評価</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
+                    title={sortOrder === 'desc' ? '降順 (クリックで昇順)' : '昇順 (クリックで降順)'}
+                    onClick={() => setSortOrder((o) => (o === 'desc' ? 'asc' : 'desc'))}
+                  >
+                    {sortOrder === 'desc' ? '↓' : '↑'}
+                  </button>
+                </div>
+              </div>
 
               <LibraryGrid
                 videos={filteredVideos}
