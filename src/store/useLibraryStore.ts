@@ -9,6 +9,7 @@ import { usePlaylistStore } from './usePlaylistStore';
 
 interface LibraryState {
   videos: Video[];
+  watchDirs: string[];
   isScanning: boolean;
   isDbReady: boolean;
   dbError: string | null;
@@ -19,6 +20,7 @@ interface LibraryActions {
   initDb: () => Promise<void>;
   fetchVideos: () => Promise<void>;
   scanAndImport: (path: string) => Promise<void>;
+  removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
   updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
@@ -94,6 +96,7 @@ const CREATE_WATCH_DIRS_TABLE = `
 
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
+  watchDirs: [],
   isScanning: false,
   isDbReady: false,
   dbError: null,
@@ -120,6 +123,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute(CREATE_WATCH_DIRS_TABLE);
       // アプリ起動時: 保存済みのすべての watch_dirs を再監視
       const savedDirs = await db.select<{ path: string }[]>('SELECT path FROM watch_dirs');
+      set({ watchDirs: savedDirs.map((d) => d.path) });
       for (const dir of savedDirs) {
         invoke('start_watching', { path: dir.path }).catch(() => {});
       }
@@ -147,6 +151,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     set({ isScanning: true });
     try {
       await db.execute('INSERT OR IGNORE INTO watch_dirs (path) VALUES (?)', [path]);
+      set((state) => ({
+        watchDirs: state.watchDirs.includes(path) ? state.watchDirs : [...state.watchDirs, path],
+      }));
       invoke('start_watching', { path }).catch(() => {});
       const files = await invoke<ScannedFile[]>('scan_directory', { path });
       for (const file of files) {
@@ -160,6 +167,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     } finally {
       set({ isScanning: false });
     }
+  },
+
+  removeWatchDir: async (path: string) => {
+    const { db } = get();
+    if (!db) return;
+    await db.execute('DELETE FROM watch_dirs WHERE path = ?', [path]);
+    await invoke('stop_watching', { path }).catch(() => {});
+    set((state) => ({ watchDirs: state.watchDirs.filter((d) => d !== path) }));
   },
 
   generateThumbnails: async () => {

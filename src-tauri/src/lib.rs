@@ -27,6 +27,7 @@ pub fn run() {
             commands::library::delete_video_file,
             commands::settings::update_settings,
             commands::watcher::start_watching,
+            commands::watcher::stop_watching,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

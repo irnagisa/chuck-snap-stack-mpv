@@ -9,15 +9,32 @@ interface Props {
 
 export function SettingsPanel({ onClose }: Props) {
   const { mpvPath, ffmpegPath, ffprobePath, saveSettings } = useSettingsStore();
-  const db = useLibraryStore((s) => s.db);
+  const { db, watchDirs, scanAndImport, removeWatchDir, isScanning } = useLibraryStore();
 
   const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath });
   const [isSaving, setIsSaving] = useState(false);
+  const [removingPath, setRemovingPath] = useState<string | null>(null);
 
   const handlePickMpv = async () => {
     const selected = await open({ multiple: false });
     if (typeof selected === "string") {
       setLocal((prev) => ({ ...prev, mpvPath: selected }));
+    }
+  };
+
+  const handleAddScanPath = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (typeof selected === "string") {
+      await scanAndImport(selected);
+    }
+  };
+
+  const handleRemoveScanPath = async (path: string) => {
+    setRemovingPath(path);
+    try {
+      await removeWatchDir(path);
+    } finally {
+      setRemovingPath(null);
     }
   };
 
@@ -37,7 +54,7 @@ export function SettingsPanel({ onClose }: Props) {
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md mx-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-lg mx-4">
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">設定</h2>
@@ -109,6 +126,51 @@ export function SettingsPanel({ onClose }: Props) {
               placeholder="ffprobe"
             />
           </div>
+
+          {/* 区切り線 */}
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          {/* スキャンパス */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            スキャンパス
+          </p>
+
+          <div className="space-y-1">
+            {watchDirs.length === 0 ? (
+              <p className="text-xs text-gray-400 dark:text-gray-500 py-1">
+                スキャン対象フォルダがありません
+              </p>
+            ) : (
+              watchDirs.map((dir) => (
+                <div
+                  key={dir}
+                  className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded px-2 py-1.5"
+                >
+                  <span className="flex-1 text-xs font-mono text-gray-700 dark:text-gray-300 truncate" title={dir}>
+                    {dir}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={removingPath === dir}
+                    onClick={() => handleRemoveScanPath(dir)}
+                    className="shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-xs px-1 disabled:opacity-40"
+                    title="このパスを削除"
+                  >
+                    {removingPath === dir ? "…" : "✕"}
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={isScanning}
+            onClick={handleAddScanPath}
+            className="w-full py-1.5 text-sm border border-dashed border-gray-300 dark:border-gray-600 rounded text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 disabled:opacity-40 transition-colors"
+          >
+            {isScanning ? "スキャン中..." : "+ フォルダを追加"}
+          </button>
         </div>
 
         {/* フッター */}

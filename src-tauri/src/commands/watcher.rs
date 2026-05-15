@@ -86,3 +86,16 @@ pub async fn start_watching(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn stop_watching(
+    state: tauri::State<'_, SharedWatcherState>,
+    path: String,
+) -> Result<(), String> {
+    let canonical = std::fs::canonicalize(&path)
+        .unwrap_or_else(|_| std::path::PathBuf::from(&path))
+        .to_string_lossy()
+        .to_string();
+    state.lock().unwrap().remove(&canonical);
+    Ok(())
+}
