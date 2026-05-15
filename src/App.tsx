@@ -14,7 +14,6 @@ import { AddToPlaylistModal } from "./components/Library/AddToPlaylistModal";
 import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import type { Video, Playlist } from "./types";
-import "./App.css";
 
 type SortBy = 'created_at' | 'duration' | 'rating';
 type SortOrder = 'desc' | 'asc';
