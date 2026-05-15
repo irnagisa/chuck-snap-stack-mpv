@@ -16,6 +16,7 @@ import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { BulkDeleteModal } from "./components/Library/BulkDeleteModal";
 import { BulkTagModal } from "./components/Library/BulkTagModal";
 import { BulkCategoryModal } from "./components/Library/BulkCategoryModal";
+import { DownloadModal } from "./components/Library/DownloadModal";
 import type { Video, Playlist } from "./types";
 
 type SortBy = 'created_at' | 'duration' | 'rating';
@@ -40,6 +41,7 @@ function App() {
   const [addToPlaylistVideo, setAddToPlaylistVideo] = useState<Video | null>(null);
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [bulkModal, setBulkModal] = useState<BulkModal>(null);
+  const [showDownload, setShowDownload] = useState(false);
 
   const closeAllModals = useCallback(() => {
     setShowSettings(false);
@@ -123,6 +125,14 @@ function App() {
         >
           {isScanning ? "スキャン中..." : "+ フォルダ追加"}
         </button>
+        <button
+          type="button"
+          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50 text-sm dark:bg-green-500 dark:hover:bg-green-600 shrink-0"
+          disabled={!isDbReady}
+          onClick={() => setShowDownload(true)}
+        >
+          ↓ URL
+        </button>
         <input
           className="flex-1 border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0"
           value={searchQuery}
@@ -141,6 +151,8 @@ function App() {
       </div>
 
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+      {showDownload && <DownloadModal onClose={() => setShowDownload(false)} />}
 
       {/* ボディ: サイドバー + メインコンテンツ */}
       <div className="flex flex-1 px-4 pt-4 pb-28 gap-4 min-h-0">

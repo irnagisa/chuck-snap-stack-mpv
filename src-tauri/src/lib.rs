@@ -1,5 +1,6 @@
 pub mod commands;
 
+use commands::download::DownloadState;
 use commands::mpv::MpvState;
 use commands::settings::AppSettings;
 use commands::watcher::new_watcher_state;
@@ -13,6 +14,7 @@ pub fn run() {
         .manage(MpvState::new())
         .manage(AppSettings::new())
         .manage(new_watcher_state())
+        .manage(DownloadState::new())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
@@ -29,6 +31,8 @@ pub fn run() {
             commands::settings::update_settings,
             commands::watcher::start_watching,
             commands::watcher::stop_watching,
+            commands::download::download_video,
+            commands::download::cancel_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

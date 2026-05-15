@@ -8,10 +8,10 @@ interface Props {
 }
 
 export function SettingsPanel({ onClose }: Props) {
-  const { mpvPath, ffmpegPath, ffprobePath, saveSettings } = useSettingsStore();
+  const { mpvPath, ffmpegPath, ffprobePath, downloadDir, saveSettings } = useSettingsStore();
   const { db, watchDirs, scanAndImport, removeWatchDir, isScanning } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, downloadDir });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
 
@@ -19,6 +19,13 @@ export function SettingsPanel({ onClose }: Props) {
     const selected = await open({ multiple: false });
     if (typeof selected === "string") {
       setLocal((prev) => ({ ...prev, mpvPath: selected }));
+    }
+  };
+
+  const handlePickDownloadDir = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (typeof selected === "string") {
+      setLocal((prev) => ({ ...prev, downloadDir: selected }));
     }
   };
 
@@ -125,6 +132,51 @@ export function SettingsPanel({ onClose }: Props) {
               className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
               placeholder="ffprobe"
             />
+          </div>
+
+          {/* 区切り線 */}
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          {/* ダウンロード */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            ダウンロード
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              ダウンロード先フォルダ
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={local.downloadDir}
+                placeholder="未設定（システムの Downloads フォルダを使用）"
+                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
+              />
+              <button
+                type="button"
+                onClick={handlePickDownloadDir}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
+              >
+                参照
+              </button>
+              {local.downloadDir && (
+                <button
+                  type="button"
+                  onClick={() => setLocal((prev) => ({ ...prev, downloadDir: "" }))}
+                  className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
+                  title="リセット"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {!local.downloadDir && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                未設定の場合は OS の標準 Downloads フォルダが使われます
+              </p>
+            )}
           </div>
 
           {/* 区切り線 */}

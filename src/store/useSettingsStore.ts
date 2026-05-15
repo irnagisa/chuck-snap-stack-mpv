@@ -6,12 +6,14 @@ export interface AppSettings {
   mpvPath: string;
   ffmpegPath: string;
   ffprobePath: string;
+  downloadDir: string;
 }
 
 const DEFAULTS: AppSettings = {
   mpvPath: "/opt/homebrew/bin/mpv",
   ffmpegPath: "ffmpeg",
   ffprobePath: "ffprobe",
+  downloadDir: "",
 };
 
 interface SettingsStore extends AppSettings {
@@ -28,6 +30,7 @@ async function syncToRust(settings: AppSettings) {
   });
 }
 
+
 export const useSettingsStore = create<SettingsStore>((set) => ({
   ...DEFAULTS,
   isLoaded: false,
@@ -41,7 +44,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     `);
 
     const rows = await db.select<{ key: string; value: string }[]>(
-      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path')"
+      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'download_dir')"
     );
 
     const map: Record<string, string> = {};
@@ -53,6 +56,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       mpvPath: map["mpv_path"] ?? DEFAULTS.mpvPath,
       ffmpegPath: map["ffmpeg_path"] ?? DEFAULTS.ffmpegPath,
       ffprobePath: map["ffprobe_path"] ?? DEFAULTS.ffprobePath,
+      downloadDir: map["download_dir"] ?? DEFAULTS.downloadDir,
     };
 
     set({ ...settings, isLoaded: true });
@@ -71,6 +75,10 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     await db.execute(
       "INSERT OR REPLACE INTO settings (key, value) VALUES ('ffprobe_path', ?)",
       [settings.ffprobePath]
+    );
+    await db.execute(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('download_dir', ?)",
+      [settings.downloadDir]
     );
 
     set({ ...settings });
