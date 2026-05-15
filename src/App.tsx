@@ -4,12 +4,14 @@ import { useLibraryStore } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
+import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import "./App.css";
 
 function App() {
   const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
   const { play, currentVideo } = usePlayerStore();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     initDb();
@@ -49,7 +51,17 @@ function App() {
           placeholder="動画を検索..."
           disabled={!isDbReady}
         />
+        <button
+          type="button"
+          title="設定"
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600"
+          onClick={() => setShowSettings(true)}
+        >
+          ⚙
+        </button>
       </div>
+
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
 
       {!isDbReady && !dbError && (
         <p className="text-gray-500 text-sm dark:text-gray-400">DB 初期化中...</p>

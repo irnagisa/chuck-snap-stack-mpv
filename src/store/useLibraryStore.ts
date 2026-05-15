@@ -3,6 +3,7 @@ import Database from '@tauri-apps/plugin-sql';
 import { invoke } from '@tauri-apps/api/core';
 import { appDataDir, join } from '@tauri-apps/api/path';
 import type { Video, ScannedFile } from '../types';
+import { useSettingsStore } from './useSettingsStore';
 
 interface LibraryState {
   videos: Video[];
@@ -65,6 +66,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute(CREATE_PLAYLISTS_TABLE);
       await db.execute(CREATE_PLAYLIST_ITEMS_TABLE);
       set({ db, isDbReady: true });
+      await useSettingsStore.getState().loadSettings(db);
       await get().fetchVideos();
       // バックグラウンドで duration/thumbnail が未取得の動画を補完
       get().generateThumbnails().catch(() => {});

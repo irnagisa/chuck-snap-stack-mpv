@@ -2,6 +2,8 @@ use serde::Serialize;
 use walkdir::WalkDir;
 use std::path::Path;
 
+use super::settings::SharedAppSettings;
+
 #[derive(Serialize)]
 pub struct ThumbnailResult {
     pub thumbnail_path: String,
@@ -50,9 +52,15 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
 
 #[tauri::command]
 pub async fn generate_thumbnail(
+    app_settings: tauri::State<'_, SharedAppSettings>,
     video_path: String,
     output_path: String,
 ) -> Result<ThumbnailResult, String> {
+    let (ffmpeg_path, ffprobe_path) = {
+        let s = app_settings.lock().map_err(|e| e.to_string())?;
+        (s.ffmpeg_path.clone(), s.ffprobe_path.clone())
+    };
+
     if let Some(parent) = Path::new(&output_path).parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -60,7 +68,7 @@ pub async fn generate_thumbnail(
     }
 
     // ffprobe で動画の長さを取得
-    let duration = tokio::process::Command::new("ffprobe")
+    let duration = tokio::process::Command::new(&ffprobe_path)
         .args([
             "-v", "quiet",
             "-show_entries", "format=duration",
@@ -74,7 +82,7 @@ pub async fn generate_thumbnail(
         .and_then(|s| s.trim().parse::<f64>().ok());
 
     // 5秒地点からフレームを抽出 (高速シーク)
-    let status = tokio::process::Command::new("ffmpeg")
+    let status = tokio::process::Command::new(&ffmpeg_path)
         .args([
             "-y", "-ss", "5", "-i", &video_path,
             "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",
@@ -91,7 +99,7 @@ pub async fn generate_thumbnail(
     }
 
     // 動画が5秒未満の場合は先頭フレームで再試行
-    let status2 = tokio::process::Command::new("ffmpeg")
+    let status2 = tokio::process::Command::new(&ffmpeg_path)
         .args([
             "-y", "-i", &video_path,
             "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",

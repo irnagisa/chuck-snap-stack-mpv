@@ -10,8 +10,9 @@ use std::{
 
 use serde_json::{json, Value};
 
+use super::settings::SharedAppSettings;
+
 const MPV_SOCKET: &str = "/tmp/mpv-chuck-socket";
-const MPV_PATH: &str = "/usr/local/bin/mpv";
 
 // ----- 共有状態 -----
 
@@ -102,8 +103,11 @@ fn apply_minimum_window_size() {
 #[tauri::command]
 pub async fn play(
     state: tauri::State<'_, SharedMpvState>,
+    settings: tauri::State<'_, SharedAppSettings>,
     path: String,
 ) -> Result<(), String> {
+    let mpv_path = settings.lock().map_err(|e| e.to_string())?.mpv_path.clone();
+
     // 既存の mpv ソケットが有効なら loadfile で切り替え
     if std::path::Path::new(MPV_SOCKET).exists() {
         let result = send_ipc_fire(json!({"command": ["loadfile", path, "replace"]}));
@@ -127,7 +131,7 @@ pub async fn play(
     }
 
     // mpv 起動 (--autofit-smaller で新規起動時の最小サイズを保証)
-    let child = Command::new(MPV_PATH)
+    let child = Command::new(&mpv_path)
         .args([
             "--idle",
             "--no-terminal",
@@ -136,7 +140,7 @@ pub async fn play(
             &path,
         ])
         .spawn()
-        .map_err(|e| format!("mpv 起動失敗: {e}"))?;
+        .map_err(|e| format!("mpv 起動失敗 ({}): {e}", mpv_path))?;
 
     {
         let mut s = state.lock().map_err(|e| e.to_string())?;
