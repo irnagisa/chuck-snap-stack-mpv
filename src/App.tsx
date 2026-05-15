@@ -1,49 +1,74 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { useLibraryStore } from "./store/useLibraryStore";
 import "./App.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
+  const [dirPath, setDirPath] = useState("");
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    initDb();
+  }, []);
+
+  const handleScan = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (dirPath.trim()) {
+      scanAndImport(dirPath.trim());
+    }
+  };
+
+  const handlePickDir = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (typeof selected === "string") {
+      setDirPath(selected);
+      scanAndImport(selected);
+    }
+  };
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <main className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Chuck Snap Stack</h1>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
+      <form className="flex gap-2 mb-4" onSubmit={handleScan}>
         <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          className="flex-1 border px-2 py-1 rounded"
+          value={dirPath}
+          onChange={(e) => setDirPath(e.target.value)}
+          placeholder="/path/to/videos"
+          disabled={!isDbReady || isScanning}
         />
-        <button type="submit">Greet</button>
+        <button
+          type="button"
+          className="px-4 py-1 bg-gray-200 rounded disabled:opacity-50"
+          disabled={!isDbReady || isScanning}
+          onClick={handlePickDir}
+        >
+          フォルダ選択
+        </button>
+        <button
+          type="submit"
+          className="px-4 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+          disabled={!isDbReady || isScanning}
+        >
+          {isScanning ? "スキャン中..." : "スキャン"}
+        </button>
       </form>
-      <p>{greetMsg}</p>
+
+      {!isDbReady && !dbError && <p className="text-gray-500">DB 初期化中...</p>}
+      {dbError && <p className="text-red-500">DB エラー: {dbError}</p>}
+
+      <ul className="space-y-1">
+        {videos.map((v) => (
+          <li key={v.id} className="text-sm truncate">
+            {v.title ?? v.path}
+          </li>
+        ))}
+      </ul>
+
+      {isDbReady && videos.length === 0 && !isScanning && (
+        <p className="text-gray-400 mt-4">動画が見つかりません。ディレクトリをスキャンしてください。</p>
+      )}
     </main>
   );
 }

@@ -4,48 +4,56 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-dependencies:
-  '@tauri-apps/api':
-    specifier: ^2
-    version: 2.11.0
-  '@tauri-apps/plugin-opener':
-    specifier: ^2
-    version: 2.5.4
-  '@tauri-apps/plugin-sql':
-    specifier: ~2
-    version: 2.4.0
-  react:
-    specifier: ^19.1.0
-    version: 19.2.6
-  react-dom:
-    specifier: ^19.1.0
-    version: 19.2.6(react@19.2.6)
+importers:
 
-devDependencies:
-  '@tailwindcss/vite':
-    specifier: ^4.3.0
-    version: 4.3.0(vite@7.3.3)
-  '@tauri-apps/cli':
-    specifier: ^2
-    version: 2.11.1
-  '@types/react':
-    specifier: ^19.1.8
-    version: 19.2.14
-  '@types/react-dom':
-    specifier: ^19.1.6
-    version: 19.2.3(@types/react@19.2.14)
-  '@vitejs/plugin-react':
-    specifier: ^4.6.0
-    version: 4.7.0(vite@7.3.3)
-  tailwindcss:
-    specifier: ^4.3.0
-    version: 4.3.0
-  typescript:
-    specifier: ~5.8.3
-    version: 5.8.3
-  vite:
-    specifier: ^7.0.4
-    version: 7.3.3
+  .:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: ^2
+        version: 2.11.0
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2
+        version: 2.7.1
+      '@tauri-apps/plugin-opener':
+        specifier: ^2
+        version: 2.5.4
+      '@tauri-apps/plugin-sql':
+        specifier: ~2
+        version: 2.4.0
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.6(react@19.2.6)
+      zustand:
+        specifier: ^5.0.13
+        version: 5.0.13(@types/react@19.2.14)(react@19.2.6)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.3.0
+        version: 4.3.0(vite@7.3.3)
+      '@tauri-apps/cli':
+        specifier: ^2
+        version: 2.11.1
+      '@types/react':
+        specifier: ^19.1.8
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.1.6
+        version: 19.2.3(@types/react@19.2.14)
+      '@vitejs/plugin-react':
+        specifier: ^4.6.0
+        version: 4.7.0(vite@7.3.3)
+      tailwindcss:
+        specifier: ^4.3.0
+        version: 4.3.0
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
+      vite:
+        specifier: ^7.0.4
+        version: 7.3.3
 
 packages:
 
@@ -969,6 +977,12 @@ packages:
       '@tauri-apps/cli-win32-x64-msvc': 2.11.1
     dev: true
 
+  /@tauri-apps/plugin-dialog@2.7.1:
+    resolution: {integrity: sha512-OK1UBXYt+ojcmxMktzzuyonYIFta8CmAASpX+CA+DTGK24KlHjhYI6x2iOJ/TjZF4N7/ACK1oFmEOjIY9IhzOQ==}
+    dependencies:
+      '@tauri-apps/api': 2.11.0
+    dev: false
+
   /@tauri-apps/plugin-opener@2.5.4:
     resolution: {integrity: sha512-1HnPkb+AmgO29HBazm4uPLKB+r7zzcTBW1d0fyYp1uP+jwtpoiNDGKMMzz58SFp49nOIrxdE3aUJtT57lfO9CQ==}
     dependencies:
@@ -1026,7 +1040,6 @@ packages:
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
     dependencies:
       csstype: 3.2.3
-    dev: true
 
   /@vitejs/plugin-react@4.7.0(vite@7.3.3):
     resolution: {integrity: sha512-gUu9hwfWvvEDBBmgtAowQCojwZmJ5mcLn3aufeCsitijs3+f2NsrPtlAWIR6OPiqljl96GVCUbLe0HyqIpVaoA==}
@@ -1073,7 +1086,6 @@ packages:
 
   /csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
-    dev: true
 
   /debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -1510,3 +1522,25 @@ packages:
   /yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
     dev: true
+
+  /zustand@5.0.13(@types/react@19.2.14)(react@19.2.6):
+    resolution: {integrity: sha512-efI2tVaVQPqtOh114loML/Z80Y4NP3yc+Ff0fYiZJPauNeWZeIp/bRFD7I9bfmCOYBh/PHxlglQ9+wvlwnPikQ==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
+    dependencies:
+      '@types/react': 19.2.14
+      react: 19.2.6
+    dev: false
