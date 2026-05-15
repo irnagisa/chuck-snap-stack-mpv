@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { appDataDir, join } from '@tauri-apps/api/path';
 import type { Video, ScannedFile } from '../types';
 import { useSettingsStore } from './useSettingsStore';
+import { useTagStore } from './useTagStore';
 
 interface LibraryState {
   videos: Video[];
@@ -19,6 +20,7 @@ interface LibraryActions {
   scanAndImport: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
+  deleteVideo: (videoId: number) => Promise<void>;
 }
 
 const CREATE_VIDEOS_TABLE = `
@@ -52,6 +54,32 @@ const CREATE_PLAYLIST_ITEMS_TABLE = `
   )
 `;
 
+const CREATE_TAGS_TABLE = `
+  CREATE TABLE IF NOT EXISTS tags (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    color      TEXT NOT NULL DEFAULT '#6366f1',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
+const CREATE_VIDEO_TAGS_TABLE = `
+  CREATE TABLE IF NOT EXISTS video_tags (
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    tag_id   INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (video_id, tag_id)
+  )
+`;
+
+const CREATE_CATEGORIES_TABLE = `
+  CREATE TABLE IF NOT EXISTS categories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    color      TEXT NOT NULL DEFAULT '#6366f1',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
   isScanning: false,
@@ -65,9 +93,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute(CREATE_VIDEOS_TABLE);
       await db.execute(CREATE_PLAYLISTS_TABLE);
       await db.execute(CREATE_PLAYLIST_ITEMS_TABLE);
+      await db.execute(CREATE_TAGS_TABLE);
+      await db.execute(CREATE_VIDEO_TAGS_TABLE);
+      await db.execute(CREATE_CATEGORIES_TABLE);
+      // category_id カラムを既存 videos テーブルに追加 (初回のみ)
+      try {
+        await db.execute('ALTER TABLE videos ADD COLUMN category_id INTEGER REFERENCES categories(id)');
+      } catch { /* already exists */ }
       set({ db, isDbReady: true });
       await useSettingsStore.getState().loadSettings(db);
       await get().fetchVideos();
+      await useTagStore.getState().init(db);
       // バックグラウンドで duration/thumbnail が未取得の動画を補完
       get().generateThumbnails().catch(() => {});
     } catch (e) {
@@ -152,5 +188,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         v.id === videoId ? { ...v, progress } : v
       ),
     }));
+  },
+
+  deleteVideo: async (videoId: number) => {
+    const { db } = get();
+    if (!db) return;
+    await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+    set((state) => ({ videos: state.videos.filter((v) => v.id !== videoId) }));
+    // videoTags のキャッシュも削除
+    useTagStore.getState().videoTags[videoId] && useTagStore.setState((state) => {
+      const next = { ...state.videoTags };
+      delete next[videoId];
+      return { videoTags: next };
+    });
   },
 }));

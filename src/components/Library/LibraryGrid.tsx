@@ -1,13 +1,24 @@
+import { useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
+import { useTagStore } from '../../store/useTagStore';
+import { useLibraryStore } from '../../store/useLibraryStore';
+import { TagBadge } from './TagBadge';
+import { ConfirmModal } from '../common/ConfirmModal';
 
 interface Props {
   videos: Video[];
   currentVideoId: number | null;
   onPlay: (video: Video) => void;
+  onEditTags: (video: Video) => void;
 }
 
-export function LibraryGrid({ videos, currentVideoId, onPlay }: Props) {
+export function LibraryGrid({ videos, currentVideoId, onPlay, onEditTags }: Props) {
+  const { videoTags, categories } = useTagStore();
+  const { deleteVideo } = useLibraryStore();
+  const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
+  const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
   if (videos.length === 0) {
     return (
       <p className="text-gray-400 mt-4 text-sm dark:text-gray-500">
@@ -17,6 +28,7 @@ export function LibraryGrid({ videos, currentVideoId, onPlay }: Props) {
   }
 
   return (
+    <>
     <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
       {videos.map((v) => {
         const isPlaying = v.id === currentVideoId;
@@ -24,19 +36,28 @@ export function LibraryGrid({ videos, currentVideoId, onPlay }: Props) {
         const progressPercent =
           v.duration && v.duration > 0
             ? Math.min((v.progress / v.duration) * 100, 100)
-            : null; // duration 不明でも progress があれば別表示
+            : null;
+        const tags = videoTags[v.id] ?? [];
+        const category = v.category_id != null ? categoryMap[v.category_id] : null;
 
         return (
           <div
             key={v.id}
-            onClick={() => onPlay(v)}
-            className={`cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
+            className={`group cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
               isPlaying
                 ? 'border-blue-500'
                 : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
             }`}
           >
-            <div className="relative bg-gray-200 dark:bg-gray-700 aspect-video">
+            {/* カテゴリカラーストライプ */}
+            {category && (
+              <div className="h-1 shrink-0" style={{ backgroundColor: category.color }} />
+            )}
+
+            <div
+              className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
+              onClick={() => onPlay(v)}
+            >
               {v.thumbnail ? (
                 <img
                   src={convertFileSrc(v.thumbnail)}
@@ -53,9 +74,28 @@ export function LibraryGrid({ videos, currentVideoId, onPlay }: Props) {
                   再生中
                 </div>
               )}
+              {/* ホバー時ボタン群 */}
+              <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                <button
+                  type="button"
+                  className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
+                  onClick={(e) => { e.stopPropagation(); onEditTags(v); }}
+                  title="タグ・カテゴリを編集"
+                >
+                  タグ
+                </button>
+                <button
+                  type="button"
+                  className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
+                  onClick={(e) => { e.stopPropagation(); setConfirmVideo(v); }}
+                  title="登録を削除"
+                >
+                  削除
+                </button>
+              </div>
             </div>
 
-            {/* プログレスバー: duration あり → 割合バー、なし → 再生済みドット */}
+            {/* プログレスバー */}
             {progressPercent !== null && progressPercent > 0 ? (
               <div className="h-1 bg-gray-200 dark:bg-gray-700">
                 <div className="h-full bg-blue-500" style={{ width: `${progressPercent}%` }} />
@@ -64,14 +104,35 @@ export function LibraryGrid({ videos, currentVideoId, onPlay }: Props) {
               <div className="h-1 bg-blue-500" />
             ) : null}
 
-            <div className="p-1.5 bg-white dark:bg-gray-800">
-              <p className="text-xs truncate text-gray-800 dark:text-gray-200">
+            <div className="p-1.5 bg-white dark:bg-gray-800" onClick={() => onPlay(v)}>
+              <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
                 {v.title ?? v.path.split('/').pop()}
               </p>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-0.5">
+                  {tags.slice(0, 3).map((tag) => (
+                    <TagBadge key={tag.id} tag={tag} />
+                  ))}
+                  {tags.length > 3 && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">+{tags.length - 3}</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         );
       })}
     </div>
+
+    {confirmVideo && (
+      <ConfirmModal
+        message={`「${confirmVideo.title ?? confirmVideo.path.split('/').pop()}」の登録を削除しますか？\nファイル本体は削除されません。`}
+        confirmLabel="削除"
+        confirmDanger
+        onConfirm={() => { deleteVideo(confirmVideo.id); setConfirmVideo(null); }}
+        onCancel={() => setConfirmVideo(null)}
+      />
+    )}
+    </>
   );
 }
