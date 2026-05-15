@@ -4,6 +4,7 @@ import { useTagStore } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { TagBadge } from './TagBadge';
+import { TranscodeModal } from './TranscodeModal';
 import type { Video, Tag } from '../../types';
 
 const COLORS = [
@@ -35,6 +36,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
   const [tagInput, setTagInput] = useState('');
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
+  const [showTranscode, setShowTranscode] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
   const currentTags = videoTags[video.id] ?? [];
@@ -101,6 +103,16 @@ export function VideoDetailModal({ video, onClose }: Props) {
   };
 
   return (
+    <>
+    {showTranscode && (
+      <TranscodeModal
+        video={video}
+        onClose={() => {
+          setShowTranscode(false);
+          onClose();
+        }}
+      />
+    )}
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={onClose}
@@ -149,6 +161,13 @@ export function VideoDetailModal({ video, onClose }: Props) {
               onClick={handlePlay}
             >
               ▶ 再生
+            </button>
+            <button
+              type="button"
+              className="w-full py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded font-medium"
+              onClick={() => setShowTranscode(true)}
+            >
+              AV1 変換
             </button>
           </div>
 
@@ -320,5 +339,6 @@ export function VideoDetailModal({ video, onClose }: Props) {
         </div>
       </div>
     </div>
+    </>
   );
 }

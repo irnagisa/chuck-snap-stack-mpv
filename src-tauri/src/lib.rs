@@ -3,6 +3,7 @@ pub mod commands;
 use commands::download::DownloadState;
 use commands::mpv::MpvState;
 use commands::settings::AppSettings;
+use commands::transcode::TranscodeState;
 use commands::watcher::new_watcher_state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -15,6 +16,7 @@ pub fn run() {
         .manage(AppSettings::new())
         .manage(new_watcher_state())
         .manage(DownloadState::new())
+        .manage(TranscodeState::new())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
@@ -33,6 +35,8 @@ pub fn run() {
             commands::watcher::stop_watching,
             commands::download::download_video,
             commands::download::cancel_download,
+            commands::transcode::transcode_video,
+            commands::transcode::cancel_transcode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
