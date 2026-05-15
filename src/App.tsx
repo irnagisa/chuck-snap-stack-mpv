@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
+import { usePlayerStore } from "./store/usePlayerStore";
+import { PlayerControls } from "./components/Player/PlayerControls";
 import "./App.css";
 
 function App() {
   const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
+  const { play, currentVideo } = usePlayerStore();
   const [dirPath, setDirPath] = useState("");
 
   useEffect(() => {
@@ -27,7 +30,7 @@ function App() {
   };
 
   return (
-    <main className="p-4">
+    <main className="p-4 pb-24">
       <h1 className="text-2xl font-bold mb-4">Chuck Snap Stack</h1>
 
       <form className="flex gap-2 mb-4" onSubmit={handleScan}>
@@ -60,7 +63,13 @@ function App() {
 
       <ul className="space-y-1">
         {videos.map((v) => (
-          <li key={v.id} className="text-sm truncate">
+          <li
+            key={v.id}
+            className={`text-sm truncate cursor-pointer px-2 py-1 rounded hover:bg-gray-100 ${
+              currentVideo?.id === v.id ? "bg-blue-50 text-blue-700 font-medium" : ""
+            }`}
+            onClick={() => play(v)}
+          >
             {v.title ?? v.path}
           </li>
         ))}
@@ -69,6 +78,8 @@ function App() {
       {isDbReady && videos.length === 0 && !isScanning && (
         <p className="text-gray-400 mt-4">動画が見つかりません。ディレクトリをスキャンしてください。</p>
       )}
+
+      <PlayerControls />
     </main>
   );
 }
