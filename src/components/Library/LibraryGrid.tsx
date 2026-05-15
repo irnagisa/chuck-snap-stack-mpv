@@ -11,9 +11,10 @@ interface Props {
   currentVideoId: number | null;
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
+  onAddToPlaylist?: (video: Video) => void;
 }
 
-export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail }: Props) {
+export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAddToPlaylist }: Props) {
   const { videoTags, categories } = useTagStore();
   const { deleteVideo } = useLibraryStore();
   const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
@@ -76,6 +77,16 @@ export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail }: Pr
               )}
               {/* ホバー時ボタン群 */}
               <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                {onAddToPlaylist && (
+                  <button
+                    type="button"
+                    className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
+                    onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
+                    title="プレイリストに追加"
+                  >
+                    +
+                  </button>
+                )}
                 <button
                   type="button"
                   className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"

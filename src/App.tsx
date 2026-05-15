@@ -6,13 +6,17 @@ import { useTagStore } from "./store/useTagStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
+import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
+import { PlaylistModal } from "./components/Library/PlaylistModal";
+import { AddToPlaylistModal } from "./components/Library/AddToPlaylistModal";
 import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
-import type { Video } from "./types";
+import type { Video, Playlist } from "./types";
 import "./App.css";
 
 type SortBy = 'created_at' | 'duration' | 'rating';
 type SortOrder = 'desc' | 'asc';
+type SidebarTab = 'category' | 'playlist';
 
 function App() {
   const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
@@ -26,6 +30,9 @@ function App() {
   const [detailVideo, setDetailVideo] = useState<Video | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
+  const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
+  const [addToPlaylistVideo, setAddToPlaylistVideo] = useState<Video | null>(null);
 
   useEffect(() => {
     initDb();
@@ -114,12 +121,44 @@ function App() {
 
       {/* ボディ: サイドバー + メインコンテンツ */}
       <div className="flex flex-1 px-4 pt-4 pb-28 gap-4 min-h-0">
-        {/* カテゴリサイドバー */}
+        {/* サイドバー */}
         {isDbReady && (
-          <CategorySidebar
-            selectedCategoryId={selectedCategoryId}
-            onSelectCategory={setSelectedCategoryId}
-          />
+          <div className="w-44 shrink-0 flex flex-col gap-2">
+            {/* タブ */}
+            <div className="flex gap-1 text-xs">
+              <button
+                type="button"
+                className={`flex-1 py-1 rounded font-medium transition-colors ${
+                  sidebarTab === 'category'
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                }`}
+                onClick={() => setSidebarTab('category')}
+              >
+                カテゴリ
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1 rounded font-medium transition-colors ${
+                  sidebarTab === 'playlist'
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                }`}
+                onClick={() => setSidebarTab('playlist')}
+              >
+                リスト
+              </button>
+            </div>
+
+            {sidebarTab === 'category' ? (
+              <CategorySidebar
+                selectedCategoryId={selectedCategoryId}
+                onSelectCategory={setSelectedCategoryId}
+              />
+            ) : (
+              <PlaylistSidebar onOpenPlaylist={setActivePlaylist} />
+            )}
+          </div>
         )}
 
         {/* メインコンテンツ */}
@@ -194,6 +233,7 @@ function App() {
                 currentVideoId={currentVideo?.id ?? null}
                 onPlay={play}
                 onShowDetail={setDetailVideo}
+                onAddToPlaylist={setAddToPlaylistVideo}
               />
             </>
           )}
@@ -207,6 +247,20 @@ function App() {
           key={detailVideo.id}
           video={detailVideo}
           onClose={() => setDetailVideo(null)}
+        />
+      )}
+
+      {activePlaylist && (
+        <PlaylistModal
+          playlist={activePlaylist}
+          onClose={() => setActivePlaylist(null)}
+        />
+      )}
+
+      {addToPlaylistVideo && (
+        <AddToPlaylistModal
+          video={addToPlaylistVideo}
+          onClose={() => setAddToPlaylistVideo(null)}
         />
       )}
     </main>

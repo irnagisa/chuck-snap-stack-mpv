@@ -29,3 +29,9 @@ export interface Category {
   color: string;
   created_at: string;
 }
+
+export interface Playlist {
+  id: number;
+  name: string;
+  created_at: string;
+}

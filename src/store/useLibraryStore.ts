@@ -5,6 +5,7 @@ import { appDataDir, join } from '@tauri-apps/api/path';
 import type { Video, ScannedFile } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
+import { usePlaylistStore } from './usePlaylistStore';
 
 interface LibraryState {
   videos: Video[];
@@ -105,6 +106,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await useSettingsStore.getState().loadSettings(db);
       await get().fetchVideos();
       await useTagStore.getState().init(db);
+      await usePlaylistStore.getState().init(db);
       // バックグラウンドで duration/thumbnail が未取得の動画を補完
       get().generateThumbnails().catch(() => {});
     } catch (e) {
