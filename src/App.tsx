@@ -3,80 +3,67 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
+import { LibraryGrid } from "./components/Library/LibraryGrid";
 import "./App.css";
 
 function App() {
   const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
   const { play, currentVideo } = usePlayerStore();
-  const [dirPath, setDirPath] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     initDb();
   }, []);
 
-  const handleScan = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (dirPath.trim()) {
-      scanAndImport(dirPath.trim());
-    }
-  };
-
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
-      setDirPath(selected);
       scanAndImport(selected);
     }
   };
 
+  const filteredVideos = searchQuery.trim()
+    ? videos.filter((v) =>
+        (v.title ?? v.path).toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : videos;
+
   return (
-    <main className="p-4 pb-24">
+    <main className="min-h-screen p-4 pb-28 bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <h1 className="text-2xl font-bold mb-4">Chuck Snap Stack</h1>
 
-      <form className="flex gap-2 mb-4" onSubmit={handleScan}>
-        <input
-          className="flex-1 border px-2 py-1 rounded"
-          value={dirPath}
-          onChange={(e) => setDirPath(e.target.value)}
-          placeholder="/path/to/videos"
-          disabled={!isDbReady || isScanning}
-        />
+      {/* ツールバー */}
+      <div className="flex gap-2 mb-4">
         <button
           type="button"
-          className="px-4 py-1 bg-gray-200 rounded disabled:opacity-50"
+          className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 text-sm dark:bg-blue-500 dark:hover:bg-blue-600"
           disabled={!isDbReady || isScanning}
           onClick={handlePickDir}
         >
-          フォルダ選択
+          {isScanning ? "スキャン中..." : "フォルダを追加"}
         </button>
-        <button
-          type="submit"
-          className="px-4 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
-          disabled={!isDbReady || isScanning}
-        >
-          {isScanning ? "スキャン中..." : "スキャン"}
-        </button>
-      </form>
+        <input
+          className="flex-1 border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="動画を検索..."
+          disabled={!isDbReady}
+        />
+      </div>
 
-      {!isDbReady && !dbError && <p className="text-gray-500">DB 初期化中...</p>}
-      {dbError && <p className="text-red-500">DB エラー: {dbError}</p>}
+      {!isDbReady && !dbError && (
+        <p className="text-gray-500 text-sm dark:text-gray-400">DB 初期化中...</p>
+      )}
+      {dbError && (
+        <p className="text-red-500 text-sm dark:text-red-400">DB エラー: {dbError}</p>
+      )}
 
-      <ul className="space-y-1">
-        {videos.map((v) => (
-          <li
-            key={v.id}
-            className={`text-sm truncate cursor-pointer px-2 py-1 rounded hover:bg-gray-100 ${
-              currentVideo?.id === v.id ? "bg-blue-50 text-blue-700 font-medium" : ""
-            }`}
-            onClick={() => play(v)}
-          >
-            {v.title ?? v.path}
-          </li>
-        ))}
-      </ul>
-
-      {isDbReady && videos.length === 0 && !isScanning && (
-        <p className="text-gray-400 mt-4">動画が見つかりません。ディレクトリをスキャンしてください。</p>
+      {isDbReady && (
+        <LibraryGrid
+          videos={filteredVideos}
+          currentVideoId={currentVideo?.id ?? null}
+          onPlay={play}
+        />
       )}
 
       <PlayerControls />

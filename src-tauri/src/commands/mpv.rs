@@ -63,8 +63,42 @@ fn send_ipc_fire(cmd: Value) -> Result<(), String> {
 
 // ----- Tauri コマンド -----
 
+/// 動画の表示サイズが最小値 (640x360) を下回る場合に window-scale で拡大する。
+/// dwidth が 0 の間は最大 2 秒間ポーリングして動画ロード完了を待つ。
+fn apply_minimum_window_size() {
+    const MIN_W: f64 = 640.0;
+    const MIN_H: f64 = 360.0;
+    const POLL_INTERVAL_MS: u64 = 200;
+    const MAX_ATTEMPTS: u32 = 10; // 最大 2 秒待機
+
+    for _ in 0..MAX_ATTEMPTS {
+        std::thread::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS));
+
+        let w = send_ipc(json!({"command": ["get_property", "dwidth"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
+
+        if w == 0.0 {
+            continue; // まだ読み込まれていない
+        }
+
+        let h = send_ipc(json!({"command": ["get_property", "dheight"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
+
+        if h > 0.0 && (w < MIN_W || h < MIN_H) {
+            let scale = (MIN_W / w).max(MIN_H / h);
+            let _ = send_ipc_fire(json!({"command": ["set_property", "window-scale", scale]}));
+        }
+        break; // 寸法取得成功 (リサイズ不要でも終了)
+    }
+}
+
 /// 動画を再生する。
 /// mpv が起動済みなら loadfile コマンドで切り替え、未起動なら新たにプロセスを起動する。
+/// どちらのパスでも最小ウィンドウサイズ (640x360) を保証する。
 #[tauri::command]
 pub async fn play(
     state: tauri::State<'_, SharedMpvState>,
@@ -74,6 +108,10 @@ pub async fn play(
     if std::path::Path::new(MPV_SOCKET).exists() {
         let result = send_ipc_fire(json!({"command": ["loadfile", path, "replace"]}));
         if result.is_ok() {
+            // ファイル読み込み完了後にウィンドウサイズを調整 (バックグラウンド)
+            tokio::task::spawn_blocking(|| {
+                apply_minimum_window_size();
+            });
             return Ok(());
         }
         // ソケットが残っているが mpv が死んでいる場合は再起動へフォールスルー
@@ -88,11 +126,12 @@ pub async fn play(
         }
     }
 
-    // mpv 起動
+    // mpv 起動 (--autofit-smaller で新規起動時の最小サイズを保証)
     let child = Command::new(MPV_PATH)
         .args([
             "--idle",
             "--no-terminal",
+            "--autofit-smaller=640x360",
             &format!("--input-ipc-server={MPV_SOCKET}"),
             &path,
         ])

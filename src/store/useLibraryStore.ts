@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import Database from '@tauri-apps/plugin-sql';
 import { invoke } from '@tauri-apps/api/core';
+import { appDataDir, join } from '@tauri-apps/api/path';
 import type { Video, ScannedFile } from '../types';
 
 interface LibraryState {
@@ -15,6 +16,8 @@ interface LibraryActions {
   initDb: () => Promise<void>;
   fetchVideos: () => Promise<void>;
   scanAndImport: (path: string) => Promise<void>;
+  generateThumbnails: () => Promise<void>;
+  updateProgress: (videoId: number, progress: number) => Promise<void>;
 }
 
 const CREATE_VIDEOS_TABLE = `
@@ -63,6 +66,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute(CREATE_PLAYLIST_ITEMS_TABLE);
       set({ db, isDbReady: true });
       await get().fetchVideos();
+      // バックグラウンドで duration/thumbnail が未取得の動画を補完
+      get().generateThumbnails().catch(() => {});
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('initDb failed:', msg);
@@ -92,8 +97,58 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         );
       }
       await get().fetchVideos();
+      await get().generateThumbnails();
     } finally {
       set({ isScanning: false });
     }
+  },
+
+  generateThumbnails: async () => {
+    const { db, videos } = get();
+    if (!db) return;
+
+    const dataDir = await appDataDir();
+    const thumbDir = await join(dataDir, 'thumbnails');
+
+    const withoutThumb = videos.filter((v) => !v.thumbnail);
+    for (const video of withoutThumb) {
+      try {
+        const outputPath = await join(thumbDir, `${video.id}.jpg`);
+        const result = await invoke<{ thumbnail_path: string; duration: number | null }>(
+          'generate_thumbnail',
+          { videoPath: video.path, outputPath }
+        );
+        await db.execute(
+          'UPDATE videos SET thumbnail = ?, duration = ? WHERE id = ?',
+          [result.thumbnail_path, result.duration, video.id]
+        );
+        // 1件処理のたびに store を即時更新
+        set((state) => ({
+          videos: state.videos.map((v) =>
+            v.id === video.id
+              ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration }
+              : v
+          ),
+        }));
+      } catch (e) {
+        console.warn(`Thumbnail generation failed for ${video.path}:`, e);
+      }
+    }
+    await get().fetchVideos();
+  },
+
+  updateProgress: async (videoId: number, progress: number) => {
+    const { db } = get();
+    if (!db) return;
+    await db.execute(
+      'UPDATE videos SET progress = ?, watched_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [progress, videoId]
+    );
+    // ローカル state も即時更新
+    set((state) => ({
+      videos: state.videos.map((v) =>
+        v.id === videoId ? { ...v, progress } : v
+      ),
+    }));
   },
 }));

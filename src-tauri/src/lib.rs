@@ -11,6 +11,7 @@ pub fn run() {
         .manage(MpvState::new())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
+            commands::library::generate_thumbnail,
             commands::mpv::play,
             commands::mpv::pause_resume,
             commands::mpv::seek,
