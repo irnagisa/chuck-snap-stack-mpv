@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useWatcher } from "./hooks/useWatcher";
 import { useTagStore } from "./store/useTagStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
@@ -43,6 +44,7 @@ function App() {
   }, []);
 
   useKeyboardShortcuts({ onEscape: closeAllModals });
+  useWatcher();
 
   useEffect(() => {
     initDb();

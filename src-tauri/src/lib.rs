@@ -2,6 +2,7 @@ pub mod commands;
 
 use commands::mpv::MpvState;
 use commands::settings::AppSettings;
+use commands::watcher::new_watcher_state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -11,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(MpvState::new())
         .manage(AppSettings::new())
+        .manage(new_watcher_state())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
@@ -24,6 +26,7 @@ pub fn run() {
             commands::mpv::toggle_fullscreen,
             commands::library::delete_video_file,
             commands::settings::update_settings,
+            commands::watcher::start_watching,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

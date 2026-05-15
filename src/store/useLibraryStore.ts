@@ -24,6 +24,8 @@ interface LibraryActions {
   updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
+  addVideoFromPath: (path: string, title: string) => Promise<void>;
+  removeVideoByPath: (path: string) => Promise<void>;
 }
 
 const CREATE_VIDEOS_TABLE = `
@@ -83,6 +85,13 @@ const CREATE_CATEGORIES_TABLE = `
   )
 `;
 
+const CREATE_WATCH_DIRS_TABLE = `
+  CREATE TABLE IF NOT EXISTS watch_dirs (
+    path       TEXT PRIMARY KEY,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
   isScanning: false,
@@ -108,6 +117,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await get().fetchVideos();
       await useTagStore.getState().init(db);
       await usePlaylistStore.getState().init(db);
+      await db.execute(CREATE_WATCH_DIRS_TABLE);
+      // アプリ起動時: 保存済みのすべての watch_dirs を再監視
+      const savedDirs = await db.select<{ path: string }[]>('SELECT path FROM watch_dirs');
+      for (const dir of savedDirs) {
+        invoke('start_watching', { path: dir.path }).catch(() => {});
+      }
       // バックグラウンドで duration/thumbnail が未取得の動画を補完
       get().generateThumbnails().catch(() => {});
     } catch (e) {
@@ -131,6 +146,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     if (!db) return;
     set({ isScanning: true });
     try {
+      await db.execute('INSERT OR IGNORE INTO watch_dirs (path) VALUES (?)', [path]);
+      invoke('start_watching', { path }).catch(() => {});
       const files = await invoke<ScannedFile[]>('scan_directory', { path });
       for (const file of files) {
         await db.execute(
@@ -220,6 +237,24 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       delete next[videoId];
       return { videoTags: next };
     });
+  },
+
+  addVideoFromPath: async (path: string, title: string) => {
+    const { db } = get();
+    if (!db) return;
+    await db.execute(
+      'INSERT OR IGNORE INTO videos (path, title) VALUES (?, ?)',
+      [path, title]
+    );
+    await get().fetchVideos();
+    get().generateThumbnails().catch(() => {});
+  },
+
+  removeVideoByPath: async (path: string) => {
+    const { videos } = get();
+    const target = videos.find((v) => v.path === path);
+    if (!target) return;
+    await get().removeVideo(target.id);
   },
 
   removeVideo: async (videoId: number) => {
