@@ -25,7 +25,7 @@ type SidebarTab = 'category' | 'playlist';
 type BulkModal = 'delete' | 'tag' | 'category' | null;
 
 function App() {
-  const { videos, isScanning, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
+  const { videos, isScanning, isThumbnailGenerating, thumbnailProgress, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
   const { play, currentVideo } = usePlayerStore();
   const { tags, videoTags } = useTagStore();
 
@@ -149,6 +149,20 @@ function App() {
           ⚙
         </button>
       </div>
+
+      {isThumbnailGenerating && thumbnailProgress && (
+        <div className="px-4 py-1.5 flex items-center gap-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
+          <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+            サムネイル生成中 {thumbnailProgress.done}/{thumbnailProgress.total}
+          </span>
+          <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+            <div
+              className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+              style={{ width: `${(thumbnailProgress.done / thumbnailProgress.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
 

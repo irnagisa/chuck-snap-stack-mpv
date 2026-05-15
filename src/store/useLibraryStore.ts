@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import Database from '@tauri-apps/plugin-sql';
 import { invoke } from '@tauri-apps/api/core';
-import { appDataDir, join } from '@tauri-apps/api/path';
+import { appCacheDir, join } from '@tauri-apps/api/path';
 import type { Video, ScannedFile } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
@@ -11,6 +11,8 @@ interface LibraryState {
   videos: Video[];
   watchDirs: string[];
   isScanning: boolean;
+  isThumbnailGenerating: boolean;
+  thumbnailProgress: { done: number; total: number } | null;
   isDbReady: boolean;
   dbError: string | null;
   db: Database | null;
@@ -99,6 +101,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   videos: [],
   watchDirs: [],
   isScanning: false,
+  isThumbnailGenerating: false,
+  thumbnailProgress: null,
   isDbReady: false,
   dbError: null,
   db: null,
@@ -163,11 +167,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           [file.path, file.title]
         );
       }
+      // ファイル一覧を即座に UI に反映してスキャン完了とする
       await get().fetchVideos();
-      await get().generateThumbnails();
     } finally {
       set({ isScanning: false });
     }
+    // サムネイル生成はバックグラウンドで実行
+    get().generateThumbnails().catch(() => {});
   },
 
   removeWatchDir: async (path: string) => {
@@ -179,37 +185,63 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   generateThumbnails: async () => {
+    if (get().isThumbnailGenerating) return;
+
     const { db, videos } = get();
     if (!db) return;
 
-    const dataDir = await appDataDir();
-    const thumbDir = await join(dataDir, 'thumbnails');
+    const cacheDir = await appCacheDir();
+    const thumbDir = await join(cacheDir, 'thumbnails');
 
     const withoutThumb = videos.filter((v) => !v.thumbnail);
-    for (const video of withoutThumb) {
-      try {
-        const outputPath = await join(thumbDir, `${video.id}.jpg`);
-        const result = await invoke<{ thumbnail_path: string; duration: number | null }>(
-          'generate_thumbnail',
-          { videoPath: video.path, outputPath }
-        );
-        await db.execute(
-          'UPDATE videos SET thumbnail = ?, duration = ? WHERE id = ?',
-          [result.thumbnail_path, result.duration, video.id]
-        );
-        // 1件処理のたびに store を即時更新
-        set((state) => ({
-          videos: state.videos.map((v) =>
-            v.id === video.id
-              ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration }
-              : v
-          ),
-        }));
-      } catch (e) {
-        console.warn(`Thumbnail generation failed for ${video.path}:`, e);
+    if (withoutThumb.length === 0) return;
+
+    set({ isThumbnailGenerating: true, thumbnailProgress: { done: 0, total: withoutThumb.length } });
+
+    try {
+      for (const video of withoutThumb) {
+        try {
+          // パスの SHA-256 ハッシュ先頭2文字をシャードディレクトリ名に使用 (Git 方式)
+          const hashBuffer = await crypto.subtle.digest(
+            'SHA-256',
+            new TextEncoder().encode(video.path)
+          );
+          const hash = Array.from(new Uint8Array(hashBuffer))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+
+          const result = await invoke<{ thumbnail_path: string; duration: number | null }>(
+            'generate_thumbnail',
+            { videoPath: video.path, outputPath }
+          );
+          await db.execute(
+            'UPDATE videos SET thumbnail = ?, duration = ? WHERE id = ?',
+            [result.thumbnail_path, result.duration, video.id]
+          );
+          set((state) => ({
+            videos: state.videos.map((v) =>
+              v.id === video.id
+                ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration }
+                : v
+            ),
+            thumbnailProgress: state.thumbnailProgress
+              ? { ...state.thumbnailProgress, done: state.thumbnailProgress.done + 1 }
+              : null,
+          }));
+        } catch (e) {
+          console.warn(`Thumbnail generation failed for ${video.path}:`, e);
+          set((state) => ({
+            thumbnailProgress: state.thumbnailProgress
+              ? { ...state.thumbnailProgress, done: state.thumbnailProgress.done + 1 }
+              : null,
+          }));
+        }
       }
+    } finally {
+      set({ isThumbnailGenerating: false, thumbnailProgress: null });
+      await get().fetchVideos();
     }
-    await get().fetchVideos();
   },
 
   updateProgress: async (videoId: number, progress: number) => {
