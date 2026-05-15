@@ -1,6 +1,7 @@
 use serde::Serialize;
 use walkdir::WalkDir;
 use std::path::Path;
+use std::fs;
 
 use super::settings::SharedAppSettings;
 
@@ -116,4 +117,10 @@ pub async fn generate_thumbnail(
     } else {
         Err("ffmpeg failed".to_string())
     }
+}
+
+/// 動画ファイルをファイルシステムから削除する。
+#[tauri::command]
+pub async fn delete_video_file(path: String) -> Result<(), String> {
+    fs::remove_file(&path).map_err(|e| format!("ファイル削除失敗: {e}"))
 }

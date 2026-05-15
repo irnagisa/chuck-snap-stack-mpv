@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useTagStore } from "./store/useTagStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
@@ -33,6 +34,15 @@ function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
   const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
   const [addToPlaylistVideo, setAddToPlaylistVideo] = useState<Video | null>(null);
+
+  const closeAllModals = useCallback(() => {
+    setShowSettings(false);
+    setDetailVideo(null);
+    setActivePlaylist(null);
+    setAddToPlaylistVideo(null);
+  }, []);
+
+  useKeyboardShortcuts({ onEscape: closeAllModals });
 
   useEffect(() => {
     initDb();

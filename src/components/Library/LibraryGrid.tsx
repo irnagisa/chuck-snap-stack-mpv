@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
-import { useLibraryStore } from '../../store/useLibraryStore';
 import { TagBadge } from './TagBadge';
-import { ConfirmModal } from '../common/ConfirmModal';
+import { DeleteVideoModal } from './DeleteVideoModal';
 
 interface Props {
   videos: Video[];
@@ -16,8 +15,7 @@ interface Props {
 
 export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAddToPlaylist }: Props) {
   const { videoTags, categories } = useTagStore();
-  const { deleteVideo } = useLibraryStore();
-  const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
 
   if (videos.length === 0) {
@@ -98,8 +96,8 @@ export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAd
                 <button
                   type="button"
                   className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
-                  onClick={(e) => { e.stopPropagation(); setConfirmVideo(v); }}
-                  title="登録を削除"
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(v); }}
+                  title="動画を削除"
                 >
                   削除
                 </button>
@@ -135,13 +133,11 @@ export function LibraryGrid({ videos, currentVideoId, onPlay, onShowDetail, onAd
       })}
     </div>
 
-    {confirmVideo && (
-      <ConfirmModal
-        message={`「${confirmVideo.title ?? confirmVideo.path.split('/').pop()}」の登録を削除しますか？\nファイル本体は削除されません。`}
-        confirmLabel="削除"
-        confirmDanger
-        onConfirm={() => { deleteVideo(confirmVideo.id); setConfirmVideo(null); }}
-        onCancel={() => setConfirmVideo(null)}
+    {deleteTarget && (
+      <DeleteVideoModal
+        video={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onRemoved={() => setDeleteTarget(null)}
       />
     )}
     </>

@@ -23,6 +23,7 @@ interface LibraryActions {
   updateProgress: (videoId: number, progress: number) => Promise<void>;
   updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
+  removeVideo: (videoId: number) => Promise<void>;
 }
 
 const CREATE_VIDEOS_TABLE = `
@@ -219,5 +220,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       delete next[videoId];
       return { videoTags: next };
     });
+  },
+
+  removeVideo: async (videoId: number) => {
+    const { db } = get();
+    if (!db) return;
+    // 関連レコードを先に削除 (SQLite は PRAGMA foreign_keys がデフォルト OFF)
+    await db.execute('DELETE FROM playlist_items WHERE video_id = ?', [videoId]);
+    await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
+    await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+    set((state) => ({ videos: state.videos.filter((v) => v.id !== videoId) }));
+    if (useTagStore.getState().videoTags[videoId]) {
+      useTagStore.setState((state) => {
+        const next = { ...state.videoTags };
+        delete next[videoId];
+        return { videoTags: next };
+      });
+    }
   },
 }));

@@ -19,6 +19,10 @@ pub fn run() {
             commands::mpv::seek,
             commands::mpv::get_playback_time,
             commands::mpv::quit_mpv,
+            commands::mpv::relative_seek,
+            commands::mpv::adjust_volume,
+            commands::mpv::toggle_fullscreen,
+            commands::library::delete_video_file,
             commands::settings::update_settings,
         ])
         .run(tauri::generate_context!())

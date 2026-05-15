@@ -188,6 +188,35 @@ pub async fn get_playback_time(
         .ok_or_else(|| "再生位置の取得失敗".to_string())
 }
 
+/// 現在位置から相対的にシークする（秒数を正負で指定）。
+#[tauri::command]
+pub async fn relative_seek(
+    _state: tauri::State<'_, SharedMpvState>,
+    seconds: f64,
+) -> Result<(), String> {
+    send_ipc_fire(json!({"command": ["seek", seconds, "relative"]}))?;
+    Ok(())
+}
+
+/// 音量を delta 分だけ増減する。
+#[tauri::command]
+pub async fn adjust_volume(
+    _state: tauri::State<'_, SharedMpvState>,
+    delta: f64,
+) -> Result<(), String> {
+    send_ipc_fire(json!({"command": ["add", "volume", delta]}))?;
+    Ok(())
+}
+
+/// フルスクリーンをトグルする。
+#[tauri::command]
+pub async fn toggle_fullscreen(
+    _state: tauri::State<'_, SharedMpvState>,
+) -> Result<(), String> {
+    send_ipc_fire(json!({"command": ["cycle", "fullscreen"]}))?;
+    Ok(())
+}
+
 /// mpv を終了する。
 #[tauri::command]
 pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
