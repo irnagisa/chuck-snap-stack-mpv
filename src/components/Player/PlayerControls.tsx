@@ -1,48 +1,108 @@
 import { usePlayerStore } from '../../store/usePlayerStore';
 
+function formatTime(sec: number): string {
+  const s = Math.floor(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  }
+  return `${m}:${String(ss).padStart(2, '0')}`;
+}
+
 export function PlayerControls() {
-  const { currentVideo, queue, queueIndex, quit, playNext, playPrev } = usePlayerStore();
+  const {
+    currentVideo,
+    queue,
+    queueIndex,
+    playbackTime,
+    duration,
+    isPaused,
+    quit,
+    playNext,
+    playPrev,
+    pauseResume,
+    seekTo,
+  } = usePlayerStore();
 
   if (!currentVideo) return null;
 
   const hasPrev = queue.length > 0 && queueIndex > 0;
   const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
 
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    seekTo(Number(e.target.value));
+  };
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 py-3 flex items-center gap-3 shadow-lg border-t border-gray-700">
-      {queue.length > 0 && (
-        <span className="text-xs text-gray-400 shrink-0">
-          {queueIndex + 1} / {queue.length}
+    <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 pt-2 pb-3 shadow-lg border-t border-gray-700 flex flex-col gap-2">
+      {/* シークバー行 */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-400 w-10 text-right shrink-0 tabular-nums">
+          {formatTime(playbackTime)}
         </span>
-      )}
-      <span className="flex-1 text-sm truncate text-gray-300">
-        {currentVideo.title ?? currentVideo.path}
-      </span>
-      {hasPrev && (
+        <input
+          type="range"
+          className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
+          min={0}
+          max={duration > 0 ? duration : 100}
+          step={0.5}
+          value={playbackTime}
+          onChange={handleSeek}
+        />
+        <span className="text-xs text-gray-400 w-10 shrink-0 tabular-nums">
+          {duration > 0 ? formatTime(duration) : '--:--'}
+        </span>
+      </div>
+
+      {/* コントロール行 */}
+      <div className="flex items-center gap-2">
+        {queue.length > 0 && (
+          <span className="text-xs text-gray-400 shrink-0 tabular-nums">
+            {queueIndex + 1} / {queue.length}
+          </span>
+        )}
+        <span className="flex-1 text-sm truncate text-gray-300 min-w-0">
+          {currentVideo.title ?? currentVideo.path.split('/').pop()}
+        </span>
+        {hasPrev && (
+          <button
+            type="button"
+            onClick={playPrev}
+            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0"
+            title="前の動画 (P)"
+          >
+            ⏮
+          </button>
+        )}
         <button
-          onClick={playPrev}
-          className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm flex-shrink-0"
-          title="前の動画"
+          type="button"
+          onClick={pauseResume}
+          className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 w-12 text-center"
+          title={isPaused ? '再生 (Space)' : '一時停止 (Space)'}
         >
-          ⏮
+          {isPaused ? '▶' : '⏸'}
         </button>
-      )}
-      {hasNext && (
+        {hasNext && (
+          <button
+            type="button"
+            onClick={playNext}
+            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0"
+            title="次の動画 (N)"
+          >
+            ⏭
+          </button>
+        )}
         <button
-          onClick={playNext}
-          className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm flex-shrink-0"
-          title="次の動画"
+          type="button"
+          onClick={quit}
+          className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-sm shrink-0"
+          title="終了"
         >
-          ⏭
+          終了
         </button>
-      )}
-      <button
-        onClick={quit}
-        className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-sm flex-shrink-0"
-        title="終了"
-      >
-        終了
-      </button>
+      </div>
     </div>
   );
 }
