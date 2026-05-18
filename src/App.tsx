@@ -5,6 +5,7 @@ import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
 import { useTagStore } from "./store/useTagStore";
+import { useTranscodeStore } from "./store/useTranscodeStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
@@ -28,6 +29,7 @@ function App() {
   const { videos, isScanning, isThumbnailGenerating, thumbnailProgress, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
   const { play, currentVideo } = usePlayerStore();
   const { tags, videoTags } = useTagStore();
+  const { isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError, progress: transcodeProgress, videoName: transcodeVideoName, inputSizeBytes: transcodeInputSize, outputSizeBytes: transcodeOutputSize, cancel: cancelTranscode, dismiss: dismissTranscode } = useTranscodeStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -161,6 +163,98 @@ function App() {
               style={{ width: `${(thumbnailProgress.done / thumbnailProgress.total) * 100}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* AV1 変換ステータスバー — モーダルより前面に固定表示 */}
+      {(isTranscoding || isTranscodeDone || transcodeError) && (
+        <div style={{ zIndex: 60 }} className={`fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl mx-auto px-4 py-2 flex items-center gap-3 rounded-xl shadow-lg border ${
+          transcodeError
+            ? 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700'
+            : isTranscodeDone
+            ? 'bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700'
+            : 'bg-white dark:bg-gray-900 border-blue-300 dark:border-blue-700'
+        }`}>
+          {/* アイコン */}
+          <span className={`text-xs shrink-0 ${
+            transcodeError ? 'text-red-500' : isTranscodeDone ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'
+          }`}>
+            {transcodeError ? '✕' : isTranscodeDone ? '✓' : '⟳'}
+          </span>
+
+          {/* ラベル */}
+          <span className={`text-xs shrink-0 font-medium truncate max-w-48 ${
+            transcodeError ? 'text-red-700 dark:text-red-300' : isTranscodeDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'
+          }`}>
+            {transcodeError
+              ? `変換失敗: ${transcodeVideoName}`
+              : isTranscodeDone
+              ? `変換完了: ${transcodeVideoName}`
+              : `AV1 変換中: ${transcodeVideoName}`}
+          </span>
+
+          {/* 完了時: ファイルサイズ比較 */}
+          {isTranscodeDone && transcodeInputSize != null && transcodeOutputSize != null && (() => {
+            const fmt = (b: number) => b >= 1073741824
+              ? `${(b / 1073741824).toFixed(2)} GB`
+              : `${(b / 1048576).toFixed(1)} MB`;
+            const saved = transcodeInputSize - transcodeOutputSize;
+            const ratio = ((saved / transcodeInputSize) * 100).toFixed(1);
+            return (
+              <span className="text-xs text-green-600 dark:text-green-400 shrink-0">
+                {fmt(transcodeInputSize)} → {fmt(transcodeOutputSize)}
+                {saved > 0 && ` (−${ratio}%)`}
+              </span>
+            );
+          })()}
+
+          {/* プログレスバー (変換中のみ) */}
+          {isTranscoding && (
+            <>
+              <div className="flex-1 bg-blue-200 dark:bg-blue-900/50 rounded-full h-1.5 min-w-0">
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    transcodeProgress && transcodeProgress.percent > 0
+                      ? 'bg-blue-500'
+                      : 'bg-blue-400 animate-pulse w-full'
+                  }`}
+                  style={{
+                    width: transcodeProgress && transcodeProgress.percent > 0
+                      ? `${transcodeProgress.percent}%`
+                      : undefined,
+                  }}
+                />
+              </div>
+              <span className="text-xs text-blue-600 dark:text-blue-400 shrink-0 tabular-nums">
+                {transcodeProgress && transcodeProgress.percent > 0
+                  ? `${transcodeProgress.percent.toFixed(1)}%`
+                  : '開始中...'}
+              </span>
+              {transcodeProgress && transcodeProgress.speed && transcodeProgress.speed !== 'N/A' && (
+                <span className="text-xs text-blue-500 dark:text-blue-500 shrink-0">
+                  {transcodeProgress.speed}
+                </span>
+              )}
+              <button
+                type="button"
+                className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-300 shrink-0 ml-auto"
+                onClick={cancelTranscode}
+              >
+                キャンセル
+              </button>
+            </>
+          )}
+
+          {/* 完了・エラー時の閉じるボタン */}
+          {(isTranscodeDone || transcodeError) && (
+            <button
+              type="button"
+              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 ml-auto"
+              onClick={dismissTranscode}
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
 

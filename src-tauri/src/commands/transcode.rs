@@ -14,6 +14,9 @@ pub struct TranscodeProgress {
     pub percent: f64,
     pub speed: String,
     pub elapsed_secs: f64,
+    pub frames: u64,
+    pub fps: f64,
+    pub total_size_bytes: u64,
 }
 
 pub struct TranscodeState {
@@ -37,6 +40,8 @@ pub async fn transcode_video(
     app_settings: tauri::State<'_, SharedAppSettings>,
     input_path: String,
     duration_secs: f64,
+    crf: u32,
+    preset: u32,
 ) -> Result<String, String> {
     state.cancel_flag.store(false, Ordering::SeqCst);
 
@@ -74,8 +79,8 @@ pub async fn transcode_video(
                     "-nostats",
                     "-i", &input_path,
                     "-c:v", "libsvtav1",
-                    "-crf", "32",
-                    "-preset", "8",
+                    "-crf", &crf.to_string(),
+                    "-preset", &preset.to_string(),
                     "-c:a", "libopus",
                     "-b:a", "128k",
                     &output_str,
@@ -91,6 +96,9 @@ pub async fn transcode_video(
             let start = std::time::Instant::now();
             let mut out_time_us: u64 = 0;
             let mut speed = "N/A".to_string();
+            let mut frames: u64 = 0;
+            let mut fps: f64 = 0.0;
+            let mut total_size_bytes: u64 = 0;
 
             for line in reader.lines() {
                 if cancel_flag.load(Ordering::SeqCst) {
@@ -106,6 +114,12 @@ pub async fn transcode_video(
                     out_time_us = val.trim().parse().unwrap_or(0);
                 } else if let Some(val) = line.strip_prefix("speed=") {
                     speed = val.trim().to_string();
+                } else if let Some(val) = line.strip_prefix("frame=") {
+                    frames = val.trim().parse().unwrap_or(0);
+                } else if let Some(val) = line.strip_prefix("fps=") {
+                    fps = val.trim().parse().unwrap_or(0.0);
+                } else if let Some(val) = line.strip_prefix("total_size=") {
+                    total_size_bytes = val.trim().parse().unwrap_or(0);
                 } else if line.starts_with("progress=") {
                     let percent = if duration_secs > 0.0 && out_time_us > 0 {
                         ((out_time_us as f64 / 1_000_000.0) / duration_secs * 100.0).min(99.9)
@@ -118,6 +132,9 @@ pub async fn transcode_video(
                             percent,
                             speed: speed.clone(),
                             elapsed_secs: start.elapsed().as_secs_f64(),
+                            frames,
+                            fps,
+                            total_size_bytes,
                         },
                     );
                 }

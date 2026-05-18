@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { useTagStore } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
@@ -15,6 +15,12 @@ const COLORS = [
 interface Props {
   video: Video;
   onClose: () => void;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function formatDuration(seconds: number): string {
@@ -33,6 +39,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
   const [localRating, setLocalRating] = useState(video.rating ?? 0);
+  const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
   const [tagInput, setTagInput] = useState('');
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
@@ -45,6 +52,12 @@ export function VideoDetailModal({ video, onClose }: Props) {
   useEffect(() => {
     if (db) fetchVideoTags(db, video.id);
   }, [db, video.id]);
+
+  useEffect(() => {
+    invoke<number>('get_file_size', { path: video.path })
+      .then(setFileSizeBytes)
+      .catch(() => {});
+  }, [video.path]);
 
   const progressPercent =
     video.duration && video.duration > 0
@@ -210,7 +223,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
 
             {/* メタデータ + 評価 */}
             <div className="py-4 flex flex-col gap-3">
-              <div className="flex gap-6">
+              <div className="flex gap-6 flex-wrap">
                 {video.duration != null && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
@@ -227,6 +240,14 @@ export function VideoDetailModal({ video, onClose }: Props) {
                     <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.progress)}</p>
                   </div>
                 )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    ファイルサイズ
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
+                  </p>
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
                     追加日時

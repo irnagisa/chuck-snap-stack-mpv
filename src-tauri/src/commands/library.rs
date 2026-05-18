@@ -119,6 +119,14 @@ pub async fn generate_thumbnail(
     }
 }
 
+/// ファイルサイズをバイト単位で返す。
+#[tauri::command]
+pub async fn get_file_size(path: String) -> Result<u64, String> {
+    fs::metadata(&path)
+        .map(|m| m.len())
+        .map_err(|e| format!("ファイルサイズ取得失敗: {e}"))
+}
+
 /// 動画ファイルをファイルシステムから削除する。
 #[tauri::command]
 pub async fn delete_video_file(path: String) -> Result<(), String> {

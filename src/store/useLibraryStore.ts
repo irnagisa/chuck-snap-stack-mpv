@@ -29,7 +29,7 @@ interface LibraryActions {
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
-  addVideoFromPath: (path: string, title: string) => Promise<void>;
+  addVideoFromPath: (path: string, title: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
 }
 
@@ -289,13 +289,16 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   addVideoFromPath: async (path: string, title: string) => {
     const { db } = get();
-    if (!db) return;
+    if (!db) return null;
     await db.execute(
       'INSERT OR IGNORE INTO videos (path, title) VALUES (?, ?)',
       [path, title]
     );
+    const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [path]);
+    const newId = rows[0]?.id ?? null;
     await get().fetchVideos();
     get().generateThumbnails().catch(() => {});
+    return newId;
   },
 
   removeVideoByPath: async (path: string) => {
