@@ -15,8 +15,10 @@ interface TagActions {
   fetchAllVideoTags: (db: Database) => Promise<void>;
   fetchVideoTags: (db: Database, videoId: number) => Promise<void>;
   createTag: (db: Database, name: string, color: string) => Promise<Tag>;
+  updateTag: (db: Database, tagId: number, name: string, color: string) => Promise<void>;
   deleteTag: (db: Database, tagId: number) => Promise<void>;
   createCategory: (db: Database, name: string, color: string) => Promise<Category>;
+  updateCategory: (db: Database, categoryId: number, name: string, color: string) => Promise<void>;
   deleteCategory: (db: Database, categoryId: number) => Promise<void>;
   addTagToVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
   removeTagFromVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
@@ -83,6 +85,12 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     return tag;
   },
 
+  updateTag: async (db, tagId, name, color) => {
+    await db.execute('UPDATE tags SET name = ?, color = ? WHERE id = ?', [name, color, tagId]);
+    await get().fetchTags(db);
+    await get().fetchAllVideoTags(db);
+  },
+
   deleteTag: async (db, tagId) => {
     await db.execute('DELETE FROM tags WHERE id = ?', [tagId]);
     await get().fetchTags(db);
@@ -99,6 +107,11 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     const category = rows[0];
     await get().fetchCategories(db);
     return category;
+  },
+
+  updateCategory: async (db, categoryId, name, color) => {
+    await db.execute('UPDATE categories SET name = ?, color = ? WHERE id = ?', [name, color, categoryId]);
+    await get().fetchCategories(db);
   },
 
   deleteCategory: async (db, categoryId) => {
