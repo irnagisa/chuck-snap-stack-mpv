@@ -12,6 +12,7 @@ interface LibraryState {
   watchDirs: string[];
   isScanning: boolean;
   isThumbnailGenerating: boolean;
+  isThumbnailPaused: boolean;
   thumbnailProgress: { done: number; total: number } | null;
   isDbReady: boolean;
   dbError: string | null;
@@ -24,6 +25,8 @@ interface LibraryActions {
   scanAndImport: (path: string) => Promise<void>;
   removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
+  pauseThumbnails: () => void;
+  resumeThumbnails: () => void;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
   updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
@@ -105,11 +108,17 @@ const CREATE_WATCH_DIRS_TABLE = `
   )
 `;
 
+// module-level pause flag — avoids stale closure issues in async loops
+let _thumbnailPaused = false;
+
+const THUMBNAIL_CONCURRENCY = 3;
+
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
   watchDirs: [],
   isScanning: false,
   isThumbnailGenerating: false,
+  isThumbnailPaused: false,
   thumbnailProgress: null,
   isDbReady: false,
   dbError: null,
@@ -197,6 +206,16 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     set((state) => ({ watchDirs: state.watchDirs.filter((d) => d !== path) }));
   },
 
+  pauseThumbnails: () => {
+    _thumbnailPaused = true;
+    set({ isThumbnailPaused: true });
+  },
+
+  resumeThumbnails: () => {
+    _thumbnailPaused = false;
+    set({ isThumbnailPaused: false });
+  },
+
   generateThumbnails: async () => {
     if (get().isThumbnailGenerating) return;
 
@@ -209,50 +228,57 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const withoutThumb = videos.filter((v) => !v.thumbnail);
     if (withoutThumb.length === 0) return;
 
-    set({ isThumbnailGenerating: true, thumbnailProgress: { done: 0, total: withoutThumb.length } });
+    _thumbnailPaused = false;
+    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: withoutThumb.length } });
+
+    const processVideo = async (video: Video) => {
+      try {
+        const hashBuffer = await crypto.subtle.digest(
+          'SHA-256',
+          new TextEncoder().encode(video.path)
+        );
+        const hash = Array.from(new Uint8Array(hashBuffer))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+        const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+
+        const result = await invoke<{ thumbnail_path: string; duration: number | null }>(
+          'generate_thumbnail',
+          { videoPath: video.path, outputPath }
+        );
+        await db.execute(
+          'UPDATE videos SET thumbnail = ?, duration = ? WHERE id = ?',
+          [result.thumbnail_path, result.duration, video.id]
+        );
+        set((state) => ({
+          videos: state.videos.map((v) =>
+            v.id === video.id
+              ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration }
+              : v
+          ),
+        }));
+      } catch (e) {
+        console.warn(`Thumbnail generation failed for ${video.path}:`, e);
+      }
+      set((state) => ({
+        thumbnailProgress: state.thumbnailProgress
+          ? { ...state.thumbnailProgress, done: state.thumbnailProgress.done + 1 }
+          : null,
+      }));
+    };
 
     try {
-      for (const video of withoutThumb) {
-        try {
-          // パスの SHA-256 ハッシュ先頭2文字をシャードディレクトリ名に使用 (Git 方式)
-          const hashBuffer = await crypto.subtle.digest(
-            'SHA-256',
-            new TextEncoder().encode(video.path)
-          );
-          const hash = Array.from(new Uint8Array(hashBuffer))
-            .map((b) => b.toString(16).padStart(2, '0'))
-            .join('');
-          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
-
-          const result = await invoke<{ thumbnail_path: string; duration: number | null }>(
-            'generate_thumbnail',
-            { videoPath: video.path, outputPath }
-          );
-          await db.execute(
-            'UPDATE videos SET thumbnail = ?, duration = ? WHERE id = ?',
-            [result.thumbnail_path, result.duration, video.id]
-          );
-          set((state) => ({
-            videos: state.videos.map((v) =>
-              v.id === video.id
-                ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration }
-                : v
-            ),
-            thumbnailProgress: state.thumbnailProgress
-              ? { ...state.thumbnailProgress, done: state.thumbnailProgress.done + 1 }
-              : null,
-          }));
-        } catch (e) {
-          console.warn(`Thumbnail generation failed for ${video.path}:`, e);
-          set((state) => ({
-            thumbnailProgress: state.thumbnailProgress
-              ? { ...state.thumbnailProgress, done: state.thumbnailProgress.done + 1 }
-              : null,
-          }));
+      for (let i = 0; i < withoutThumb.length; i += THUMBNAIL_CONCURRENCY) {
+        // 一時停止中は再開まで待機
+        while (_thumbnailPaused) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 200));
         }
+        const batch = withoutThumb.slice(i, i + THUMBNAIL_CONCURRENCY);
+        await Promise.all(batch.map(processVideo));
       }
     } finally {
-      set({ isThumbnailGenerating: false, thumbnailProgress: null });
+      _thumbnailPaused = false;
+      set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
       await get().fetchVideos();
     }
   },

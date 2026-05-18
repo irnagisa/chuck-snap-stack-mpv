@@ -26,7 +26,7 @@ type SidebarTab = 'category' | 'playlist';
 type BulkModal = 'delete' | 'tag' | 'category' | null;
 
 function App() {
-  const { videos, isScanning, isThumbnailGenerating, thumbnailProgress, isDbReady, dbError, initDb, scanAndImport } = useLibraryStore();
+  const { videos, isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress, isDbReady, dbError, initDb, scanAndImport, pauseThumbnails, resumeThumbnails } = useLibraryStore();
   const { play, currentVideo } = usePlayerStore();
   const { tags, videoTags } = useTagStore();
   const { isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError, progress: transcodeProgress, videoName: transcodeVideoName, inputSizeBytes: transcodeInputSize, outputSizeBytes: transcodeOutputSize, cancel: cancelTranscode, dismiss: dismissTranscode } = useTranscodeStore();
@@ -155,14 +155,31 @@ function App() {
       {isThumbnailGenerating && thumbnailProgress && (
         <div className="px-4 py-1.5 flex items-center gap-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
           <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-            サムネイル生成中 {thumbnailProgress.done}/{thumbnailProgress.total}
+            {isThumbnailPaused ? '一時停止中' : 'サムネイル生成中'} {thumbnailProgress.done}/{thumbnailProgress.total}
           </span>
           <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
             <div
-              className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+              className={`h-1 rounded-full transition-all duration-300 ${isThumbnailPaused ? 'bg-gray-400 dark:bg-gray-500' : 'bg-blue-500'}`}
               style={{ width: `${(thumbnailProgress.done / thumbnailProgress.total) * 100}%` }}
             />
           </div>
+          {isThumbnailPaused ? (
+            <button
+              type="button"
+              onClick={resumeThumbnails}
+              className="text-xs px-2 py-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white shrink-0"
+            >
+              再開
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={pauseThumbnails}
+              className="text-xs px-2 py-0.5 rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0"
+            >
+              一時停止
+            </button>
+          )}
         </div>
       )}
 
