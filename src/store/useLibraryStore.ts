@@ -7,8 +7,19 @@ import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
 
+export type SortBy = 'created_at' | 'duration' | 'rating';
+export type SortOrder = 'desc' | 'asc';
+
 interface LibraryState {
   videos: Video[];
+  totalCount: number;
+  currentPage: number;
+  pageSize: number;
+  filterSearch: string;
+  filterCategoryId: number | null;
+  filterTagIds: number[];
+  filterSortBy: SortBy;
+  filterSortOrder: SortOrder;
   watchDirs: string[];
   isScanning: boolean;
   isThumbnailGenerating: boolean;
@@ -22,6 +33,12 @@ interface LibraryState {
 interface LibraryActions {
   initDb: () => Promise<void>;
   fetchVideos: () => Promise<void>;
+  setSearch: (search: string) => Promise<void>;
+  setCategoryFilter: (id: number | null) => Promise<void>;
+  toggleTagFilter: (tagId: number) => Promise<void>;
+  clearTagFilters: () => Promise<void>;
+  setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
+  setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string) => Promise<void>;
   removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
@@ -108,13 +125,20 @@ const CREATE_WATCH_DIRS_TABLE = `
   )
 `;
 
-// module-level pause flag — avoids stale closure issues in async loops
 let _thumbnailPaused = false;
 
 const THUMBNAIL_CONCURRENCY = 3;
 
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
+  totalCount: 0,
+  currentPage: 1,
+  pageSize: 100,
+  filterSearch: '',
+  filterCategoryId: null,
+  filterTagIds: [],
+  filterSortBy: 'created_at',
+  filterSortOrder: 'desc',
   watchDirs: [],
   isScanning: false,
   isThumbnailGenerating: false,
@@ -134,11 +158,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute(CREATE_VIDEO_TAGS_TABLE);
       await db.execute(CREATE_CATEGORIES_TABLE);
       await db.execute(CREATE_TAG_CATEGORIES_TABLE);
-      // category_id カラムを既存 videos テーブルに追加 (初回のみ)
       try {
         await db.execute('ALTER TABLE videos ADD COLUMN category_id INTEGER REFERENCES categories(id)');
       } catch { /* already exists */ }
-      // tag_category_id カラムを既存 tags テーブルに追加 (初回のみ)
       try {
         await db.execute('ALTER TABLE tags ADD COLUMN tag_category_id INTEGER REFERENCES tag_categories(id)');
       } catch { /* already exists */ }
@@ -148,13 +170,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await useTagStore.getState().init(db);
       await usePlaylistStore.getState().init(db);
       await db.execute(CREATE_WATCH_DIRS_TABLE);
-      // アプリ起動時: 保存済みのすべての watch_dirs を再監視
       const savedDirs = await db.select<{ path: string }[]>('SELECT path FROM watch_dirs');
       set({ watchDirs: savedDirs.map((d) => d.path) });
       for (const dir of savedDirs) {
         invoke('start_watching', { path: dir.path }).catch(() => {});
       }
-      // バックグラウンドで duration/thumbnail が未取得の動画を補完
       get().generateThumbnails().catch(() => {});
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -164,12 +184,85 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   fetchVideos: async () => {
-    const { db } = get();
+    const { db, currentPage, pageSize, filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder } = get();
     if (!db) return;
-    const videos = await db.select<Video[]>(
-      'SELECT * FROM videos ORDER BY created_at DESC'
+
+    const conditions: string[] = [];
+    const baseParams: unknown[] = [];
+
+    if (filterSearch.trim()) {
+      conditions.push('(v.title LIKE ? OR v.path LIKE ?)');
+      const s = `%${filterSearch.trim()}%`;
+      baseParams.push(s, s);
+    }
+    if (filterCategoryId !== null) {
+      conditions.push('v.category_id = ?');
+      baseParams.push(filterCategoryId);
+    }
+    if (filterTagIds.length > 0) {
+      const ph = filterTagIds.map(() => '?').join(', ');
+      conditions.push(`EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag_id IN (${ph}))`);
+      baseParams.push(...filterTagIds);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sortCol =
+      filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
+      filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';
+    const dir = filterSortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    const countResult = await db.select<{ total: number }[]>(
+      `SELECT COUNT(*) as total FROM videos v ${where}`,
+      baseParams
     );
-    set({ videos });
+    const totalCount = countResult[0]?.total ?? 0;
+
+    const maxPage = Math.max(1, Math.ceil(totalCount / pageSize));
+    const page = Math.min(currentPage, maxPage);
+
+    const videos = await db.select<Video[]>(
+      `SELECT v.* FROM videos v ${where} ORDER BY ${sortCol} ${dir} LIMIT ? OFFSET ?`,
+      [...baseParams, pageSize, (page - 1) * pageSize]
+    );
+
+    set({ videos, totalCount, currentPage: page });
+
+    const videoIds = videos.map((v) => v.id);
+    await useTagStore.getState().fetchVideoTagsForIds(db, videoIds);
+  },
+
+  setSearch: async (search: string) => {
+    set({ filterSearch: search, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setCategoryFilter: async (id: number | null) => {
+    set({ filterCategoryId: id, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  toggleTagFilter: async (tagId: number) => {
+    const { filterTagIds } = get();
+    const next = filterTagIds.includes(tagId)
+      ? filterTagIds.filter((id) => id !== tagId)
+      : [...filterTagIds, tagId];
+    set({ filterTagIds: next, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  clearTagFilters: async () => {
+    set({ filterTagIds: [], currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setSort: async (sortBy: SortBy, sortOrder: SortOrder) => {
+    set({ filterSortBy: sortBy, filterSortOrder: sortOrder, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setPage: async (page: number) => {
+    set({ currentPage: page });
+    await get().fetchVideos();
   },
 
   scanAndImport: async (path: string) => {
@@ -189,12 +282,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           [file.path, file.title]
         );
       }
-      // ファイル一覧を即座に UI に反映してスキャン完了とする
+      set({ currentPage: 1, isScanning: false });
       await get().fetchVideos();
     } finally {
       set({ isScanning: false });
     }
-    // サムネイル生成はバックグラウンドで実行
     get().generateThumbnails().catch(() => {});
   },
 
@@ -219,19 +311,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   generateThumbnails: async () => {
     if (get().isThumbnailGenerating) return;
 
-    const { db, videos } = get();
+    const { db } = get();
     if (!db) return;
 
     const cacheDir = await appCacheDir();
     const thumbDir = await join(cacheDir, 'thumbnails');
 
-    const withoutThumb = videos.filter((v) => !v.thumbnail);
+    // Query DB directly so all pages are covered, not just the current page
+    const withoutThumb = await db.select<{ id: number; path: string }[]>(
+      'SELECT id, path FROM videos WHERE thumbnail IS NULL'
+    );
     if (withoutThumb.length === 0) return;
 
     _thumbnailPaused = false;
     set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: withoutThumb.length } });
 
-    const processVideo = async (video: Video) => {
+    const processVideo = async (video: { id: number; path: string }) => {
       try {
         const hashBuffer = await crypto.subtle.digest(
           'SHA-256',
@@ -250,6 +345,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           'UPDATE videos SET thumbnail = ?, duration = ? WHERE id = ?',
           [result.thumbnail_path, result.duration, video.id]
         );
+        // Patch in-memory if the video is on the current page
         set((state) => ({
           videos: state.videos.map((v) =>
             v.id === video.id
@@ -269,7 +365,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
     try {
       for (let i = 0; i < withoutThumb.length; i += THUMBNAIL_CONCURRENCY) {
-        // 一時停止中は再開まで待機
         while (_thumbnailPaused) {
           await new Promise<void>((resolve) => setTimeout(resolve, 200));
         }
@@ -290,7 +385,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       'UPDATE videos SET progress = ?, watched_at = CURRENT_TIMESTAMP WHERE id = ?',
       [progress, videoId]
     );
-    // ローカル state も即時更新
     set((state) => ({
       videos: state.videos.map((v) =>
         v.id === videoId ? { ...v, progress } : v
@@ -317,13 +411,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const { db } = get();
     if (!db) return;
     await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
-    set((state) => ({ videos: state.videos.filter((v) => v.id !== videoId) }));
-    // videoTags のキャッシュも削除
-    useTagStore.getState().videoTags[videoId] && useTagStore.setState((state) => {
-      const next = { ...state.videoTags };
-      delete next[videoId];
-      return { videoTags: next };
-    });
+    await get().fetchVideos();
   },
 
   addVideoFromPath: async (path: string, title: string) => {
@@ -341,27 +429,20 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   removeVideoByPath: async (path: string) => {
-    const { videos } = get();
-    const target = videos.find((v) => v.path === path);
-    if (!target) return;
-    await get().removeVideo(target.id);
+    const { db } = get();
+    if (!db) return;
+    const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [path]);
+    if (rows.length === 0) return;
+    await get().removeVideo(rows[0].id);
   },
 
   removeVideo: async (videoId: number) => {
     const { db } = get();
     if (!db) return;
-    // 関連レコードを先に削除 (SQLite は PRAGMA foreign_keys がデフォルト OFF)
     await db.execute('DELETE FROM playlist_items WHERE video_id = ?', [videoId]);
     await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
     await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
-    set((state) => ({ videos: state.videos.filter((v) => v.id !== videoId) }));
-    if (useTagStore.getState().videoTags[videoId]) {
-      useTagStore.setState((state) => {
-        const next = { ...state.videoTags };
-        delete next[videoId];
-        return { videoTags: next };
-      });
-    }
+    await get().fetchVideos();
   },
 
   removeMultiple: async (videoIds: number[]) => {
@@ -372,12 +453,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
       await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
     }
-    const idSet = new Set(videoIds);
-    set((state) => ({ videos: state.videos.filter((v) => !idSet.has(v.id)) }));
-    useTagStore.setState((state) => {
-      const next = { ...state.videoTags };
-      for (const id of videoIds) delete next[id];
-      return { videoTags: next };
-    });
+    await get().fetchVideos();
   },
 }));

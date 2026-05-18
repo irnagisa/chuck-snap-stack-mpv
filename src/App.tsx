@@ -20,30 +20,41 @@ import { BulkCategoryModal } from "./components/Library/BulkCategoryModal";
 import { DownloadModal } from "./components/Library/DownloadModal";
 import type { Video, Playlist } from "./types";
 
-type SortBy = 'created_at' | 'duration' | 'rating';
-type SortOrder = 'desc' | 'asc';
 type SidebarTab = 'category' | 'playlist';
 type BulkModal = 'delete' | 'tag' | 'category' | null;
 
 function App() {
-  const { videos, isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress, isDbReady, dbError, initDb, scanAndImport, pauseThumbnails, resumeThumbnails } = useLibraryStore();
+  const {
+    videos, totalCount, currentPage, pageSize,
+    filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder,
+    isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress,
+    isDbReady, dbError,
+    initDb, fetchVideos, scanAndImport,
+    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setSort, setPage,
+    pauseThumbnails, resumeThumbnails,
+  } = useLibraryStore();
   const { play, currentVideo } = usePlayerStore();
-  const { tags, videoTags } = useTagStore();
+  const { tags } = useTagStore();
   const { isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError, progress: transcodeProgress, videoName: transcodeVideoName, inputSizeBytes: transcodeInputSize, outputSizeBytes: transcodeOutputSize, cancel: cancelTranscode, dismiss: dismissTranscode } = useTranscodeStore();
 
-  const [searchQuery, setSearchQuery] = useState("");
+  // Local input state for search — debounced before hitting the store/DB
+  const [searchInput, setSearchInput] = useState(filterSearch);
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [detailVideo, setDetailVideo] = useState<Video | null>(null);
-  const [sortBy, setSortBy] = useState<SortBy>('created_at');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
   const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
   const [addToPlaylistVideo, setAddToPlaylistVideo] = useState<Video | null>(null);
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [bulkModal, setBulkModal] = useState<BulkModal>(null);
   const [showDownload, setShowDownload] = useState(false);
+
+  // Debounce search input → store
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const closeAllModals = useCallback(() => {
     setShowSettings(false);
@@ -67,47 +78,12 @@ function App() {
     }
   };
 
-  const toggleTag = (tagId: number) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
-    );
+  const handleSetPage = (page: number) => {
+    setSelectedVideoIds(new Set());
+    setPage(page);
   };
 
-  const filteredVideos = useMemo(() => {
-    let result = videos;
-    if (searchQuery.trim()) {
-      result = result.filter((v) =>
-        (v.title ?? v.path).toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-    if (selectedCategoryId !== null) {
-      result = result.filter((v) => v.category_id === selectedCategoryId);
-    }
-    if (selectedTagIds.length > 0) {
-      result = result.filter((v) =>
-        (videoTags[v.id] ?? []).some((t) => selectedTagIds.includes(t.id))
-      );
-    }
-
-    return [...result].sort((a, b) => {
-      let av: number;
-      let bv: number;
-      switch (sortBy) {
-        case 'duration':
-          av = a.duration ?? -1;
-          bv = b.duration ?? -1;
-          break;
-        case 'rating':
-          av = a.rating;
-          bv = b.rating;
-          break;
-        default:
-          av = new Date(a.created_at).getTime();
-          bv = new Date(b.created_at).getTime();
-      }
-      return sortOrder === 'desc' ? bv - av : av - bv;
-    });
-  }, [videos, searchQuery, selectedCategoryId, selectedTagIds, videoTags, sortBy, sortOrder]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const selectedVideos = useMemo(
     () => videos.filter((v) => selectedVideoIds.has(v.id)),
@@ -137,8 +113,8 @@ function App() {
         </button>
         <input
           className="flex-1 border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           placeholder="動画を検索..."
           disabled={!isDbReady}
         />
@@ -183,7 +159,7 @@ function App() {
         </div>
       )}
 
-      {/* AV1 変換ステータスバー — モーダルより前面に固定表示 */}
+      {/* AV1 変換ステータスバー */}
       {(isTranscoding || isTranscodeDone || transcodeError) && (
         <div style={{ zIndex: 60 }} className={`fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl mx-auto px-4 py-2 flex items-center gap-3 rounded-xl shadow-lg border ${
           transcodeError
@@ -192,14 +168,12 @@ function App() {
             ? 'bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700'
             : 'bg-white dark:bg-gray-900 border-blue-300 dark:border-blue-700'
         }`}>
-          {/* アイコン */}
           <span className={`text-xs shrink-0 ${
             transcodeError ? 'text-red-500' : isTranscodeDone ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'
           }`}>
             {transcodeError ? '✕' : isTranscodeDone ? '✓' : '⟳'}
           </span>
 
-          {/* ラベル */}
           <span className={`text-xs shrink-0 font-medium truncate max-w-48 ${
             transcodeError ? 'text-red-700 dark:text-red-300' : isTranscodeDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'
           }`}>
@@ -210,7 +184,6 @@ function App() {
               : `AV1 変換中: ${transcodeVideoName}`}
           </span>
 
-          {/* 完了時: ファイルサイズ比較 */}
           {isTranscodeDone && transcodeInputSize != null && transcodeOutputSize != null && (() => {
             const fmt = (b: number) => b >= 1073741824
               ? `${(b / 1073741824).toFixed(2)} GB`
@@ -225,7 +198,6 @@ function App() {
             );
           })()}
 
-          {/* プログレスバー (変換中のみ) */}
           {isTranscoding && (
             <>
               <div className="flex-1 bg-blue-200 dark:bg-blue-900/50 rounded-full h-1.5 min-w-0">
@@ -262,7 +234,6 @@ function App() {
             </>
           )}
 
-          {/* 完了・エラー時の閉じるボタン */}
           {(isTranscodeDone || transcodeError) && (
             <button
               type="button"
@@ -284,7 +255,6 @@ function App() {
         {/* サイドバー */}
         {isDbReady && (
           <div className="w-44 shrink-0 flex flex-col gap-2">
-            {/* タブ */}
             <div className="flex gap-1 text-xs">
               <button
                 type="button"
@@ -312,8 +282,8 @@ function App() {
 
             {sidebarTab === 'category' ? (
               <CategorySidebar
-                selectedCategoryId={selectedCategoryId}
-                onSelectCategory={setSelectedCategoryId}
+                selectedCategoryId={filterCategoryId}
+                onSelectCategory={setCategoryFilter}
               />
             ) : (
               <PlaylistSidebar onOpenPlaylist={setActivePlaylist} />
@@ -334,7 +304,6 @@ function App() {
             <div className="flex flex-col flex-1 min-h-0">
               {/* フィルタ・ソートバー */}
               <div className="flex items-start gap-2 mb-3 shrink-0">
-                {/* タグフィルタ */}
                 <div className="flex flex-wrap gap-1 flex-1 min-w-0">
                   {tags.length > 0 ? (
                     <>
@@ -343,21 +312,21 @@ function App() {
                           key={tag.id}
                           type="button"
                           className={`px-1.5 py-px rounded-full text-[10px] font-medium text-white transition-opacity ${
-                            selectedTagIds.includes(tag.id)
+                            filterTagIds.includes(tag.id)
                               ? 'opacity-100 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950'
                               : 'opacity-40 hover:opacity-70'
                           }`}
                           style={{ backgroundColor: tag.color }}
-                          onClick={() => toggleTag(tag.id)}
+                          onClick={() => toggleTagFilter(tag.id)}
                         >
                           {tag.name}
                         </button>
                       ))}
-                      {selectedTagIds.length > 0 && (
+                      {filterTagIds.length > 0 && (
                         <button
                           type="button"
                           className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
-                          onClick={() => setSelectedTagIds([])}
+                          onClick={() => clearTagFilters()}
                         >
                           クリア
                         </button>
@@ -366,12 +335,11 @@ function App() {
                   ) : null}
                 </div>
 
-                {/* ソートコントロール */}
                 <div className="flex items-center gap-1 shrink-0">
                   <select
                     className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as SortBy)}
+                    value={filterSortBy}
+                    onChange={(e) => setSort(e.target.value as typeof filterSortBy, filterSortOrder)}
                   >
                     <option value="created_at">追加日</option>
                     <option value="duration">長さ</option>
@@ -380,10 +348,10 @@ function App() {
                   <button
                     type="button"
                     className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
-                    title={sortOrder === 'desc' ? '降順 (クリックで昇順)' : '昇順 (クリックで降順)'}
-                    onClick={() => setSortOrder((o) => (o === 'desc' ? 'asc' : 'desc'))}
+                    title={filterSortOrder === 'desc' ? '降順 (クリックで昇順)' : '昇順 (クリックで降順)'}
+                    onClick={() => setSort(filterSortBy, filterSortOrder === 'desc' ? 'asc' : 'desc')}
                   >
-                    {sortOrder === 'desc' ? '↓' : '↑'}
+                    {filterSortOrder === 'desc' ? '↓' : '↑'}
                   </button>
                 </div>
               </div>
@@ -427,7 +395,7 @@ function App() {
 
               <div className="flex-1 min-h-0">
                 <LibraryGrid
-                  videos={filteredVideos}
+                  videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
                   onPlay={play}
                   onShowDetail={setDetailVideo}
@@ -436,6 +404,32 @@ function App() {
                   onSelectionChange={setSelectedVideoIds}
                 />
               </div>
+
+              {/* ページネーション */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-3 py-2 shrink-0 border-t border-gray-100 dark:border-gray-800">
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={currentPage <= 1}
+                    onClick={() => handleSetPage(currentPage - 1)}
+                  >
+                    ← 前
+                  </button>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                    {currentPage} / {totalPages}
+                    <span className="ml-2 text-gray-400 dark:text-gray-500">({totalCount.toLocaleString()}件)</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => handleSetPage(currentPage + 1)}
+                  >
+                    次 →
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -447,7 +441,10 @@ function App() {
         <VideoDetailModal
           key={detailVideo.id}
           video={detailVideo}
-          onClose={() => setDetailVideo(null)}
+          onClose={() => {
+            setDetailVideo(null);
+            fetchVideos();
+          }}
         />
       )}
 
@@ -480,7 +477,10 @@ function App() {
         <BulkTagModal
           videoIds={Array.from(selectedVideoIds)}
           onClose={() => setBulkModal(null)}
-          onDone={() => setBulkModal(null)}
+          onDone={() => {
+            setBulkModal(null);
+            fetchVideos();
+          }}
         />
       )}
 
@@ -488,7 +488,10 @@ function App() {
         <BulkCategoryModal
           videoIds={Array.from(selectedVideoIds)}
           onClose={() => setBulkModal(null)}
-          onDone={() => setBulkModal(null)}
+          onDone={() => {
+            setBulkModal(null);
+            fetchVideos();
+          }}
         />
       )}
     </main>

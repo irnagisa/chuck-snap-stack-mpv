@@ -14,7 +14,7 @@ interface TagActions {
   fetchTags: (db: Database) => Promise<void>;
   fetchCategories: (db: Database) => Promise<void>;
   fetchTagCategories: (db: Database) => Promise<void>;
-  fetchAllVideoTags: (db: Database) => Promise<void>;
+  fetchVideoTagsForIds: (db: Database, videoIds: number[]) => Promise<void>;
   fetchVideoTags: (db: Database, videoId: number) => Promise<void>;
   createTag: (db: Database, name: string, color: string) => Promise<Tag>;
   updateTag: (db: Database, tagId: number, name: string, color: string, tagCategoryId?: number | null) => Promise<void>;
@@ -43,7 +43,7 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     await get().fetchTagCategories(db);
     await get().fetchTags(db);
     await get().fetchCategories(db);
-    await get().fetchAllVideoTags(db);
+    // videoTags are populated by fetchVideos → fetchVideoTagsForIds; no full scan needed here
   },
 
   fetchTags: async (db) => {
@@ -61,10 +61,17 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     set({ tagCategories });
   },
 
-  fetchAllVideoTags: async (db) => {
+  fetchVideoTagsForIds: async (db, videoIds) => {
+    if (videoIds.length === 0) {
+      set({ videoTags: {} });
+      return;
+    }
+    const ph = videoIds.map(() => '?').join(', ');
     const rows = await db.select<{ video_id: number; id: number; name: string; color: string; tag_category_id: number | null; created_at: string }[]>(
       `SELECT vt.video_id, t.id, t.name, t.color, t.tag_category_id, t.created_at
-       FROM video_tags vt JOIN tags t ON vt.tag_id = t.id`
+       FROM video_tags vt JOIN tags t ON vt.tag_id = t.id
+       WHERE vt.video_id IN (${ph})`,
+      videoIds
     );
     const videoTags: Record<number, Tag[]> = {};
     for (const row of rows) {
@@ -106,17 +113,23 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
       await db.execute('UPDATE tags SET name = ?, color = ? WHERE id = ?', [name, color, tagId]);
     }
     await get().fetchTags(db);
-    await get().fetchAllVideoTags(db);
+    // Refresh tags for current page videos
+    const currentIds = Object.keys(get().videoTags).map(Number);
+    if (currentIds.length > 0) {
+      await get().fetchVideoTagsForIds(db, currentIds);
+    }
   },
 
   deleteTag: async (db, tagId) => {
     await db.execute('DELETE FROM tags WHERE id = ?', [tagId]);
     await get().fetchTags(db);
-    const videoTags = { ...get().videoTags };
-    for (const vid in videoTags) {
-      videoTags[Number(vid)] = videoTags[Number(vid)].filter((t) => t.id !== tagId);
-    }
-    set({ videoTags });
+    set((state) => {
+      const next = { ...state.videoTags };
+      for (const vid in next) {
+        next[Number(vid)] = next[Number(vid)].filter((t) => t.id !== tagId);
+      }
+      return { videoTags: next };
+    });
   },
 
   setTagCategory: async (db, tagId, tagCategoryId) => {
@@ -194,7 +207,11 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
         [videoId, tagId]
       );
     }
-    await get().fetchAllVideoTags(db);
+    // Refresh tags for current page videos
+    const currentIds = Object.keys(get().videoTags).map(Number);
+    if (currentIds.length > 0) {
+      await get().fetchVideoTagsForIds(db, currentIds);
+    }
   },
 
   setCategoryMultiple: async (db, videoIds, categoryId) => {
