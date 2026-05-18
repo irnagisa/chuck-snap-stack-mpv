@@ -218,6 +218,7 @@ pub async fn play(
         let mut s = state.lock().map_err(|e| e.to_string())?;
         if let Some(mut child) = s.process.take() {
             let _ = child.kill();
+            let _ = child.wait();
         }
         s.writer = None;
     }
@@ -228,6 +229,9 @@ pub async fn play(
             "--idle",
             "--no-terminal",
             "--autofit-smaller=640x360",
+            "--cache=yes",
+            "--demuxer-max-bytes=150MiB",
+            "--demuxer-max-back-bytes=50MiB",
             &format!("--input-ipc-server={MPV_SOCKET}"),
             &path,
         ])
@@ -347,9 +351,9 @@ pub async fn toggle_fullscreen(
 /// mpv を終了する。
 #[tauri::command]
 pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
-    let writer_opt = {
+    let (writer_opt, child_opt) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
-        s.writer.take()
+        (s.writer.take(), s.process.take())
     };
 
     if let Some(writer) = writer_opt {
@@ -358,9 +362,30 @@ pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), Str
 
     let _ = std::fs::remove_file(MPV_SOCKET);
 
-    let mut s = state.lock().map_err(|e| e.to_string())?;
-    if let Some(mut child) = s.process.take() {
-        let _ = child.kill();
+    if let Some(mut child) = child_opt {
+        // ["quit"] IPC でウィンドウは即座に閉じる。プロセス回収はバックグラウンドで行い
+        // フロントエンドをブロックしない。3 秒以内に終了しない場合は強制終了する。
+        tokio::task::spawn_blocking(move || {
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => return,
+                    Ok(None) => {
+                        if std::time::Instant::now() >= deadline {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(_) => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return;
+                    }
+                }
+            }
+        });
     }
 
     Ok(())
