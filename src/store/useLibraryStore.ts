@@ -90,6 +90,14 @@ const CREATE_CATEGORIES_TABLE = `
   )
 `;
 
+const CREATE_TAG_CATEGORIES_TABLE = `
+  CREATE TABLE IF NOT EXISTS tag_categories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
 const CREATE_WATCH_DIRS_TABLE = `
   CREATE TABLE IF NOT EXISTS watch_dirs (
     path       TEXT PRIMARY KEY,
@@ -116,9 +124,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute(CREATE_TAGS_TABLE);
       await db.execute(CREATE_VIDEO_TAGS_TABLE);
       await db.execute(CREATE_CATEGORIES_TABLE);
+      await db.execute(CREATE_TAG_CATEGORIES_TABLE);
       // category_id カラムを既存 videos テーブルに追加 (初回のみ)
       try {
         await db.execute('ALTER TABLE videos ADD COLUMN category_id INTEGER REFERENCES categories(id)');
+      } catch { /* already exists */ }
+      // tag_category_id カラムを既存 tags テーブルに追加 (初回のみ)
+      try {
+        await db.execute('ALTER TABLE tags ADD COLUMN tag_category_id INTEGER REFERENCES tag_categories(id)');
       } catch { /* already exists */ }
       set({ db, isDbReady: true });
       await useSettingsStore.getState().loadSettings(db);

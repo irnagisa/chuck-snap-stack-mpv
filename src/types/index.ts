@@ -20,6 +20,13 @@ export interface Tag {
   id: number;
   name: string;
   color: string;
+  tag_category_id: number | null;
+  created_at: string;
+}
+
+export interface TagCategory {
+  id: number;
+  name: string;
   created_at: string;
 }
 
