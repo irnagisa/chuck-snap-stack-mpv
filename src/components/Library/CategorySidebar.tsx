@@ -212,6 +212,18 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         すべて
       </button>
 
+      <button
+        type="button"
+        className={`text-left px-2 py-1.5 rounded text-xs transition-colors ${
+          selectedCategoryId === -1
+            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium'
+            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+        }`}
+        onClick={() => onSelectCategory(-1)}
+      >
+        未設定
+      </button>
+
       {categories.map((cat) => (
         <div key={cat.id}>
           {editingId === cat.id ? (

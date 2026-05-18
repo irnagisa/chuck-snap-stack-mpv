@@ -196,8 +196,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       baseParams.push(s, s);
     }
     if (filterCategoryId !== null) {
-      conditions.push('v.category_id = ?');
-      baseParams.push(filterCategoryId);
+      if (filterCategoryId === -1) {
+        conditions.push('v.category_id IS NULL');
+      } else {
+        conditions.push('v.category_id = ?');
+        baseParams.push(filterCategoryId);
+      }
     }
     if (filterTagIds.length > 0) {
       const ph = filterTagIds.map(() => '?').join(', ');
