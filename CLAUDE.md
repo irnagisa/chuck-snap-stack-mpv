@@ -168,10 +168,42 @@ const result = await invoke<ReturnType>('command_name', { param: 'value' });
 - 非同期: Rust は `tokio::spawn` / `async fn`、TS は `async/await`
 - Zustand ストアは機能ごとにファイル分割 (`usePlayerStore`, `useLibraryStore`)
 
+## Tauri イベント (進捗通知パターン)
+
+長時間処理 (ダウンロード・トランスコード) は Tauri イベントで進捗を Frontend に Push する。
+
+```rust
+// Rust 側: app.emit でイベント送信
+app.emit("download://progress", DownloadProgress { percent, ... })?;
+
+// キャンセルは AtomicBool で制御
+if cancel_flag.load(Ordering::SeqCst) {
+    // クリーンアップ (ファイル削除など)
+    return Err("キャンセルされました".to_string());
+}
+```
+
+```typescript
+// TS 側: listen でイベント受信
+import { listen } from '@tauri-apps/api/event';
+const unlisten = await listen<DownloadProgress>('download://progress', (e) => {
+  setPercent(e.payload.percent);
+});
+// クリーンアップ
+unlisten();
+```
+
+## ファイルウォッチャー
+
+`notify` クレートで動画フォルダを監視。`start_watching` / `stop_watching` コマンドで制御。
+イベント: `video-file-created` / `video-file-removed` → `useWatcher` フックで DB に反映。
+
 ## 注意事項
 
 - mpv のパスは OS によって異なる。macOS: Homebrew `/opt/homebrew/bin/mpv`
 - IPC ソケットパスは一時ディレクトリに作成し、アプリ終了時に削除する
 - 大量の動画ファイルスキャンは `tokio::task::spawn_blocking` でブロッキング I/O を処理
+- CPU 負荷の高い処理 (transcode) も `spawn_blocking` を使う
 - サムネイル生成は `ffmpeg` コマンドを使用 (要確認: インストール済みか)
 - `tauri-plugin-sql` は SQL インジェクション対策で必ずプリペアドステートメントを使う
+- mpv プロセス監視: `generation` カウンタで古いモニタスレッドを自動終了させる
