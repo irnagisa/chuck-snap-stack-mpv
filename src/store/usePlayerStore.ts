@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { Video } from '../types';
 import { useLibraryStore } from './useLibraryStore';
 
@@ -18,8 +19,9 @@ interface PlayerActions {
   quit: () => Promise<void>;
 }
 
-// Zustand state 外で管理 (setInterval はシリアライズ不要)
+// Zustand state 外で管理 (setInterval / UnlistenFn はシリアライズ不要)
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
+let unlistenMpvClosed: UnlistenFn | null = null;
 
 function startPolling(
   set: (s: Partial<PlayerState>) => void,
@@ -47,6 +49,30 @@ function stopPolling() {
   }
 }
 
+async function startMpvClosedListener(
+  set: (s: Partial<PlayerState>) => void,
+  get: () => PlayerState & PlayerActions
+) {
+  if (unlistenMpvClosed) {
+    unlistenMpvClosed();
+  }
+  unlistenMpvClosed = await listen('mpv://closed', async () => {
+    stopPolling();
+    const { currentVideo, playbackTime } = get();
+    if (currentVideo && playbackTime > 0) {
+      await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
+    }
+    set({ currentVideo: null, playbackTime: 0 });
+  });
+}
+
+function stopMpvClosedListener() {
+  if (unlistenMpvClosed) {
+    unlistenMpvClosed();
+    unlistenMpvClosed = null;
+  }
+}
+
 async function invokPlay(video: Video) {
   await invoke('play', { path: video.path });
 }
@@ -61,6 +87,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     await invokPlay(video);
     set({ currentVideo: video, playbackTime: 0, queue: [], queueIndex: -1 });
     startPolling(set, get);
+    await startMpvClosedListener(set, get);
   },
 
   playWithQueue: async (videos: Video[], startIndex = 0) => {
@@ -69,6 +96,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     await invokPlay(videos[idx]);
     set({ currentVideo: videos[idx], playbackTime: 0, queue: videos, queueIndex: idx });
     startPolling(set, get);
+    await startMpvClosedListener(set, get);
   },
 
   playNext: async () => {
@@ -99,6 +127,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
   quit: async () => {
     stopPolling();
+    stopMpvClosedListener();
 
     const { currentVideo, playbackTime } = get();
     if (currentVideo && playbackTime > 0) {

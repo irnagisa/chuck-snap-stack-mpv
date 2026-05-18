@@ -9,6 +9,7 @@ use std::{
 };
 
 use serde_json::{json, Value};
+use tauri::Emitter;
 
 use super::settings::SharedAppSettings;
 
@@ -18,13 +19,18 @@ const MPV_SOCKET: &str = "/tmp/mpv-chuck-socket";
 
 pub struct MpvState {
     process: Option<Child>,
+    /// モニタタスクの世代番号。play のたびにインクリメントし、古いタスクを自動終了させる。
+    generation: u32,
 }
 
 pub type SharedMpvState = Arc<Mutex<MpvState>>;
 
 impl MpvState {
     pub fn new() -> SharedMpvState {
-        Arc::new(Mutex::new(MpvState { process: None }))
+        Arc::new(Mutex::new(MpvState {
+            process: None,
+            generation: 0,
+        }))
     }
 }
 
@@ -60,6 +66,44 @@ fn send_ipc_fire(cmd: Value) -> Result<(), String> {
         UnixStream::connect(MPV_SOCKET).map_err(|e| format!("IPC 接続失敗: {e}"))?;
     let msg = cmd.to_string() + "\n";
     stream.write_all(msg.as_bytes()).map_err(|e| e.to_string())
+}
+
+// ----- プロセス監視 -----
+
+/// mpv プロセスを 500ms ごとに監視し、終了したら `mpv://closed` イベントを emit する。
+/// `gen` が現在の世代と一致しない場合は即座に終了（新しい play 呼び出しで上書きされた場合）。
+fn monitor_mpv_process(state: SharedMpvState, app: tauri::AppHandle, gen: u32) {
+    loop {
+        std::thread::sleep(Duration::from_millis(500));
+
+        let exited = {
+            let mut s = match state.lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            if s.generation != gen {
+                return; // 新しい play で世代が進んだ → 旧モニタ終了
+            }
+            if let Some(child) = s.process.as_mut() {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        s.process = None;
+                        true
+                    }
+                    Ok(None) => false, // まだ実行中
+                    Err(_) => return,
+                }
+            } else {
+                return; // quit_mpv で既に片付け済み
+            }
+        };
+
+        if exited {
+            let _ = std::fs::remove_file(MPV_SOCKET);
+            let _ = app.emit("mpv://closed", ());
+            return;
+        }
+    }
 }
 
 // ----- Tauri コマンド -----
@@ -99,9 +143,10 @@ fn apply_minimum_window_size() {
 
 /// 動画を再生する。
 /// mpv が起動済みなら loadfile コマンドで切り替え、未起動なら新たにプロセスを起動する。
-/// どちらのパスでも最小ウィンドウサイズ (640x360) を保証する。
+/// どちらのパスでも最小ウィンドウサイズ (640x360) を保証し、プロセス監視タスクを起動する。
 #[tauri::command]
 pub async fn play(
+    app: tauri::AppHandle,
     state: tauri::State<'_, SharedMpvState>,
     settings: tauri::State<'_, SharedAppSettings>,
     path: String,
@@ -112,7 +157,17 @@ pub async fn play(
     if std::path::Path::new(MPV_SOCKET).exists() {
         let result = send_ipc_fire(json!({"command": ["loadfile", path, "replace"]}));
         if result.is_ok() {
-            // ファイル読み込み完了後にウィンドウサイズを調整 (バックグラウンド)
+            // 世代を更新して新しいモニタタスクを起動
+            let gen = {
+                let mut s = state.lock().map_err(|e| e.to_string())?;
+                s.generation += 1;
+                s.generation
+            };
+            let state_arc = Arc::clone(state.inner());
+            let app_clone = app.clone();
+            tokio::task::spawn_blocking(move || {
+                monitor_mpv_process(state_arc, app_clone, gen);
+            });
             tokio::task::spawn_blocking(|| {
                 apply_minimum_window_size();
             });
@@ -142,10 +197,12 @@ pub async fn play(
         .spawn()
         .map_err(|e| format!("mpv 起動失敗 ({}): {e}", mpv_path))?;
 
-    {
+    let gen = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.process = Some(child);
-    }
+        s.generation += 1;
+        s.generation
+    };
 
     // ソケットが ready になるまで待つ（最大 3 秒）
     for _ in 0..30 {
@@ -154,6 +211,12 @@ pub async fn play(
             break;
         }
     }
+
+    // プロセス監視タスク起動
+    let state_arc = Arc::clone(state.inner());
+    tokio::task::spawn_blocking(move || {
+        monitor_mpv_process(state_arc, app, gen);
+    });
 
     Ok(())
 }
