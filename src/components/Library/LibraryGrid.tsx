@@ -69,6 +69,7 @@ export function LibraryGrid({
 
   const handleCheckbox = (e: React.MouseEvent, video: Video, idx: number) => {
     e.stopPropagation();
+    if (e.shiftKey) e.preventDefault();
     const next = new Set(selectedIds);
 
     if (e.shiftKey && lastSelectedIdxRef.current !== null) {
