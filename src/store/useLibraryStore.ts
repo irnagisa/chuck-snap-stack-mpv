@@ -39,7 +39,7 @@ interface LibraryActions {
   clearTagFilters: () => Promise<void>;
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
-  scanAndImport: (path: string) => Promise<void>;
+  scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
   removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
   pauseThumbnails: () => void;
@@ -49,6 +49,7 @@ interface LibraryActions {
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
+  assignCategoryFromPath: (videoIds: number[]) => Promise<void>;
   addVideoFromPath: (path: string, title: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
 }
@@ -269,7 +270,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await get().fetchVideos();
   },
 
-  scanAndImport: async (path: string) => {
+  scanAndImport: async (path: string, useDirectoryAsCategory = false) => {
     const { db } = get();
     if (!db) return;
     set({ isScanning: true });
@@ -280,10 +281,27 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }));
       invoke('start_watching', { path }).catch(() => {});
       const files = await invoke<ScannedFile[]>('scan_directory', { path });
+
+      const categoryIdMap: Record<string, number> = {};
+      if (useDirectoryAsCategory) {
+        const uniqueDirNames = [...new Set(files.map((f) => f.parent_dir_name).filter((n): n is string => n != null))];
+        for (const name of uniqueDirNames) {
+          await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, '#6366f1']);
+          const rows = await db.select<{ id: number }[]>('SELECT id FROM categories WHERE name = ?', [name]);
+          if (rows[0]) categoryIdMap[name] = rows[0].id;
+        }
+        if (uniqueDirNames.length > 0) {
+          await useTagStore.getState().init(db);
+        }
+      }
+
       for (const file of files) {
+        const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
+          ? (categoryIdMap[file.parent_dir_name] ?? null)
+          : null;
         await db.execute(
-          'INSERT OR IGNORE INTO videos (path, title) VALUES (?, ?)',
-          [file.path, file.title]
+          'INSERT OR IGNORE INTO videos (path, title, category_id) VALUES (?, ?, ?)',
+          [file.path, file.title, categoryId]
         );
       }
       set({ currentPage: 1, isScanning: false });
@@ -415,6 +433,51 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const { db } = get();
     if (!db) return;
     await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+    await get().fetchVideos();
+  },
+
+  assignCategoryFromPath: async (videoIds: number[]) => {
+    const { db, watchDirs } = get();
+    if (!db || videoIds.length === 0) return;
+
+    const ph = videoIds.map(() => '?').join(', ');
+    const rows = await db.select<{ id: number; path: string }[]>(
+      `SELECT id, path FROM videos WHERE id IN (${ph})`,
+      videoIds
+    );
+
+    const normalizeDir = (p: string) => p.replace(/\\/g, '/').replace(/\/$/, '');
+    const rootDirs = new Set(watchDirs.map(normalizeDir));
+
+    const getParentDirName = (filePath: string): string | null => {
+      const parts = filePath.replace(/\\/g, '/').split('/');
+      parts.pop();
+      const parentPath = parts.join('/');
+      if (rootDirs.has(parentPath)) return null;
+      return parts[parts.length - 1] || null;
+    };
+
+    const uniqueDirNames = [...new Set(
+      rows.map((r) => getParentDirName(r.path)).filter((n): n is string => n != null)
+    )];
+
+    const categoryIdMap: Record<string, number> = {};
+    for (const name of uniqueDirNames) {
+      await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, '#6366f1']);
+      const catRows = await db.select<{ id: number }[]>('SELECT id FROM categories WHERE name = ?', [name]);
+      if (catRows[0]) categoryIdMap[name] = catRows[0].id;
+    }
+
+    for (const row of rows) {
+      const dirName = getParentDirName(row.path);
+      if (dirName && categoryIdMap[dirName] != null) {
+        await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryIdMap[dirName], row.id]);
+      }
+    }
+
+    if (uniqueDirNames.length > 0) {
+      await useTagStore.getState().init(db);
+    }
     await get().fetchVideos();
   },
 

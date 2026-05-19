@@ -17,11 +17,13 @@ const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "
 pub struct ScannedFile {
     pub path: String,
     pub title: String,
+    pub parent_dir_name: Option<String>,
 }
 
 #[tauri::command]
 pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
     let mut files = Vec::new();
+    let root = Path::new(&path);
 
     for entry in WalkDir::new(&path).follow_links(true) {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -41,9 +43,17 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_string();
+            let parent_dir_name = entry.path().parent().and_then(|p| {
+                if p == root {
+                    None
+                } else {
+                    p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+                }
+            });
             files.push(ScannedFile {
                 path: entry.path().to_string_lossy().to_string(),
                 title,
+                parent_dir_name,
             });
         }
     }

@@ -14,6 +14,7 @@ export interface Video {
 export interface ScannedFile {
   path: string;
   title: string;
+  parent_dir_name: string | null;
 }
 
 export interface Tag {

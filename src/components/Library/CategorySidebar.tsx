@@ -195,7 +195,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   );
 
   return (
-    <aside className="w-44 shrink-0 flex flex-col gap-0.5">
+    <aside className="flex flex-col gap-0.5 w-full min-w-0">
       <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 px-2">
         カテゴリ
       </h2>

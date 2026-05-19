@@ -29,7 +29,7 @@ function App() {
     filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress,
     isDbReady, dbError,
-    initDb, fetchVideos, scanAndImport,
+    initDb, fetchVideos, scanAndImport, assignCategoryFromPath,
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setSort, setPage,
     pauseThumbnails, resumeThumbnails,
   } = useLibraryStore();
@@ -47,6 +47,7 @@ function App() {
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [bulkModal, setBulkModal] = useState<BulkModal>(null);
   const [showDownload, setShowDownload] = useState(false);
+  const [useDirAsCategory, setUseDirAsCategory] = useState(false);
 
   // Debounce search input → store
   useEffect(() => {
@@ -74,7 +75,7 @@ function App() {
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
-      scanAndImport(selected);
+      scanAndImport(selected, useDirAsCategory);
     }
   };
 
@@ -91,7 +92,7 @@ function App() {
   );
 
   return (
-    <main className="flex flex-col min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       {/* ヘッダー / ツールバー */}
       <div className="px-4 pt-4 pb-3 flex gap-2 items-center border-b border-gray-100 dark:border-gray-800">
         <h1 className="text-lg font-bold mr-2 shrink-0">Chuck Snap Stack</h1>
@@ -103,6 +104,15 @@ function App() {
         >
           {isScanning ? "スキャン中..." : "+ フォルダ追加"}
         </button>
+        <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={useDirAsCategory}
+            onChange={(e) => setUseDirAsCategory(e.target.checked)}
+            className="accent-blue-600"
+          />
+          フォルダ名をカテゴリに
+        </label>
         <button
           type="button"
           className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50 text-sm dark:bg-green-500 dark:hover:bg-green-600 shrink-0"
@@ -254,8 +264,8 @@ function App() {
       <div className="flex flex-1 px-4 pt-4 pb-28 gap-4 min-h-0">
         {/* サイドバー */}
         {isDbReady && (
-          <div className="w-44 shrink-0 flex flex-col gap-2">
-            <div className="flex gap-1 text-xs">
+          <div className="w-44 shrink-0 flex flex-col gap-2 min-h-0">
+            <div className="flex gap-1 text-xs shrink-0">
               <button
                 type="button"
                 className={`flex-1 py-1 rounded font-medium transition-colors ${
@@ -280,14 +290,16 @@ function App() {
               </button>
             </div>
 
-            {sidebarTab === 'category' ? (
-              <CategorySidebar
-                selectedCategoryId={filterCategoryId}
-                onSelectCategory={setCategoryFilter}
-              />
-            ) : (
-              <PlaylistSidebar onOpenPlaylist={setActivePlaylist} />
-            )}
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+              {sidebarTab === 'category' ? (
+                <CategorySidebar
+                  selectedCategoryId={filterCategoryId}
+                  onSelectCategory={setCategoryFilter}
+                />
+              ) : (
+                <PlaylistSidebar onOpenPlaylist={setActivePlaylist} />
+              )}
+            </div>
           </div>
         )}
 
@@ -375,6 +387,16 @@ function App() {
                     onClick={() => setBulkModal('category')}
                   >
                     カテゴリ設定
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded"
+                    onClick={async () => {
+                      await assignCategoryFromPath(Array.from(selectedVideoIds));
+                      setSelectedVideoIds(new Set());
+                    }}
+                  >
+                    フォルダ名をカテゴリに
                   </button>
                   <button
                     type="button"
@@ -479,6 +501,7 @@ function App() {
           onClose={() => setBulkModal(null)}
           onDone={() => {
             setBulkModal(null);
+            setSelectedVideoIds(new Set());
             fetchVideos();
           }}
         />
@@ -490,6 +513,7 @@ function App() {
           onClose={() => setBulkModal(null)}
           onDone={() => {
             setBulkModal(null);
+            setSelectedVideoIds(new Set());
             fetchVideos();
           }}
         />
