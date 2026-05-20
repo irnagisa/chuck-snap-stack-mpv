@@ -92,7 +92,7 @@ export function LibraryGrid({
 
   return (
     <>
-      <div ref={scrollRef} className="h-full overflow-y-auto">
+      <div ref={scrollRef} className="h-full overflow-y-auto select-none">
         {videos.length === 0 ? (
           <p className="text-gray-400 mt-4 text-sm dark:text-gray-500">
             動画が見つかりません。ディレクトリをスキャンしてください。
