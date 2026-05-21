@@ -106,7 +106,17 @@ fn connect_and_start_reader(
             match reader.read_line(&mut line) {
                 Ok(0) => {
                     // EOF: mpv プロセスが終了した
-                    if state.lock().map(|s| s.generation == gen).unwrap_or(false) {
+                    let is_current = state.lock().map(|s| s.generation == gen).unwrap_or(false);
+                    if is_current {
+                        // ゾンビプロセスを回収し、死んだソケット参照をクリア
+                        let child_opt = state.lock().ok().and_then(|mut s| {
+                            s.writer = None;
+                            s.process.take()
+                        });
+                        if let Some(mut child) = child_opt {
+                            let _ = child.wait();
+                        }
+                        let _ = std::fs::remove_file(MPV_SOCKET);
                         let _ = app.emit("mpv://closed", ());
                     }
                     return;
