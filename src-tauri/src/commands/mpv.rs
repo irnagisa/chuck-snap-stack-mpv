@@ -158,11 +158,13 @@ fn connect_and_start_reader(
     Ok(writer_clone)
 }
 
-// ----- ウィンドウ最小サイズ保証 -----
+// ----- ウィンドウサイズ制約 -----
 
-/// 動画の表示サイズが最小値 (640x360) を下回る場合に window-scale で拡大する。
+/// 動画ウィンドウのサイズ制約を適用する。
+/// - 最小サイズ (640x360) を下回る場合は拡大
+/// - モニターサイズを超える場合は縮小
 /// dwidth が 0 の間は最大 2 秒間ポーリングして動画ロード完了を待つ。
-fn apply_minimum_window_size() {
+fn apply_window_size_constraints() {
     const MIN_W: f64 = 640.0;
     const MIN_H: f64 = 360.0;
 
@@ -179,10 +181,31 @@ fn apply_minimum_window_size() {
             .ok()
             .and_then(|v| v["data"].as_f64())
             .unwrap_or(0.0);
-        if h > 0.0 && (w < MIN_W || h < MIN_H) {
-            let scale = (MIN_W / w).max(MIN_H / h);
-            let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
+        if h == 0.0 {
+            break;
         }
+
+        // モニターサイズを取得してウィンドウが画面内に収まるか確認
+        let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
+        let disp_h = send_ipc(json!({"command": ["get_property", "display-height"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
+
+        let scale = if disp_w > 0.0 && disp_h > 0.0 && (w > disp_w || h > disp_h) {
+            // モニターより大きい場合: 画面内に収まるよう縮小
+            (disp_w / w).min(disp_h / h)
+        } else if w < MIN_W || h < MIN_H {
+            // 最小サイズを下回る場合: 拡大
+            (MIN_W / w).max(MIN_H / h)
+        } else {
+            break; // 制約なし
+        };
+
+        let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
         break;
     }
 }
@@ -206,7 +229,7 @@ pub async fn play(
 
     if let Some(writer) = writer_opt {
         if send_cmd(&writer, json!({"command": ["loadfile", path, "replace"]})).is_ok() {
-            tokio::task::spawn_blocking(apply_minimum_window_size);
+            tokio::task::spawn_blocking(apply_window_size_constraints);
             return Ok(());
         }
         // 送信失敗 → mpv が死んでいる、再起動へフォールスルー
@@ -229,6 +252,7 @@ pub async fn play(
             "--idle",
             "--no-terminal",
             "--autofit-smaller=640x360",
+            "--autofit-larger=100%x100%",
             "--cache=yes",
             "--demuxer-max-bytes=150MiB",
             "--demuxer-max-back-bytes=50MiB",
@@ -264,7 +288,7 @@ pub async fn play(
 
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
 
-    tokio::task::spawn_blocking(apply_minimum_window_size);
+    tokio::task::spawn_blocking(apply_window_size_constraints);
 
     Ok(())
 }
