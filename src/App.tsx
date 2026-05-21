@@ -261,7 +261,7 @@ function App() {
       {showDownload && <DownloadModal onClose={() => setShowDownload(false)} />}
 
       {/* ボディ: サイドバー + メインコンテンツ */}
-      <div className="flex flex-1 px-4 pt-4 pb-28 gap-4 min-h-0">
+      <div className="flex flex-1 px-4 pt-4 pb-20 gap-4 min-h-0">
         {/* サイドバー */}
         {isDbReady && (
           <div className="w-44 shrink-0 flex flex-col gap-2 min-h-0">
