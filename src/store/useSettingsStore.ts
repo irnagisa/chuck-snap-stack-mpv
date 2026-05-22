@@ -10,7 +10,7 @@ export interface AppSettings {
 }
 
 const DEFAULTS: AppSettings = {
-  mpvPath: "/opt/homebrew/bin/mpv",
+  mpvPath: "/usr/local/bin/mpv",
   ffmpegPath: "ffmpeg",
   ffprobePath: "ffprobe",
   downloadDir: "",
@@ -28,6 +28,19 @@ async function syncToRust(settings: AppSettings) {
     ffmpegPath: settings.ffmpegPath,
     ffprobePath: settings.ffprobePath,
   });
+}
+
+// 保存済みパスが存在する場合はそれを使い、存在しない場合は自動検出にフォールバック
+async function resolveMpvPath(saved: string | undefined): Promise<string> {
+  if (saved && saved.trim().length > 0) {
+    const exists = await invoke<boolean>("path_exists", { path: saved }).catch(() => false);
+    if (exists) return saved;
+  }
+  try {
+    return await invoke<string>("get_default_mpv_path");
+  } catch {
+    return DEFAULTS.mpvPath;
+  }
 }
 
 
@@ -52,8 +65,12 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       map[row.key] = row.value;
     }
 
+    // DB に保存されたパスが存在しない場合はデフォルトにフォールバック
+    const savedMpvPath = map["mpv_path"];
+    const resolvedMpvPath = await resolveMpvPath(savedMpvPath);
+
     const settings: AppSettings = {
-      mpvPath: map["mpv_path"] ?? DEFAULTS.mpvPath,
+      mpvPath: resolvedMpvPath,
       ffmpegPath: map["ffmpeg_path"] ?? DEFAULTS.ffmpegPath,
       ffprobePath: map["ffprobe_path"] ?? DEFAULTS.ffprobePath,
       downloadDir: map["download_dir"] ?? DEFAULTS.downloadDir,

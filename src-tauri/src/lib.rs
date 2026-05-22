@@ -33,6 +33,8 @@ pub fn run() {
             commands::library::delete_video_file,
             commands::library::delete_multiple_video_files,
             commands::settings::update_settings,
+            commands::settings::get_default_mpv_path,
+            commands::settings::path_exists,
             commands::watcher::start_watching,
             commands::watcher::stop_watching,
             commands::download::download_video,

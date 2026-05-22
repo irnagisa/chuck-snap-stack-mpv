@@ -3,7 +3,7 @@
 use std::{
     io::{BufRead, BufReader, Write},
     os::unix::net::UnixStream,
-    process::{Child, Command},
+    process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -106,6 +106,7 @@ fn connect_and_start_reader(
             match reader.read_line(&mut line) {
                 Ok(0) => {
                     // EOF: mpv プロセスが終了した
+                    eprintln!("[reader gen={gen}] EOF 受信");
                     let is_current = state.lock().map(|s| s.generation == gen).unwrap_or(false);
                     if is_current {
                         // ゾンビプロセスを回収し、死んだソケット参照をクリア
@@ -116,8 +117,18 @@ fn connect_and_start_reader(
                         if let Some(mut child) = child_opt {
                             let _ = child.wait();
                         }
-                        let _ = std::fs::remove_file(MPV_SOCKET);
-                        let _ = app.emit("mpv://closed", ());
+                        // wait() 中に新しい mpv が起動した場合はスキップ
+                        let still_current =
+                            state.lock().map(|s| s.generation == gen).unwrap_or(false);
+                        if still_current {
+                            eprintln!("[reader gen={gen}] mpv//closed 送信");
+                            let _ = std::fs::remove_file(MPV_SOCKET);
+                            let _ = app.emit("mpv://closed", ());
+                        } else {
+                            eprintln!("[reader gen={gen}] generation 変化 → closed をスキップ");
+                        }
+                    } else {
+                        eprintln!("[reader gen={gen}] is_current=false → スキップ");
                     }
                     return;
                 }
@@ -158,6 +169,7 @@ fn connect_and_start_reader(
                 Some("end-file") => {
                     // reason: "eof" | "stop" | "quit" | "error" | "redirect" | "unknown"
                     let reason = val["reason"].as_str().unwrap_or("unknown").to_string();
+                    eprintln!("[reader gen={gen}] end-file reason={reason}");
                     let _ = app.emit("mpv://end-file", reason);
                 }
                 _ => {}
@@ -237,30 +249,42 @@ pub async fn play(
 ) -> Result<(), String> {
     let mpv_path = settings.lock().map_err(|e| e.to_string())?.mpv_path.clone();
 
-    // 既存の永続ライタがあれば loadfile で切り替え
-    let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
-
-    if let Some(writer) = writer_opt {
-        if send_cmd(&writer, json!({"command": ["loadfile", path, "replace"]})).is_ok() {
-            tokio::task::spawn_blocking(apply_window_size_constraints);
-            return Ok(());
+    // ソケットが存在する（mpv 起動済み）なら loadfile で切り替え
+    // 永続ライタではなく毎回新規接続を使うことで、ライタが古くなっている場合も確実に動作させる
+    let has_writer = state.lock().map_err(|e| e.to_string())?.writer.is_some();
+    if has_writer && std::path::Path::new(MPV_SOCKET).exists() {
+        eprintln!("[play] mpv 起動中 → loadfile replace (send_ipc): {path}");
+        match send_ipc(json!({"command": ["loadfile", path, "replace"]})) {
+            Ok(_) => {
+                eprintln!("[play] loadfile 送信成功");
+                tokio::task::spawn_blocking(apply_window_size_constraints);
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("[play] loadfile 失敗 ({e}) → mpv 再起動");
+            }
         }
-        // 送信失敗 → mpv が死んでいる、再起動へフォールスルー
+    } else {
+        eprintln!("[play] mpv 未起動 → 新規起動");
     }
 
     // ソケットファイルと古いプロセスを片付ける
+    // generation を先にインクリメントして EOF ハンドラの誤発火を防ぐ
     let _ = std::fs::remove_file(MPV_SOCKET);
-    {
+    let old_child = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
-        if let Some(mut child) = s.process.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
         s.writer = None;
+        s.generation += 1;
+        s.process.take()
+    };
+    if let Some(mut child) = old_child {
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     // mpv 起動
-    let child = Command::new(&mpv_path)
+    eprintln!("[play] mpv 起動: {mpv_path} {path}");
+    let mut child = Command::new(&mpv_path)
         .args([
             "--idle",
             "--no-terminal",
@@ -272,13 +296,23 @@ pub async fn play(
             &format!("--input-ipc-server={MPV_SOCKET}"),
             &path,
         ])
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("mpv 起動失敗 ({}): {e}", mpv_path))?;
+
+    // stderr を別スレッドでログ出力
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                eprintln!("[mpv stderr] {line}");
+            }
+        });
+    }
 
     let gen = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.process = Some(child);
-        s.generation += 1;
         s.generation
     };
 
@@ -297,8 +331,10 @@ pub async fn play(
         connect_and_start_reader(state_arc, app_clone, gen)
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())
+    .and_then(|r| r.map_err(|e| { eprintln!("[play] IPC 接続失敗: {e}"); e }))?;
 
+    eprintln!("[play] IPC 接続成功 gen={gen}");
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
 
     tokio::task::spawn_blocking(apply_window_size_constraints);

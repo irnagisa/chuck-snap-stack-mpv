@@ -79,7 +79,10 @@ function initListeners(
 }
 
 async function invokPlay(video: Video) {
-  await invoke('play', { path: video.path });
+  await invoke('play', { path: video.path }).catch((e: unknown) => {
+    console.error('play failed:', e);
+    throw e;
+  });
 }
 
 export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => {
