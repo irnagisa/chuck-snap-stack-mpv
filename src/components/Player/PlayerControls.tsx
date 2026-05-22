@@ -19,11 +19,15 @@ export function PlayerControls() {
     playbackTime,
     duration,
     isPaused,
+    isLooping,
+    isShuffle,
     quit,
     playNext,
     playPrev,
     pauseResume,
     seekTo,
+    toggleLoop,
+    toggleShuffle,
   } = usePlayerStore();
 
   if (!currentVideo) return null;
@@ -94,6 +98,24 @@ export function PlayerControls() {
             ⏭
           </button>
         )}
+        {queue.length > 1 && (
+          <button
+            type="button"
+            onClick={toggleShuffle}
+            className={`px-2.5 py-1 rounded text-sm shrink-0 ${isShuffle ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+            title={isShuffle ? 'シャッフル解除' : 'シャッフル再生'}
+          >
+            ⇄
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={toggleLoop}
+          className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+          title={isLooping ? 'ループ解除' : 'ループ再生'}
+        >
+          ↻
+        </button>
         <button
           type="button"
           onClick={quit}

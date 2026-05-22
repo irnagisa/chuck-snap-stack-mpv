@@ -9,8 +9,11 @@ interface PlayerState {
   playbackTime: number;
   duration: number;
   isPaused: boolean;
+  isLooping: boolean;
+  isShuffle: boolean;
   queue: Video[];
   queueIndex: number;
+  originalQueue: Video[];
 }
 
 interface PlayerActions {
@@ -21,6 +24,8 @@ interface PlayerActions {
   quit: () => Promise<void>;
   pauseResume: () => Promise<void>;
   seekTo: (seconds: number) => Promise<void>;
+  toggleLoop: () => Promise<void>;
+  toggleShuffle: () => void;
 }
 
 // モジュールレベルで一度だけリスナーを登録する
@@ -46,10 +51,11 @@ function initListeners(
     set({ duration: e.payload });
   });
 
-  // ファイルが自然終了した場合 → キューがあれば次へ進む
+  // ファイルが自然終了した場合 → ループ中はスキップ、キューがあれば次へ進む
   listen<string>('mpv://end-file', async (e) => {
     if (e.payload !== 'eof') return;
-    const { queue, queueIndex } = get();
+    const { queue, queueIndex, isLooping } = get();
+    if (isLooping) return;
     if (queue.length > 0 && queueIndex < queue.length - 1) {
       await get().playNext();
     }
@@ -85,8 +91,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     playbackTime: 0,
     duration: 0,
     isPaused: false,
+    isLooping: false,
+    isShuffle: false,
     queue: [],
     queueIndex: -1,
+    originalQueue: [],
 
     play: async (video: Video) => {
       await invokPlay(video);
@@ -183,6 +192,49 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         await invoke('seek', { seconds });
       } catch {
         // 無視
+      }
+    },
+
+    toggleLoop: async () => {
+      const next = !get().isLooping;
+      set({ isLooping: next });
+      try {
+        await invoke('set_loop', { enabled: next });
+      } catch {
+        // 無視
+      }
+    },
+
+    toggleShuffle: () => {
+      const { isShuffle, queue, queueIndex, originalQueue } = get();
+      if (queue.length <= 1) {
+        set({ isShuffle: !isShuffle });
+        return;
+      }
+
+      if (!isShuffle) {
+        const current = queue[queueIndex];
+        const rest = queue.filter((_, i) => i !== queueIndex);
+        for (let i = rest.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [rest[i], rest[j]] = [rest[j], rest[i]];
+        }
+        set({
+          isShuffle: true,
+          originalQueue: queue,
+          queue: [current, ...rest],
+          queueIndex: 0,
+        });
+      } else {
+        const current = queue[queueIndex];
+        const restored = originalQueue.length > 0 ? originalQueue : queue;
+        const newIndex = restored.findIndex((v) => v.id === current.id);
+        set({
+          isShuffle: false,
+          originalQueue: [],
+          queue: restored,
+          queueIndex: newIndex >= 0 ? newIndex : 0,
+        });
       }
     },
   };

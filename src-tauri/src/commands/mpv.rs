@@ -205,9 +205,12 @@ fn apply_window_size_constraints() {
             .and_then(|v| v["data"].as_f64())
             .unwrap_or(0.0);
 
-        let scale = if disp_w > 0.0 && disp_h > 0.0 && (w > disp_w || h > disp_h) {
+        // macOS メニューバー等のシステム UI 分を除いた有効高さ
+        let usable_h = if disp_h > 0.0 { disp_h - 28.0 } else { disp_h };
+
+        let scale = if disp_w > 0.0 && disp_h > 0.0 && (w > disp_w || h > usable_h) {
             // モニターより大きい場合: 画面内に収まるよう縮小
-            (disp_w / w).min(disp_h / h)
+            (disp_w / w).min(usable_h / h)
         } else if w < MIN_W || h < MIN_H {
             // 最小サイズを下回る場合: 拡大
             (MIN_W / w).max(MIN_H / h)
@@ -380,6 +383,26 @@ pub async fn toggle_fullscreen(
         .clone()
         .ok_or("mpv が起動していません")?;
     send_cmd(&writer, json!({"command": ["cycle", "fullscreen"]}))
+}
+
+/// ループ再生を設定する。
+#[tauri::command]
+pub async fn set_loop(
+    state: tauri::State<'_, SharedMpvState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let writer = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .writer
+        .clone()
+        .ok_or("mpv が起動していません")?;
+    let value = if enabled {
+        serde_json::Value::String("inf".to_string())
+    } else {
+        serde_json::Value::String("no".to_string())
+    };
+    send_cmd(&writer, json!({"command": ["set_property", "loop-file", value]}))
 }
 
 /// mpv を終了する。

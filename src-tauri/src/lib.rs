@@ -29,6 +29,7 @@ pub fn run() {
             commands::mpv::relative_seek,
             commands::mpv::adjust_volume,
             commands::mpv::toggle_fullscreen,
+            commands::mpv::set_loop,
             commands::library::delete_video_file,
             commands::library::delete_multiple_video_files,
             commands::settings::update_settings,

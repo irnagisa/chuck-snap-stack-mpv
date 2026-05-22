@@ -33,7 +33,7 @@ function App() {
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setSort, setPage,
     pauseThumbnails, resumeThumbnails,
   } = useLibraryStore();
-  const { play, currentVideo } = usePlayerStore();
+  const { playWithQueue, currentVideo } = usePlayerStore();
   const { tags } = useTagStore();
   const { isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError, progress: transcodeProgress, videoName: transcodeVideoName, inputSizeBytes: transcodeInputSize, outputSizeBytes: transcodeOutputSize, cancel: cancelTranscode, dismiss: dismissTranscode } = useTranscodeStore();
 
@@ -419,7 +419,7 @@ function App() {
                 <LibraryGrid
                   videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
-                  onPlay={play}
+                  onPlay={(v) => playWithQueue(videos, videos.findIndex((x) => x.id === v.id))}
                   onShowDetail={setDetailVideo}
                   onAddToPlaylist={setAddToPlaylistVideo}
                   selectedIds={selectedVideoIds}
