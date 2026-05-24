@@ -33,7 +33,7 @@ function App() {
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setSort, setPage,
     pauseThumbnails, resumeThumbnails,
   } = useLibraryStore();
-  const { playWithQueue, currentVideo } = usePlayerStore();
+  const { playWithQueue, playShuffleAll, currentVideo } = usePlayerStore();
   const { tags } = useTagStore();
   const { isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError, progress: transcodeProgress, videoName: transcodeVideoName, inputSizeBytes: transcodeInputSize, outputSizeBytes: transcodeOutputSize, cancel: cancelTranscode, dismiss: dismissTranscode } = useTranscodeStore();
 
@@ -365,6 +365,16 @@ function App() {
                   >
                     {filterSortOrder === 'desc' ? '↓' : '↑'}
                   </button>
+                  {totalCount > 0 && (
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-700 dark:hover:text-purple-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors"
+                      title={`現在のフィルター全 ${totalCount.toLocaleString()} 件をシャッフル再生`}
+                      onClick={playShuffleAll}
+                    >
+                      ⇄ 全件
+                    </button>
+                  )}
                 </div>
               </div>
 

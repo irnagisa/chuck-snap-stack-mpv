@@ -26,6 +26,7 @@ interface PlayerActions {
   seekTo: (seconds: number) => Promise<void>;
   toggleLoop: () => Promise<void>;
   toggleShuffle: () => void;
+  playShuffleAll: () => Promise<void>;
 }
 
 // モジュールレベルで一度だけリスナーを登録する
@@ -210,13 +211,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
     toggleShuffle: () => {
       const { isShuffle, queue, queueIndex, originalQueue } = get();
-      if (queue.length <= 1) {
-        set({ isShuffle: !isShuffle });
-        return;
-      }
 
       if (!isShuffle) {
         const current = queue[queueIndex];
+        if (!current || queue.length <= 1) {
+          set({ isShuffle: !isShuffle });
+          return;
+        }
         const rest = queue.filter((_, i) => i !== queueIndex);
         for (let i = rest.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
@@ -231,7 +232,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       } else {
         const current = queue[queueIndex];
         const restored = originalQueue.length > 0 ? originalQueue : queue;
-        const newIndex = restored.findIndex((v) => v.id === current.id);
+        const newIndex = current ? restored.findIndex((v) => v.id === current.id) : -1;
         set({
           isShuffle: false,
           originalQueue: [],
@@ -239,6 +240,29 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           queueIndex: newIndex >= 0 ? newIndex : 0,
         });
       }
+    },
+
+    playShuffleAll: async () => {
+      const allVideos = await useLibraryStore.getState().fetchAllForShuffle();
+      if (allVideos.length === 0) return;
+
+      const shuffled = [...allVideos];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      await invokPlay(shuffled[0]);
+      set({
+        currentVideo: shuffled[0],
+        playbackTime: 0,
+        duration: 0,
+        isPaused: false,
+        isShuffle: true,
+        originalQueue: [],
+        queue: shuffled,
+        queueIndex: 0,
+      });
     },
   };
 });

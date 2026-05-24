@@ -33,6 +33,7 @@ interface LibraryState {
 interface LibraryActions {
   initDb: () => Promise<void>;
   fetchVideos: () => Promise<void>;
+  fetchAllForShuffle: () => Promise<Video[]>;
   setSearch: (search: string) => Promise<void>;
   setCategoryFilter: (id: number | null) => Promise<void>;
   toggleTagFilter: (tagId: number) => Promise<void>;
@@ -234,6 +235,44 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
     const videoIds = videos.map((v) => v.id);
     await useTagStore.getState().fetchVideoTagsForIds(db, videoIds);
+  },
+
+  fetchAllForShuffle: async () => {
+    const { db, filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder } = get();
+    if (!db) return [];
+
+    const conditions: string[] = [];
+    const baseParams: unknown[] = [];
+
+    if (filterSearch.trim()) {
+      conditions.push('(v.title LIKE ? OR v.path LIKE ?)');
+      const s = `%${filterSearch.trim()}%`;
+      baseParams.push(s, s);
+    }
+    if (filterCategoryId !== null) {
+      if (filterCategoryId === -1) {
+        conditions.push('v.category_id IS NULL');
+      } else {
+        conditions.push('v.category_id = ?');
+        baseParams.push(filterCategoryId);
+      }
+    }
+    if (filterTagIds.length > 0) {
+      const ph = filterTagIds.map(() => '?').join(', ');
+      conditions.push(`EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag_id IN (${ph}))`);
+      baseParams.push(...filterTagIds);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sortCol =
+      filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
+      filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';
+    const dir = filterSortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    return db.select<Video[]>(
+      `SELECT v.* FROM videos v ${where} ORDER BY ${sortCol} ${dir}`,
+      baseParams
+    );
   },
 
   setSearch: async (search: string) => {

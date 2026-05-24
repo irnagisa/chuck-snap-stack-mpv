@@ -183,15 +183,14 @@ fn connect_and_start_reader(
 // ----- ウィンドウサイズ制約 -----
 
 /// 動画ウィンドウのサイズ制約を適用する。
-/// - 最小サイズ (640x360) を下回る場合は拡大
-/// - モニターサイズを超える場合は縮小
+/// - 最小: 画面の 50%（両辺それぞれ）
+/// - 最大: 画面の 100%（両辺それぞれ）
+/// 極端なアスペクト比で 50% を満たすと 100% を超える場合は 100% 側を優先する。
 /// dwidth が 0 の間は最大 2 秒間ポーリングして動画ロード完了を待つ。
 fn apply_window_size_constraints() {
-    const MIN_W: f64 = 640.0;
-    const MIN_H: f64 = 360.0;
-
     for _ in 0..10 {
         std::thread::sleep(std::time::Duration::from_millis(200));
+
         let w = send_ipc(json!({"command": ["get_property", "dwidth"]}))
             .ok()
             .and_then(|v| v["data"].as_f64())
@@ -207,7 +206,6 @@ fn apply_window_size_constraints() {
             break;
         }
 
-        // モニターサイズを取得してウィンドウが画面内に収まるか確認
         let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
             .ok()
             .and_then(|v| v["data"].as_f64())
@@ -217,20 +215,25 @@ fn apply_window_size_constraints() {
             .and_then(|v| v["data"].as_f64())
             .unwrap_or(0.0);
 
+        if disp_w <= 0.0 || disp_h <= 0.0 {
+            break;
+        }
+
         // macOS メニューバー等のシステム UI 分を除いた有効高さ
-        let usable_h = if disp_h > 0.0 { disp_h - 28.0 } else { disp_h };
+        let usable_h = disp_h - 28.0;
 
-        let scale = if disp_w > 0.0 && disp_h > 0.0 && (w > disp_w || h > usable_h) {
-            // モニターより大きい場合: 画面内に収まるよう縮小
-            (disp_w / w).min(usable_h / h)
-        } else if w < MIN_W || h < MIN_H {
-            // 最小サイズを下回る場合: 拡大
-            (MIN_W / w).max(MIN_H / h)
-        } else {
-            break; // 制約なし
-        };
+        // 両辺が画面の 50% 以上になる最小スケール
+        let scale_min = (0.5 * disp_w / w).max(0.5 * usable_h / h);
+        // 両辺が画面内 (100%) に収まる最大スケール
+        let scale_max = (disp_w / w).min(usable_h / h);
 
-        let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
+        // 自然サイズ (scale 1.0) を起点として [scale_min, scale_max] にクランプ。
+        // scale_min > scale_max (極端なアスペクト比) の場合は scale_max を優先する。
+        let scale = (1.0_f64).max(scale_min).min(scale_max);
+
+        if (scale - 1.0).abs() > 0.01 {
+            let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
+        }
         break;
     }
 }
@@ -288,7 +291,6 @@ pub async fn play(
         .args([
             "--idle",
             "--no-terminal",
-            "--autofit-smaller=640x360",
             "--autofit-larger=100%x100%",
             "--cache=yes",
             "--demuxer-max-bytes=150MiB",
