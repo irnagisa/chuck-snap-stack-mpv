@@ -183,9 +183,7 @@ fn connect_and_start_reader(
 // ----- ウィンドウサイズ制約 -----
 
 /// 動画ウィンドウのサイズ制約を適用する。
-/// - 最小: 画面の 50%（両辺それぞれ）
-/// - 最大: 画面の 100%（両辺それぞれ）
-/// 極端なアスペクト比で 50% を満たすと 100% を超える場合は 100% 側を優先する。
+/// 常に画面の 95% に収まるようスケールを設定する。
 /// dwidth が 0 の間は最大 2 秒間ポーリングして動画ロード完了を待つ。
 fn apply_window_size_constraints() {
     for _ in 0..10 {
@@ -222,18 +220,9 @@ fn apply_window_size_constraints() {
         // macOS メニューバー等のシステム UI 分を除いた有効高さ
         let usable_h = disp_h - 28.0;
 
-        // 両辺が画面の 50% 以上になる最小スケール
-        let scale_min = (0.5 * disp_w / w).max(0.5 * usable_h / h);
-        // 両辺が画面内 (100%) に収まる最大スケール
-        let scale_max = (disp_w / w).min(usable_h / h);
-
-        // 自然サイズ (scale 1.0) を起点として [scale_min, scale_max] にクランプ。
-        // scale_min > scale_max (極端なアスペクト比) の場合は scale_max を優先する。
-        let scale = (1.0_f64).max(scale_min).min(scale_max);
-
-        if (scale - 1.0).abs() > 0.01 {
-            let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
-        }
+        // 幅・高さそれぞれ 95% に収まるスケールのうち小さい方を採用
+        let scale = (0.95 * disp_w / w).min(0.95 * usable_h / h);
+        let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
         break;
     }
 }
@@ -291,7 +280,7 @@ pub async fn play(
         .args([
             "--idle",
             "--no-terminal",
-            "--autofit-larger=100%x100%",
+            "--autofit-larger=95%x95%",
             "--cache=yes",
             "--demuxer-max-bytes=150MiB",
             "--demuxer-max-back-bytes=50MiB",
