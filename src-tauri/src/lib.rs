@@ -32,6 +32,7 @@ pub fn run() {
             commands::mpv::set_loop,
             commands::library::delete_video_file,
             commands::library::delete_multiple_video_files,
+            commands::library::move_video_file,
             commands::settings::update_settings,
             commands::settings::get_default_mpv_path,
             commands::settings::path_exists,

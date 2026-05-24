@@ -31,16 +31,26 @@ function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function findWatchDir(filePath: string, watchDirs: string[]): string | null {
+  const normalized = filePath.replace(/\\/g, '/');
+  for (const dir of watchDirs) {
+    const d = dir.replace(/\\/g, '/').replace(/\/$/, '');
+    if (normalized.startsWith(d + '/')) return d;
+  }
+  return null;
+}
+
 export function VideoDetailModal({ video, onClose }: Props) {
   const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
     useTagStore();
-  const { db, fetchVideos, updateVideo } = useLibraryStore();
+  const { db, fetchVideos, updateVideo, watchDirs, moveVideoFile } = useLibraryStore();
   const { play } = usePlayerStore();
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
   const [localRating, setLocalRating] = useState(video.rating ?? 0);
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
+  const [moveFile, setMoveFile] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
   const [showTranscode, setShowTranscode] = useState(false);
@@ -118,7 +128,18 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const handleCategoryChange = async (value: string) => {
     if (!db) return;
     setCategoryId(value);
-    await setVideoCategory(db, video.id, value ? Number(value) : null);
+    const catId = value ? Number(value) : null;
+    await setVideoCategory(db, video.id, catId);
+
+    if (moveFile) {
+      const watchDir = findWatchDir(video.path, watchDirs);
+      if (watchDir) {
+        const catName = catId !== null ? categories.find((c) => c.id === catId)?.name : null;
+        const destDir = catName ? `${watchDir}/${catName}` : watchDir;
+        await moveVideoFile(video.id, destDir);
+      }
+    }
+
     await fetchVideos();
   };
 
@@ -298,6 +319,15 @@ export function VideoDetailModal({ video, onClose }: Props) {
                     </option>
                   ))}
                 </select>
+                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={moveFile}
+                    onChange={(e) => setMoveFile(e.target.checked)}
+                    className="accent-blue-600"
+                  />
+                  <span className="text-xs text-gray-500 dark:text-gray-400">ファイルも移動</span>
+                </label>
               </div>
 
               <div>

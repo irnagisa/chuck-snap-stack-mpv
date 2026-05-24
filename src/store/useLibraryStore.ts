@@ -53,6 +53,7 @@ interface LibraryActions {
   assignCategoryFromPath: (videoIds: number[]) => Promise<void>;
   addVideoFromPath: (path: string, title: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
+  moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
 }
 
 const CREATE_VIDEOS_TABLE = `
@@ -560,5 +561,26 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
     }
     await get().fetchVideos();
+  },
+
+  moveVideoFile: async (videoId: number, destDir: string) => {
+    const { db, videos } = get();
+    if (!db) return null;
+    const video = videos.find((v) => v.id === videoId);
+    if (!video) return null;
+    try {
+      const newPath = await invoke<string>('move_video_file', {
+        sourcePath: video.path,
+        destDir,
+      });
+      await db.execute('UPDATE videos SET path = ? WHERE id = ?', [newPath, videoId]);
+      set((state) => ({
+        videos: state.videos.map((v) => v.id === videoId ? { ...v, path: newPath } : v),
+      }));
+      return newPath;
+    } catch (e) {
+      console.error('Failed to move video file:', e);
+      return null;
+    }
   },
 }));

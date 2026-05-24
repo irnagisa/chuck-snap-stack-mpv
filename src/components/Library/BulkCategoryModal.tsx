@@ -8,10 +8,20 @@ interface Props {
   onDone: () => void;
 }
 
+function findWatchDir(filePath: string, watchDirs: string[]): string | null {
+  const normalized = filePath.replace(/\\/g, '/');
+  for (const dir of watchDirs) {
+    const d = dir.replace(/\\/g, '/').replace(/\/$/, '');
+    if (normalized.startsWith(d + '/')) return d;
+  }
+  return null;
+}
+
 export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
   const { categories, setCategoryMultiple } = useTagStore();
-  const { db, fetchVideos } = useLibraryStore();
+  const { db, fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null | 'unset'>('unset');
+  const [moveFiles, setMoveFiles] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleApply = async () => {
@@ -19,6 +29,21 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
     setLoading(true);
     try {
       await setCategoryMultiple(db, videoIds, selectedCategoryId);
+
+      if (moveFiles) {
+        const catName = typeof selectedCategoryId === 'number'
+          ? categories.find((c) => c.id === selectedCategoryId)?.name
+          : null;
+        for (const videoId of videoIds) {
+          const video = videos.find((v) => v.id === videoId);
+          if (!video) continue;
+          const watchDir = findWatchDir(video.path, watchDirs);
+          if (!watchDir) continue;
+          const destDir = catName ? `${watchDir}/${catName}` : watchDir;
+          await moveVideoFile(videoId, destDir);
+        }
+      }
+
       await fetchVideos();
       onDone();
     } finally {
@@ -73,6 +98,16 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
         {categories.length === 0 && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">カテゴリがありません</p>
         )}
+
+        <label className="flex items-center gap-1.5 mb-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={moveFiles}
+            onChange={(e) => setMoveFiles(e.target.checked)}
+            className="accent-blue-600"
+          />
+          <span className="text-xs text-gray-500 dark:text-gray-400">ファイルも移動する</span>
+        </label>
 
         <div className="flex gap-2">
           <button
