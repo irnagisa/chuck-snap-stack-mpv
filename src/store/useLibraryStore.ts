@@ -368,8 +368,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       const categoryIdMap: Record<string, number> = {};
       if (useDirectoryAsCategory) {
         const uniqueDirNames = [...new Set(files.map((f) => f.parent_dir_name).filter((n): n is string => n != null))];
+        await db.execute('BEGIN');
+        try {
+          for (const name of uniqueDirNames) {
+            await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, '#6366f1']);
+          }
+          await db.execute('COMMIT');
+        } catch (e) {
+          await db.execute('ROLLBACK');
+          throw e;
+        }
         for (const name of uniqueDirNames) {
-          await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, '#6366f1']);
           const rows = await db.select<{ id: number }[]>('SELECT id FROM categories WHERE name = ?', [name]);
           if (rows[0]) categoryIdMap[name] = rows[0].id;
         }
@@ -378,14 +387,21 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }
       }
 
-      for (const file of files) {
-        const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
-          ? (categoryIdMap[file.parent_dir_name] ?? null)
-          : null;
-        await db.execute(
-          'INSERT OR IGNORE INTO videos (path, title, category_id) VALUES (?, ?, ?)',
-          [file.path, file.title, categoryId]
-        );
+      await db.execute('BEGIN');
+      try {
+        for (const file of files) {
+          const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
+            ? (categoryIdMap[file.parent_dir_name] ?? null)
+            : null;
+          await db.execute(
+            'INSERT OR IGNORE INTO videos (path, title, category_id) VALUES (?, ?, ?)',
+            [file.path, file.title, categoryId]
+          );
+        }
+        await db.execute('COMMIT');
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        throw e;
       }
       set({ currentPage: 1, isScanning: false });
       await get().fetchVideos();
