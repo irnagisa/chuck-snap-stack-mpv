@@ -48,8 +48,16 @@ fn send_cmd(writer: &Arc<Mutex<UnixStream>>, cmd: Value) -> Result<(), String> {
 
 /// 一時接続でコマンドを送信しレスポンスを読む（一回限りの問い合わせ用）。
 fn send_ipc(cmd: Value) -> Result<Value, String> {
-    let mut stream =
+    let stream =
         UnixStream::connect(MPV_SOCKET).map_err(|e| format!("IPC 接続失敗: {e}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .map_err(|e| e.to_string())?;
+    send_ipc_on(stream, cmd)
+}
+
+/// 既存の UnixStream にコマンドを送信しレスポンスを読む。
+fn send_ipc_on(mut stream: UnixStream, cmd: Value) -> Result<Value, String> {
     let msg = cmd.to_string() + "\n";
     stream.write_all(msg.as_bytes()).map_err(|e| e.to_string())?;
 
@@ -182,6 +190,14 @@ fn connect_and_start_reader(
 
 // ----- ウィンドウサイズ制約 -----
 
+/// 1 つの IPC 接続で指定プロパティを取得する。
+fn get_prop_f64(stream: &UnixStream, name: &str) -> Option<f64> {
+    let cloned = stream.try_clone().ok()?;
+    send_ipc_on(cloned, json!({"command": ["get_property", name]}))
+        .ok()
+        .and_then(|v| v["data"].as_f64())
+}
+
 /// 動画ウィンドウのサイズ制約を適用する。
 /// 常に画面の 95% に収まるようスケールを設定する。
 /// dwidth が 0 の間は最大 2 秒間ポーリングして動画ロード完了を待つ。
@@ -189,30 +205,28 @@ fn apply_window_size_constraints() {
     for _ in 0..10 {
         std::thread::sleep(std::time::Duration::from_millis(200));
 
-        let w = send_ipc(json!({"command": ["get_property", "dwidth"]}))
-            .ok()
-            .and_then(|v| v["data"].as_f64())
-            .unwrap_or(0.0);
+        // 接続を1本張りポーリング内で使い回す
+        let stream = match UnixStream::connect(MPV_SOCKET) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .is_err()
+        {
+            continue;
+        }
+
+        let w = get_prop_f64(&stream, "dwidth").unwrap_or(0.0);
         if w == 0.0 {
             continue;
         }
-        let h = send_ipc(json!({"command": ["get_property", "dheight"]}))
-            .ok()
-            .and_then(|v| v["data"].as_f64())
-            .unwrap_or(0.0);
+        let h = get_prop_f64(&stream, "dheight").unwrap_or(0.0);
         if h == 0.0 {
             break;
         }
-
-        let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
-            .ok()
-            .and_then(|v| v["data"].as_f64())
-            .unwrap_or(0.0);
-        let disp_h = send_ipc(json!({"command": ["get_property", "display-height"]}))
-            .ok()
-            .and_then(|v| v["data"].as_f64())
-            .unwrap_or(0.0);
-
+        let disp_w = get_prop_f64(&stream, "display-width").unwrap_or(0.0);
+        let disp_h = get_prop_f64(&stream, "display-height").unwrap_or(0.0);
         if disp_w <= 0.0 || disp_h <= 0.0 {
             break;
         }
