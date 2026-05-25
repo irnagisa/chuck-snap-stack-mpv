@@ -9,6 +9,7 @@ import { usePlaylistStore } from './usePlaylistStore';
 
 export type SortBy = 'created_at' | 'duration' | 'rating';
 export type SortOrder = 'desc' | 'asc';
+export type WatchedStatus = 'all' | 'watched' | 'unwatched';
 
 interface LibraryState {
   videos: Video[];
@@ -18,6 +19,10 @@ interface LibraryState {
   filterSearch: string;
   filterCategoryId: number | null;
   filterTagIds: number[];
+  filterMinRating: number;
+  filterHasAudio: number | null;
+  filterMinDuration: number;
+  filterWatchedStatus: WatchedStatus;
   filterSortBy: SortBy;
   filterSortOrder: SortOrder;
   watchDirs: string[];
@@ -38,6 +43,10 @@ interface LibraryActions {
   setCategoryFilter: (id: number | null) => Promise<void>;
   toggleTagFilter: (tagId: number) => Promise<void>;
   clearTagFilters: () => Promise<void>;
+  setMinRating: (rating: number) => Promise<void>;
+  setHasAudio: (hasAudio: number | null) => Promise<void>;
+  setMinDuration: (seconds: number) => Promise<void>;
+  setWatchedStatus: (status: WatchedStatus) => Promise<void>;
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
@@ -128,6 +137,57 @@ const CREATE_WATCH_DIRS_TABLE = `
   )
 `;
 
+type FilterState = Pick<LibraryState,
+  'filterSearch' | 'filterCategoryId' | 'filterTagIds' |
+  'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus'
+>;
+
+function buildWhereClause(f: FilterState): { where: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (f.filterSearch.trim()) {
+    conditions.push('(v.title LIKE ? OR v.path LIKE ?)');
+    const s = `%${f.filterSearch.trim()}%`;
+    params.push(s, s);
+  }
+  if (f.filterCategoryId !== null) {
+    if (f.filterCategoryId === -1) {
+      conditions.push('v.category_id IS NULL');
+    } else {
+      conditions.push('v.category_id = ?');
+      params.push(f.filterCategoryId);
+    }
+  }
+  if (f.filterTagIds.length > 0) {
+    const ph = f.filterTagIds.map(() => '?').join(', ');
+    conditions.push(`(SELECT COUNT(*) FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag_id IN (${ph})) = ${f.filterTagIds.length}`);
+    params.push(...f.filterTagIds);
+  }
+  if (f.filterMinRating > 0) {
+    conditions.push('v.rating >= ?');
+    params.push(f.filterMinRating);
+  }
+  if (f.filterHasAudio !== null) {
+    conditions.push('v.has_audio = ?');
+    params.push(f.filterHasAudio);
+  }
+  if (f.filterMinDuration > 0) {
+    conditions.push('v.duration >= ?');
+    params.push(f.filterMinDuration);
+  }
+  if (f.filterWatchedStatus === 'unwatched') {
+    conditions.push('v.watched_at IS NULL');
+  } else if (f.filterWatchedStatus === 'watched') {
+    conditions.push('v.watched_at IS NOT NULL');
+  }
+
+  return {
+    where: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
+    params,
+  };
+}
+
 let _thumbnailPaused = false;
 
 const THUMBNAIL_CONCURRENCY = 3;
@@ -140,6 +200,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterSearch: '',
   filterCategoryId: null,
   filterTagIds: [],
+  filterMinRating: 0,
+  filterHasAudio: null,
+  filterMinDuration: 0,
+  filterWatchedStatus: 'all',
   filterSortBy: 'created_at',
   filterSortOrder: 'desc',
   watchDirs: [],
@@ -190,32 +254,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   fetchVideos: async () => {
-    const { db, currentPage, pageSize, filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder } = get();
+    const { db, currentPage, pageSize, filterSortBy, filterSortOrder } = get();
     if (!db) return;
 
-    const conditions: string[] = [];
-    const baseParams: unknown[] = [];
-
-    if (filterSearch.trim()) {
-      conditions.push('(v.title LIKE ? OR v.path LIKE ?)');
-      const s = `%${filterSearch.trim()}%`;
-      baseParams.push(s, s);
-    }
-    if (filterCategoryId !== null) {
-      if (filterCategoryId === -1) {
-        conditions.push('v.category_id IS NULL');
-      } else {
-        conditions.push('v.category_id = ?');
-        baseParams.push(filterCategoryId);
-      }
-    }
-    if (filterTagIds.length > 0) {
-      const ph = filterTagIds.map(() => '?').join(', ');
-      conditions.push(`EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag_id IN (${ph}))`);
-      baseParams.push(...filterTagIds);
-    }
-
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const { where, params: baseParams } = buildWhereClause(get());
     const sortCol =
       filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
       filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';
@@ -242,32 +284,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   fetchAllForShuffle: async () => {
-    const { db, filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder } = get();
+    const { db, filterSortBy, filterSortOrder } = get();
     if (!db) return [];
 
-    const conditions: string[] = [];
-    const baseParams: unknown[] = [];
-
-    if (filterSearch.trim()) {
-      conditions.push('(v.title LIKE ? OR v.path LIKE ?)');
-      const s = `%${filterSearch.trim()}%`;
-      baseParams.push(s, s);
-    }
-    if (filterCategoryId !== null) {
-      if (filterCategoryId === -1) {
-        conditions.push('v.category_id IS NULL');
-      } else {
-        conditions.push('v.category_id = ?');
-        baseParams.push(filterCategoryId);
-      }
-    }
-    if (filterTagIds.length > 0) {
-      const ph = filterTagIds.map(() => '?').join(', ');
-      conditions.push(`EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag_id IN (${ph}))`);
-      baseParams.push(...filterTagIds);
-    }
-
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const { where, params: baseParams } = buildWhereClause(get());
     const sortCol =
       filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
       filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';
@@ -300,6 +320,26 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   clearTagFilters: async () => {
     set({ filterTagIds: [], currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setMinRating: async (rating: number) => {
+    set({ filterMinRating: rating, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setHasAudio: async (hasAudio: number | null) => {
+    set({ filterHasAudio: hasAudio, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setMinDuration: async (seconds: number) => {
+    set({ filterMinDuration: seconds, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setWatchedStatus: async (status: WatchedStatus) => {
+    set({ filterWatchedStatus: status, currentPage: 1 });
     await get().fetchVideos();
   },
 

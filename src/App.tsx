@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
+import type { WatchedStatus } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
@@ -20,11 +21,15 @@ type SidebarTab = 'category' | 'playlist';
 function App() {
   const {
     videos, totalCount, currentPage, pageSize,
-    filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder,
+    filterSearch, filterCategoryId, filterTagIds,
+    filterMinRating, filterHasAudio, filterMinDuration, filterWatchedStatus,
+    filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress,
     isDbReady, dbError,
-    initDb, scanAndImport, assignCategoryFromPath,
-    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setSort, setPage,
+    initDb, fetchVideos, scanAndImport, assignCategoryFromPath,
+    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters,
+    setMinRating, setHasAudio, setMinDuration, setWatchedStatus,
+    setSort, setPage,
     pauseThumbnails, resumeThumbnails,
   } = useLibraryStore();
   const { playWithQueue, playShuffleAll, currentVideo } = usePlayerStore();
@@ -41,6 +46,7 @@ function App() {
   } = useModalStore();
 
   const [searchInput, setSearchInput] = useState(filterSearch);
+  const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
@@ -52,6 +58,15 @@ function App() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // Debounce duration input → store
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const seconds = parseInt(durationInput, 10);
+      setMinDuration(isNaN(seconds) || seconds <= 0 ? 0 : seconds);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [durationInput]);
 
   useKeyboardShortcuts({ onEscape: closeAll });
   useWatcher();
@@ -309,66 +324,124 @@ function App() {
           {isDbReady && (
             <div className="flex flex-col flex-1 min-h-0">
               {/* フィルタ・ソートバー */}
-              <div className="flex items-start gap-2 mb-3 shrink-0">
-                <div className="flex flex-wrap gap-1 flex-1 min-w-0">
-                  {tags.length > 0 ? (
-                    <>
-                      {tags.map((tag) => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          className={`px-1.5 py-px rounded-full text-[10px] font-medium text-white transition-opacity ${
-                            filterTagIds.includes(tag.id)
-                              ? 'opacity-100 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950'
-                              : 'opacity-40 hover:opacity-70'
-                          }`}
-                          style={{ backgroundColor: tag.color }}
-                          onClick={() => toggleTagFilter(tag.id)}
-                        >
-                          {tag.name}
-                        </button>
-                      ))}
-                      {filterTagIds.length > 0 && (
-                        <button
-                          type="button"
-                          className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
-                          onClick={() => clearTagFilters()}
-                        >
-                          クリア
-                        </button>
-                      )}
-                    </>
-                  ) : null}
-                </div>
+              <div className="flex flex-col gap-1.5 mb-3 shrink-0">
+                {/* Row 1: タグ + ソート */}
+                <div className="flex items-start gap-2">
+                  <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+                    {tags.length > 0 ? (
+                      <>
+                        {tags.map((tag) => (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            className={`px-1.5 py-px rounded-full text-[10px] font-medium text-white transition-opacity ${
+                              filterTagIds.includes(tag.id)
+                                ? 'opacity-100 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950'
+                                : 'opacity-40 hover:opacity-70'
+                            }`}
+                            style={{ backgroundColor: tag.color }}
+                            onClick={() => toggleTagFilter(tag.id)}
+                          >
+                            {tag.name}
+                          </button>
+                        ))}
+                        {filterTagIds.length > 0 && (
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
+                            onClick={() => clearTagFilters()}
+                          >
+                            クリア
+                          </button>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
 
-                <div className="flex items-center gap-1 shrink-0">
-                  <select
-                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    value={filterSortBy}
-                    onChange={(e) => setSort(e.target.value as typeof filterSortBy, filterSortOrder)}
-                  >
-                    <option value="created_at">追加日</option>
-                    <option value="duration">長さ</option>
-                    <option value="rating">評価</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
-                    title={filterSortOrder === 'desc' ? '降順 (クリックで昇順)' : '昇順 (クリックで降順)'}
-                    onClick={() => setSort(filterSortBy, filterSortOrder === 'desc' ? 'asc' : 'desc')}
-                  >
-                    {filterSortOrder === 'desc' ? '↓' : '↑'}
-                  </button>
-                  {totalCount > 0 && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <select
+                      className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                      value={filterSortBy}
+                      onChange={(e) => setSort(e.target.value as typeof filterSortBy, filterSortOrder)}
+                    >
+                      <option value="created_at">追加日</option>
+                      <option value="duration">長さ</option>
+                      <option value="rating">評価</option>
+                    </select>
                     <button
                       type="button"
-                      className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-700 dark:hover:text-purple-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors"
-                      title={`現在のフィルター全 ${totalCount.toLocaleString()} 件をシャッフル再生`}
-                      onClick={playShuffleAll}
+                      className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
+                      title={filterSortOrder === 'desc' ? '降順 (クリックで昇順)' : '昇順 (クリックで降順)'}
+                      onClick={() => setSort(filterSortBy, filterSortOrder === 'desc' ? 'asc' : 'desc')}
                     >
-                      ⇄ 全件
+                      {filterSortOrder === 'desc' ? '↓' : '↑'}
                     </button>
-                  )}
+                    {totalCount > 0 && (
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-700 dark:hover:text-purple-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors"
+                        title={`現在のフィルター全 ${totalCount.toLocaleString()} 件をシャッフル再生`}
+                        onClick={playShuffleAll}
+                      >
+                        ⇄ 全件
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 2: 追加フィルタ */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <select
+                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    value={filterMinRating}
+                    onChange={(e) => setMinRating(Number(e.target.value))}
+                    title="評価フィルタ"
+                  >
+                    <option value={0}>評価: すべて</option>
+                    <option value={1}>★1以上</option>
+                    <option value={2}>★2以上</option>
+                    <option value={3}>★3以上</option>
+                    <option value={4}>★4以上</option>
+                    <option value={5}>★5のみ</option>
+                  </select>
+
+                  <select
+                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    value={filterHasAudio === null ? '' : String(filterHasAudio)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setHasAudio(v === '' ? null : Number(v));
+                    }}
+                    title="音声フィルタ"
+                  >
+                    <option value="">音声: すべて</option>
+                    <option value="1">音声あり</option>
+                    <option value="0">音声なし</option>
+                  </select>
+
+                  <select
+                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    value={filterWatchedStatus}
+                    onChange={(e) => setWatchedStatus(e.target.value as WatchedStatus)}
+                    title="視聴状態フィルタ"
+                  >
+                    <option value="all">視聴: すべて</option>
+                    <option value="unwatched">未視聴</option>
+                    <option value="watched">視聴済み</option>
+                  </select>
+
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                      value={durationInput}
+                      onChange={(e) => setDurationInput(e.target.value)}
+                      placeholder="秒数"
+                      min={0}
+                      title="最小長さ (秒)"
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">秒以上</span>
+                  </div>
                 </div>
               </div>
 
