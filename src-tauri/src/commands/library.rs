@@ -9,6 +9,7 @@ use super::settings::SharedAppSettings;
 pub struct ThumbnailResult {
     pub thumbnail_path: String,
     pub duration: Option<f64>,
+    pub has_audio: bool,
 }
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv"];
@@ -92,6 +93,20 @@ pub async fn generate_thumbnail(
         .and_then(|out| String::from_utf8(out.stdout).ok())
         .and_then(|s| s.trim().parse::<f64>().ok());
 
+    // ffprobe で音声ストリームの有無を確認
+    let has_audio = tokio::process::Command::new(&ffprobe_path)
+        .args([
+            "-v", "quiet",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=codec_type",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            &video_path,
+        ])
+        .output()
+        .await
+        .map(|out| !out.stdout.iter().all(|b| b.is_ascii_whitespace()))
+        .unwrap_or(true);
+
     // 5秒地点からフレームを抽出 (高速シーク)
     let status = tokio::process::Command::new(&ffmpeg_path)
         .args([
@@ -106,7 +121,7 @@ pub async fn generate_thumbnail(
         .map_err(|e| e.to_string())?;
 
     if status.success() {
-        return Ok(ThumbnailResult { thumbnail_path: output_path, duration });
+        return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio });
     }
 
     // 動画が5秒未満の場合は先頭フレームで再試行
@@ -123,10 +138,36 @@ pub async fn generate_thumbnail(
         .map_err(|e| e.to_string())?;
 
     if status2.success() {
-        Ok(ThumbnailResult { thumbnail_path: output_path, duration })
+        Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio })
     } else {
         Err("ffmpeg failed".to_string())
     }
+}
+
+/// ffprobe で音声ストリームの有無を確認する。
+#[tauri::command]
+pub async fn check_has_audio(
+    app_settings: tauri::State<'_, SharedAppSettings>,
+    video_path: String,
+) -> Result<bool, String> {
+    let ffprobe_path = {
+        let s = app_settings.lock().map_err(|e| e.to_string())?;
+        s.ffprobe_path.clone()
+    };
+
+    let out = tokio::process::Command::new(&ffprobe_path)
+        .args([
+            "-v", "quiet",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=codec_type",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            &video_path,
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(!out.stdout.iter().all(|b| b.is_ascii_whitespace()))
 }
 
 /// ファイルサイズをバイト単位で返す。

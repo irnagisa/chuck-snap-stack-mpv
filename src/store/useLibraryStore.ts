@@ -167,6 +167,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       try {
         await db.execute('ALTER TABLE tags ADD COLUMN tag_category_id INTEGER REFERENCES tag_categories(id)');
       } catch { /* already exists */ }
+      try {
+        await db.execute('ALTER TABLE videos ADD COLUMN has_audio INTEGER');
+      } catch { /* already exists */ }
       set({ db, isDbReady: true });
       await useSettingsStore.getState().loadSettings(db);
       await get().fetchVideos();
@@ -380,43 +383,55 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const thumbDir = await join(cacheDir, 'thumbnails');
 
     // Query DB directly so all pages are covered, not just the current page
-    const withoutThumb = await db.select<{ id: number; path: string }[]>(
-      'SELECT id, path FROM videos WHERE thumbnail IS NULL'
+    const pending = await db.select<{ id: number; path: string; thumbnail: string | null }[]>(
+      'SELECT id, path, thumbnail FROM videos WHERE thumbnail IS NULL OR has_audio IS NULL'
     );
-    if (withoutThumb.length === 0) return;
+    if (pending.length === 0) return;
 
     _thumbnailPaused = false;
-    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: withoutThumb.length } });
+    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: pending.length } });
 
-    const processVideo = async (video: { id: number; path: string }) => {
+    const processVideo = async (video: { id: number; path: string; thumbnail: string | null }) => {
       try {
-        const hashBuffer = await crypto.subtle.digest(
-          'SHA-256',
-          new TextEncoder().encode(video.path)
-        );
-        const hash = Array.from(new Uint8Array(hashBuffer))
-          .map((b) => b.toString(16).padStart(2, '0'))
-          .join('');
-        const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+        if (!video.thumbnail) {
+          const hashBuffer = await crypto.subtle.digest(
+            'SHA-256',
+            new TextEncoder().encode(video.path)
+          );
+          const hash = Array.from(new Uint8Array(hashBuffer))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
 
-        const result = await invoke<{ thumbnail_path: string; duration: number | null }>(
-          'generate_thumbnail',
-          { videoPath: video.path, outputPath }
-        );
-        await db.execute(
-          'UPDATE videos SET thumbnail = ?, duration = ? WHERE id = ?',
-          [result.thumbnail_path, result.duration, video.id]
-        );
-        // Patch in-memory if the video is on the current page
-        set((state) => ({
-          videos: state.videos.map((v) =>
-            v.id === video.id
-              ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration }
-              : v
-          ),
-        }));
+          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+            'generate_thumbnail',
+            { videoPath: video.path, outputPath }
+          );
+          const hasAudio = result.has_audio ? 1 : 0;
+          await db.execute(
+            'UPDATE videos SET thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
+            [result.thumbnail_path, result.duration, hasAudio, video.id]
+          );
+          set((state) => ({
+            videos: state.videos.map((v) =>
+              v.id === video.id
+                ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration, has_audio: hasAudio }
+                : v
+            ),
+          }));
+        } else {
+          // サムネイルはあるが音声情報が未取得の動画
+          const hasAudioRaw = await invoke<boolean>('check_has_audio', { videoPath: video.path });
+          const hasAudio = hasAudioRaw ? 1 : 0;
+          await db.execute('UPDATE videos SET has_audio = ? WHERE id = ?', [hasAudio, video.id]);
+          set((state) => ({
+            videos: state.videos.map((v) =>
+              v.id === video.id ? { ...v, has_audio: hasAudio } : v
+            ),
+          }));
+        }
       } catch (e) {
-        console.warn(`Thumbnail generation failed for ${video.path}:`, e);
+        console.warn(`Audio/thumbnail processing failed for ${video.path}:`, e);
       }
       set((state) => ({
         thumbnailProgress: state.thumbnailProgress
@@ -426,11 +441,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     };
 
     try {
-      for (let i = 0; i < withoutThumb.length; i += THUMBNAIL_CONCURRENCY) {
+      for (let i = 0; i < pending.length; i += THUMBNAIL_CONCURRENCY) {
         while (_thumbnailPaused) {
           await new Promise<void>((resolve) => setTimeout(resolve, 200));
         }
-        const batch = withoutThumb.slice(i, i + THUMBNAIL_CONCURRENCY);
+        const batch = pending.slice(i, i + THUMBNAIL_CONCURRENCY);
         await Promise.all(batch.map(processVideo));
       }
     } finally {

@@ -8,6 +8,7 @@ export interface Video {
   progress: number;
   rating: number;
   category_id: number | null;
+  has_audio: number | null;
   created_at: string;
 }
 

@@ -175,6 +175,16 @@ export function LibraryGrid({
                               </div>
                             </div>
 
+                            {v.has_audio === 0 && (
+                              <div className="absolute top-1 left-1 pointer-events-none group-hover:opacity-0 transition-opacity">
+                                <div className="bg-black/60 rounded p-0.5">
+                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
+                                    <path d="M9.547 3.062A.75.75 0 0 1 10 3.75v12.5a.75.75 0 0 1-1.264.546L4.703 13H3.167a.75.75 0 0 1-.7-.48A6.985 6.985 0 0 1 2 10c0-.887.165-1.737.468-2.52a.75.75 0 0 1 .699-.48h1.536l4.033-3.296a.75.75 0 0 1 .811-.142ZM13.28 7.22a.75.75 0 1 0-1.06 1.06L13.44 9.5l-1.22 1.22a.75.75 0 1 0 1.06 1.06l1.22-1.22 1.22 1.22a.75.75 0 1 0 1.06-1.06L15.56 9.5l1.22-1.22a.75.75 0 0 0-1.06-1.06L14.5 8.44l-1.22-1.22Z" />
+                                  </svg>
+                                </div>
+                              </div>
+                            )}
+
                             {isPlaying && (
                               <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
                                 再生中
