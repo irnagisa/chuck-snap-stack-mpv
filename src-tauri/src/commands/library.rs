@@ -137,6 +137,45 @@ pub async fn get_file_size(path: String) -> Result<u64, String> {
         .map_err(|e| format!("ファイルサイズ取得失敗: {e}"))
 }
 
+#[derive(Serialize)]
+pub struct VideoDimensions {
+    pub width: u32,
+    pub height: u32,
+}
+
+/// ffprobe で動画の解像度 (width × height) を取得する。
+#[tauri::command]
+pub async fn get_video_dimensions(
+    app_settings: tauri::State<'_, SharedAppSettings>,
+    path: String,
+) -> Result<VideoDimensions, String> {
+    let ffprobe_path = {
+        let s = app_settings.lock().map_err(|e| e.to_string())?;
+        s.ffprobe_path.clone()
+    };
+
+    let out = tokio::process::Command::new(&ffprobe_path)
+        .args([
+            "-v", "quiet",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            &path,
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let parts: Vec<&str> = stdout.trim().split(',').collect();
+    if parts.len() < 2 {
+        return Err("解像度を取得できませんでした".to_string());
+    }
+    let width = parts[0].parse::<u32>().map_err(|e| e.to_string())?;
+    let height = parts[1].parse::<u32>().map_err(|e| e.to_string())?;
+    Ok(VideoDimensions { width, height })
+}
+
 /// 動画ファイルをファイルシステムから削除する。
 #[tauri::command]
 pub async fn delete_video_file(path: String) -> Result<(), String> {

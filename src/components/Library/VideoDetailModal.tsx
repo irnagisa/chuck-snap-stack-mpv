@@ -49,6 +49,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
   const [localRating, setLocalRating] = useState(video.rating ?? 0);
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
   const [moveFile, setMoveFile] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -66,6 +67,9 @@ export function VideoDetailModal({ video, onClose }: Props) {
   useEffect(() => {
     invoke<number>('get_file_size', { path: video.path })
       .then(setFileSizeBytes)
+      .catch(() => {});
+    invoke<{ width: number; height: number }>('get_video_dimensions', { path: video.path })
+      .then(setDimensions)
       .catch(() => {});
   }, [video.path]);
 
@@ -267,6 +271,14 @@ export function VideoDetailModal({ video, onClose }: Props) {
                   </label>
                   <p className="text-sm text-gray-800 dark:text-gray-200">
                     {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    解像度
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {dimensions ? `${dimensions.width} × ${dimensions.height}` : '—'}
                   </p>
                 </div>
                 <div>

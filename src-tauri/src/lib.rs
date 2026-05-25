@@ -30,6 +30,7 @@ pub fn run() {
             commands::mpv::adjust_volume,
             commands::mpv::toggle_fullscreen,
             commands::mpv::set_loop,
+            commands::library::get_video_dimensions,
             commands::library::delete_video_file,
             commands::library::delete_multiple_video_files,
             commands::library::move_video_file,
