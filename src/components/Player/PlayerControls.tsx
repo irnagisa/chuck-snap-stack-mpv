@@ -30,14 +30,38 @@ export function PlayerControls() {
     toggleShuffle,
   } = usePlayerStore();
 
-  if (!currentVideo) return null;
-
   const hasPrev = queue.length > 0 && queueIndex > 0;
   const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     seekTo(Number(e.target.value));
   };
+
+  // 再生前 (未選択) の場合はシャッフル・ループ設定だけ見せるミニバー
+  if (!currentVideo) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 py-2 shadow-lg border-t border-gray-700 flex items-center gap-2">
+        <span className="text-xs text-gray-500 shrink-0">再生設定</span>
+        <div className="w-px h-4 bg-gray-700 shrink-0" />
+        <button
+          type="button"
+          onClick={toggleShuffle}
+          className={`px-2.5 py-1 rounded text-sm shrink-0 ${isShuffle ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+          title={isShuffle ? 'シャッフル解除' : 'シャッフル再生'}
+        >
+          ⇄ シャッフル
+        </button>
+        <button
+          type="button"
+          onClick={toggleLoop}
+          className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+          title={isLooping ? 'ループ解除' : 'ループ再生'}
+        >
+          ↻ ループ
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 pt-2 pb-3 shadow-lg border-t border-gray-700 flex flex-col gap-2">

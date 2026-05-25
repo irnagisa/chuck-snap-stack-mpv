@@ -102,7 +102,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     originalQueue: [],
 
     play: async (video: Video) => {
+      const { isLooping } = get();
       await invokPlay(video);
+      if (isLooping) {
+        try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
+      }
       set({
         currentVideo: video,
         playbackTime: 0,
@@ -115,15 +119,36 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
     playWithQueue: async (videos: Video[], startIndex = 0) => {
       if (videos.length === 0) return;
-      const idx = Math.max(0, Math.min(startIndex, videos.length - 1));
-      await invokPlay(videos[idx]);
+      const { isShuffle, isLooping } = get();
+
+      let queue = [...videos];
+      let idx = Math.max(0, Math.min(startIndex, videos.length - 1));
+      let originalQueue: Video[] = [];
+
+      if (isShuffle && videos.length > 1) {
+        const current = queue[idx];
+        const rest = queue.filter((_, i) => i !== idx);
+        for (let i = rest.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [rest[i], rest[j]] = [rest[j], rest[i]];
+        }
+        originalQueue = [...videos];
+        queue = [current, ...rest];
+        idx = 0;
+      }
+
+      await invokPlay(queue[idx]);
+      if (isLooping) {
+        try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
+      }
       set({
-        currentVideo: videos[idx],
+        currentVideo: queue[idx],
         playbackTime: 0,
         duration: 0,
         isPaused: false,
-        queue: videos,
+        queue,
         queueIndex: idx,
+        originalQueue,
       });
     },
 
@@ -243,6 +268,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     },
 
     playShuffleAll: async () => {
+      const { isLooping } = get();
       const allVideos = await useLibraryStore.getState().fetchAllForShuffle();
       if (allVideos.length === 0) return;
 
@@ -253,6 +279,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       }
 
       await invokPlay(shuffled[0]);
+      if (isLooping) {
+        try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
+      }
       set({
         currentVideo: shuffled[0],
         playbackTime: 0,
