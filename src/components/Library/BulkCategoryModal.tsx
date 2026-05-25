@@ -21,7 +21,7 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
   const { categories, setCategoryMultiple } = useTagStore();
   const { db, fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null | 'unset'>('unset');
-  const [moveFiles, setMoveFiles] = useState(false);
+  const [moveFiles, setMoveFiles] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const handleApply = async () => {
