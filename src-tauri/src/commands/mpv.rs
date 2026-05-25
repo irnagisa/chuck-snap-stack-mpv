@@ -122,15 +122,16 @@ fn connect_and_start_reader(
                     eprintln!("[reader gen={current_gen}] EOF 受信");
                     let is_current = gen_counter.load(Ordering::Acquire) == current_gen;
                     if is_current {
-                        // ゾンビプロセスを回収し、死んだソケット参照をクリア
+                        // ソケット参照をクリアし、ゾンビプロセス回収はバックグラウンドへ
                         let child_opt = state.lock().ok().and_then(|mut s| {
                             s.writer = None;
                             s.process.take()
                         });
                         if let Some(mut child) = child_opt {
-                            let _ = child.wait();
+                            // child.wait() をバックグラウンドへ逃がし closed 通知をブロックしない
+                            std::thread::spawn(move || { let _ = child.wait(); });
                         }
-                        // wait() 中に新しい mpv が起動した場合はスキップ
+                        // 新しい mpv が起動していなければ closed を即座に送信
                         let still_current =
                             gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
