@@ -263,7 +263,8 @@ pub async fn play(
         match send_ipc(json!({"command": ["loadfile", path, "replace"]})) {
             Ok(_) => {
                 eprintln!("[play] loadfile 送信成功");
-                tokio::task::spawn_blocking(apply_window_size_constraints);
+                // プロセス再利用時は --autofit-larger=95%x95% が自動でリサイズするため
+                // apply_window_size_constraints は不要
                 return Ok(());
             }
             Err(e) => {
