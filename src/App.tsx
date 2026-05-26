@@ -36,7 +36,7 @@ function App() {
   } = useTranscodeStore();
   const {
     openSettings, openDownload, openDetailVideo, openAddToPlaylist,
-    openPlaylist, openBulkModal, closeAll,
+    openPlaylist, openBulkModal, openDuplicates, closeAll,
   } = useModalStore();
 
   const [searchInput, setSearchInput] = useState(filterSearch);
@@ -115,6 +115,15 @@ function App() {
           placeholder="動画を検索..."
           disabled={!isDbReady}
         />
+        <button
+          type="button"
+          title="重複動画を検出"
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
+          disabled={!isDbReady}
+          onClick={openDuplicates}
+        >
+          重複
+        </button>
         <button
           type="button"
           title="設定"

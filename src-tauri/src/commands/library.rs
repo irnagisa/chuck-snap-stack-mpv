@@ -178,6 +178,16 @@ pub async fn get_file_size(path: String) -> Result<u64, String> {
         .map_err(|e| format!("ファイルサイズ取得失敗: {e}"))
 }
 
+/// 複数ファイルのサイズをバッチで返す。ファイルが存在しない場合は None。
+#[tauri::command]
+pub async fn get_file_sizes(paths: Vec<String>) -> Result<Vec<Option<u64>>, String> {
+    let sizes = paths
+        .iter()
+        .map(|p| fs::metadata(p).ok().map(|m| m.len()))
+        .collect();
+    Ok(sizes)
+}
+
 #[derive(Serialize)]
 pub struct VideoDimensions {
     pub width: u32,

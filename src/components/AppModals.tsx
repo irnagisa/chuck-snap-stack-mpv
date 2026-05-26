@@ -8,6 +8,7 @@ import { AddToPlaylistModal } from './Library/AddToPlaylistModal';
 import { BulkDeleteModal } from './Library/BulkDeleteModal';
 import { BulkTagModal } from './Library/BulkTagModal';
 import { BulkCategoryModal } from './Library/BulkCategoryModal';
+import { DuplicatesModal } from './Library/DuplicatesModal';
 import type { Video } from '../types';
 
 interface AppModalsProps {
@@ -20,6 +21,7 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
   const {
     showSettings, closeSettings,
     showDownload, closeDownload,
+    showDuplicates, closeDuplicates,
     detailVideo, closeDetailVideo,
     activePlaylist, closePlaylist,
     addToPlaylistVideo, closeAddToPlaylist,
@@ -32,6 +34,8 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {showSettings && <SettingsPanel onClose={closeSettings} />}
 
       {showDownload && <DownloadModal onClose={closeDownload} />}
+
+      {showDuplicates && <DuplicatesModal onClose={closeDuplicates} />}
 
       {detailVideo && (
         <VideoDetailModal
