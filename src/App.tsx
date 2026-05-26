@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
@@ -6,22 +6,15 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
 import { useTagStore } from "./store/useTagStore";
 import { useTranscodeStore } from "./store/useTranscodeStore";
+import { useModalStore } from "./store/useModalStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
-import { PlaylistModal } from "./components/Library/PlaylistModal";
-import { AddToPlaylistModal } from "./components/Library/AddToPlaylistModal";
-import { VideoDetailModal } from "./components/Library/VideoDetailModal";
-import { SettingsPanel } from "./components/Settings/SettingsPanel";
-import { BulkDeleteModal } from "./components/Library/BulkDeleteModal";
-import { BulkTagModal } from "./components/Library/BulkTagModal";
-import { BulkCategoryModal } from "./components/Library/BulkCategoryModal";
-import { DownloadModal } from "./components/Library/DownloadModal";
-import type { Video, Playlist } from "./types";
+import { AppModals } from "./components/AppModals";
+import { ToastContainer } from "./components/common/ToastContainer";
 
 type SidebarTab = 'category' | 'playlist';
-type BulkModal = 'delete' | 'tag' | 'category' | null;
 
 function App() {
   const {
@@ -29,24 +22,26 @@ function App() {
     filterSearch, filterCategoryId, filterTagIds, filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress,
     isDbReady, dbError,
-    initDb, fetchVideos, scanAndImport, assignCategoryFromPath,
+    initDb, scanAndImport, assignCategoryFromPath,
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setSort, setPage,
     pauseThumbnails, resumeThumbnails,
   } = useLibraryStore();
   const { playWithQueue, playShuffleAll, currentVideo } = usePlayerStore();
   const { tags } = useTagStore();
-  const { isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError, progress: transcodeProgress, videoName: transcodeVideoName, inputSizeBytes: transcodeInputSize, outputSizeBytes: transcodeOutputSize, cancel: cancelTranscode, dismiss: dismissTranscode } = useTranscodeStore();
+  const {
+    isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError,
+    progress: transcodeProgress, videoName: transcodeVideoName,
+    inputSizeBytes: transcodeInputSize, outputSizeBytes: transcodeOutputSize,
+    cancel: cancelTranscode, dismiss: dismissTranscode,
+  } = useTranscodeStore();
+  const {
+    openSettings, openDownload, openDetailVideo, openAddToPlaylist,
+    openPlaylist, openBulkModal, closeAll,
+  } = useModalStore();
 
-  // Local input state for search — debounced before hitting the store/DB
   const [searchInput, setSearchInput] = useState(filterSearch);
-  const [showSettings, setShowSettings] = useState(false);
-  const [detailVideo, setDetailVideo] = useState<Video | null>(null);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
-  const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
-  const [addToPlaylistVideo, setAddToPlaylistVideo] = useState<Video | null>(null);
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
-  const [bulkModal, setBulkModal] = useState<BulkModal>(null);
-  const [showDownload, setShowDownload] = useState(false);
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
 
   // Debounce search input → store
@@ -57,15 +52,7 @@ function App() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const closeAllModals = useCallback(() => {
-    setShowSettings(false);
-    setDetailVideo(null);
-    setActivePlaylist(null);
-    setAddToPlaylistVideo(null);
-    setBulkModal(null);
-  }, []);
-
-  useKeyboardShortcuts({ onEscape: closeAllModals });
+  useKeyboardShortcuts({ onEscape: closeAll });
   useWatcher();
 
   useEffect(() => {
@@ -117,7 +104,7 @@ function App() {
           type="button"
           className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50 text-sm dark:bg-green-500 dark:hover:bg-green-600 shrink-0"
           disabled={!isDbReady}
-          onClick={() => setShowDownload(true)}
+          onClick={openDownload}
         >
           ↓ URL
         </button>
@@ -132,7 +119,7 @@ function App() {
           type="button"
           title="設定"
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
-          onClick={() => setShowSettings(true)}
+          onClick={openSettings}
         >
           ⚙
         </button>
@@ -256,10 +243,6 @@ function App() {
         </div>
       )}
 
-      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-
-      {showDownload && <DownloadModal onClose={() => setShowDownload(false)} />}
-
       {/* ボディ: サイドバー + メインコンテンツ */}
       <div className="flex flex-1 px-4 pt-4 pb-20 gap-4 min-h-0">
         {/* サイドバー */}
@@ -297,7 +280,7 @@ function App() {
                   onSelectCategory={setCategoryFilter}
                 />
               ) : (
-                <PlaylistSidebar onOpenPlaylist={setActivePlaylist} />
+                <PlaylistSidebar onOpenPlaylist={openPlaylist} />
               )}
             </div>
           </div>
@@ -387,14 +370,14 @@ function App() {
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
-                    onClick={() => setBulkModal('tag')}
+                    onClick={() => openBulkModal('tag')}
                   >
                     タグ設定
                   </button>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
-                    onClick={() => setBulkModal('category')}
+                    onClick={() => openBulkModal('category')}
                   >
                     カテゴリ設定
                   </button>
@@ -411,7 +394,7 @@ function App() {
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
-                    onClick={() => setBulkModal('delete')}
+                    onClick={() => openBulkModal('delete')}
                   >
                     削除
                   </button>
@@ -430,8 +413,8 @@ function App() {
                   videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
                   onPlay={(v) => playWithQueue(videos, videos.findIndex((x) => x.id === v.id))}
-                  onShowDetail={setDetailVideo}
-                  onAddToPlaylist={setAddToPlaylistVideo}
+                  onShowDetail={openDetailVideo}
+                  onAddToPlaylist={openAddToPlaylist}
                   selectedIds={selectedVideoIds}
                   onSelectionChange={setSelectedVideoIds}
                 />
@@ -469,65 +452,13 @@ function App() {
 
       <PlayerControls />
 
-      {detailVideo && (
-        <VideoDetailModal
-          key={detailVideo.id}
-          video={detailVideo}
-          onClose={() => {
-            setDetailVideo(null);
-            fetchVideos();
-          }}
-        />
-      )}
+      <AppModals
+        selectedVideoIds={selectedVideoIds}
+        selectedVideos={selectedVideos}
+        onClearSelection={() => setSelectedVideoIds(new Set())}
+      />
 
-      {activePlaylist && (
-        <PlaylistModal
-          playlist={activePlaylist}
-          onClose={() => setActivePlaylist(null)}
-        />
-      )}
-
-      {addToPlaylistVideo && (
-        <AddToPlaylistModal
-          video={addToPlaylistVideo}
-          onClose={() => setAddToPlaylistVideo(null)}
-        />
-      )}
-
-      {bulkModal === 'delete' && selectedVideos.length > 0 && (
-        <BulkDeleteModal
-          videos={selectedVideos}
-          onClose={() => setBulkModal(null)}
-          onDone={() => {
-            setBulkModal(null);
-            setSelectedVideoIds(new Set());
-          }}
-        />
-      )}
-
-      {bulkModal === 'tag' && (
-        <BulkTagModal
-          videoIds={Array.from(selectedVideoIds)}
-          onClose={() => setBulkModal(null)}
-          onDone={() => {
-            setBulkModal(null);
-            setSelectedVideoIds(new Set());
-            fetchVideos();
-          }}
-        />
-      )}
-
-      {bulkModal === 'category' && (
-        <BulkCategoryModal
-          videoIds={Array.from(selectedVideoIds)}
-          onClose={() => setBulkModal(null)}
-          onDone={() => {
-            setBulkModal(null);
-            setSelectedVideoIds(new Set());
-            fetchVideos();
-          }}
-        />
-      )}
+      <ToastContainer />
     </main>
   );
 }
