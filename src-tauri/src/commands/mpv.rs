@@ -12,7 +12,7 @@ use std::{
 };
 
 use serde_json::{json, Value};
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 use super::settings::SharedAppSettings;
 
@@ -137,7 +137,6 @@ fn connect_and_start_reader(
                         if still_current {
                             eprintln!("[reader gen={current_gen}] mpv//closed 送信");
                             let _ = std::fs::remove_file(MPV_SOCKET);
-                            restore_full_layout(&app);
                             let _ = app.emit("mpv://closed", ());
                         } else {
                             eprintln!("[reader gen={current_gen}] generation 変化 → closed をスキップ");
@@ -196,52 +195,52 @@ fn connect_and_start_reader(
     Ok(writer_clone)
 }
 
-// ----- レイアウト管理 -----
+// ----- ウィンドウサイズ制約 -----
 
-/// Tauri メインウィンドウのモニタ情報から mpv/Tauri の分割レイアウトを計算する。
-/// 戻り値: (mpv_geometry, tauri_x, tauri_y, tauri_w, tauri_h) — 論理ピクセル
-fn arrange_split_layout(app: &tauri::AppHandle) -> Option<(String, f64, f64, f64, f64)> {
-    let window = app.get_webview_window("main")?;
-    let monitor = window.current_monitor().ok()??;
-    let scale = monitor.scale_factor();
-    let sw = monitor.size().width as f64 / scale;
-    let sh = monitor.size().height as f64 / scale;
-    let sx = monitor.position().x as f64 / scale;
-    let sy = monitor.position().y as f64 / scale;
-
-    const MENU_BAR: f64 = 25.0; // macOS メニューバー (論理 px)
-    let mpv_w = (sw * 0.65).floor();
-    let mpv_h = sh - MENU_BAR;
-    let mpv_geom = format!(
-        "{}x{}+{}+{}",
-        mpv_w as i64,
-        mpv_h as i64,
-        sx as i64,
-        (sy + MENU_BAR) as i64
-    );
-
-    let tauri_x = sx + mpv_w;
-    let tauri_y = sy;
-    let tauri_w = sw - mpv_w;
-    let tauri_h = sh;
-
-    Some((mpv_geom, tauri_x, tauri_y, tauri_w, tauri_h))
-}
-
-/// Tauri メインウィンドウをモニタ全体に戻す。
-fn restore_full_layout(app: &tauri::AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
+/// 動画ウィンドウのサイズ制約を適用する。
+/// ディスプレイ寸法を一度だけ取得し、dwidth が確定するまでポーリングする。
+fn apply_window_size_constraints() {
+    // ディスプレイ寸法は起動中に変わらないため一度だけ取得する
+    let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
+        .ok()
+        .and_then(|v| v["data"].as_f64())
+        .unwrap_or(0.0);
+    let disp_h = send_ipc(json!({"command": ["get_property", "display-height"]}))
+        .ok()
+        .and_then(|v| v["data"].as_f64())
+        .unwrap_or(0.0);
+    if disp_w <= 0.0 || disp_h <= 0.0 {
         return;
-    };
-    let Ok(Some(monitor)) = window.current_monitor() else {
-        return;
-    };
-    let w = monitor.size().width;
-    let h = monitor.size().height;
-    let x = monitor.position().x;
-    let y = monitor.position().y;
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
-    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(w, h)));
+    }
+
+    // macOS メニューバー等のシステム UI 分を除いた有効高さ
+    let usable_h = disp_h - 28.0;
+
+    // dwidth が確定するまで待つ（最大 2 秒）
+    for _ in 0..10 {
+        std::thread::sleep(Duration::from_millis(200));
+
+        let w = send_ipc(json!({"command": ["get_property", "dwidth"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
+        if w == 0.0 {
+            continue;
+        }
+
+        let h = send_ipc(json!({"command": ["get_property", "dheight"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
+        if h == 0.0 {
+            break;
+        }
+
+        // 幅・高さそれぞれ 95% に収まるスケールのうち小さい方を採用
+        let scale = (0.95 * disp_w / w).min(0.95 * usable_h / h);
+        let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
+        break;
+    }
 }
 
 // ----- Tauri コマンド -----
@@ -295,25 +294,17 @@ pub async fn play(
         });
     }
 
-    // 分割レイアウトを計算: mpv 左 65%・Tauri 右 35%
-    let layout = arrange_split_layout(&app);
-    let geom_arg = layout
-        .as_ref()
-        .map(|(g, ..)| format!("--geometry={}", g))
-        .unwrap_or_else(|| "--autofit-larger=95%x95%".to_string());
-    let ipc_arg = format!("--input-ipc-server={}", MPV_SOCKET);
-
     // mpv 起動
     eprintln!("[play] mpv 起動: {mpv_path} {path}");
     let mut child = Command::new(&mpv_path)
         .args([
             "--idle",
             "--no-terminal",
-            geom_arg.as_str(),
+            "--autofit-larger=95%x95%",
             "--cache=yes",
             "--demuxer-max-bytes=150MiB",
             "--demuxer-max-back-bytes=50MiB",
-            ipc_arg.as_str(),
+            &format!("--input-ipc-server={MPV_SOCKET}"),
             &path,
         ])
         .stderr(Stdio::piped())
@@ -359,18 +350,10 @@ pub async fn play(
     eprintln!("[play] IPC 接続成功 gen={current_gen}");
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
 
-    // Tauri ウィンドウを右側に移動 (mpv と画面分割)
-    if let Some((_, tx, ty, tw, th)) = layout {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(tx, ty)));
-            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(tw, th)));
-        }
-    }
+    tokio::task::spawn_blocking(apply_window_size_constraints);
 
     Ok(())
 }
-
-
 
 /// 一時停止 / 再開をトグルする。
 #[tauri::command]
@@ -473,10 +456,7 @@ pub async fn set_loop(
 
 /// mpv を終了する。
 #[tauri::command]
-pub async fn quit_mpv(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, SharedMpvState>,
-) -> Result<(), String> {
+pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
     let (writer_opt, child_opt) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         (s.writer.take(), s.process.take())
@@ -487,7 +467,6 @@ pub async fn quit_mpv(
     }
 
     let _ = std::fs::remove_file(MPV_SOCKET);
-    restore_full_layout(&app);
 
     if let Some(mut child) = child_opt {
         // ["quit"] IPC でウィンドウは即座に閉じる。プロセス回収はバックグラウンドで行い
