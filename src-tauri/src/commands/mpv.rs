@@ -4,7 +4,10 @@ use std::{
     io::{BufRead, BufReader, Write},
     os::unix::net::UnixStream,
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 
@@ -20,7 +23,8 @@ const MPV_SOCKET: &str = "/tmp/mpv-chuck-socket";
 pub struct MpvState {
     process: Option<Child>,
     /// モニタ/リーダースレッドの世代番号。mpv 再起動時にインクリメントし、旧スレッドを終了させる。
-    generation: u32,
+    /// Arc<AtomicU32> にすることでリーダースレッドがロックなしに世代チェックできる。
+    generation: Arc<AtomicU32>,
     /// 送信専用の永続 IPC ライタ。
     writer: Option<Arc<Mutex<UnixStream>>>,
 }
@@ -31,7 +35,7 @@ impl MpvState {
     pub fn new() -> SharedMpvState {
         Arc::new(Mutex::new(MpvState {
             process: None,
-            generation: 0,
+            generation: Arc::new(AtomicU32::new(0)),
             writer: None,
         }))
     }
@@ -83,8 +87,9 @@ fn send_ipc_on(mut stream: UnixStream, cmd: Value) -> Result<Value, String> {
 /// 送信専用の永続ライタを返す。
 fn connect_and_start_reader(
     state: SharedMpvState,
+    gen_counter: Arc<AtomicU32>,
+    current_gen: u32,
     app: tauri::AppHandle,
-    gen: u32,
 ) -> Result<Arc<Mutex<UnixStream>>, String> {
     let stream =
         UnixStream::connect(MPV_SOCKET).map_err(|e| format!("IPC 接続失敗: {e}"))?;
@@ -114,8 +119,8 @@ fn connect_and_start_reader(
             match reader.read_line(&mut line) {
                 Ok(0) => {
                     // EOF: mpv プロセスが終了した
-                    eprintln!("[reader gen={gen}] EOF 受信");
-                    let is_current = state.lock().map(|s| s.generation == gen).unwrap_or(false);
+                    eprintln!("[reader gen={current_gen}] EOF 受信");
+                    let is_current = gen_counter.load(Ordering::Acquire) == current_gen;
                     if is_current {
                         // ゾンビプロセスを回収し、死んだソケット参照をクリア
                         let child_opt = state.lock().ok().and_then(|mut s| {
@@ -127,16 +132,16 @@ fn connect_and_start_reader(
                         }
                         // wait() 中に新しい mpv が起動した場合はスキップ
                         let still_current =
-                            state.lock().map(|s| s.generation == gen).unwrap_or(false);
+                            gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
-                            eprintln!("[reader gen={gen}] mpv//closed 送信");
+                            eprintln!("[reader gen={current_gen}] mpv//closed 送信");
                             let _ = std::fs::remove_file(MPV_SOCKET);
                             let _ = app.emit("mpv://closed", ());
                         } else {
-                            eprintln!("[reader gen={gen}] generation 変化 → closed をスキップ");
+                            eprintln!("[reader gen={current_gen}] generation 変化 → closed をスキップ");
                         }
                     } else {
-                        eprintln!("[reader gen={gen}] is_current=false → スキップ");
+                        eprintln!("[reader gen={current_gen}] is_current=false → スキップ");
                     }
                     return;
                 }
@@ -145,7 +150,8 @@ fn connect_and_start_reader(
             }
 
             // 世代チェック: mpv が再起動された場合は古いスレッドを終了
-            if state.lock().map(|s| s.generation != gen).unwrap_or(true) {
+            // AtomicU32 でロックなしにチェックできる（ホットパス最適化）
+            if gen_counter.load(Ordering::Acquire) != current_gen {
                 return;
             }
 
@@ -177,7 +183,7 @@ fn connect_and_start_reader(
                 Some("end-file") => {
                     // reason: "eof" | "stop" | "quit" | "error" | "redirect" | "unknown"
                     let reason = val["reason"].as_str().unwrap_or("unknown").to_string();
-                    eprintln!("[reader gen={gen}] end-file reason={reason}");
+                    eprintln!("[reader gen={current_gen}] end-file reason={reason}");
                     let _ = app.emit("mpv://end-file", reason);
                 }
                 _ => {}
@@ -190,49 +196,44 @@ fn connect_and_start_reader(
 
 // ----- ウィンドウサイズ制約 -----
 
-/// 1 つの IPC 接続で指定プロパティを取得する。
-fn get_prop_f64(stream: &UnixStream, name: &str) -> Option<f64> {
-    let cloned = stream.try_clone().ok()?;
-    send_ipc_on(cloned, json!({"command": ["get_property", name]}))
+/// 動画ウィンドウのサイズ制約を適用する。
+/// ディスプレイ寸法を一度だけ取得し、dwidth が確定するまでポーリングする。
+fn apply_window_size_constraints() {
+    // ディスプレイ寸法は起動中に変わらないため一度だけ取得する
+    let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
         .ok()
         .and_then(|v| v["data"].as_f64())
-}
+        .unwrap_or(0.0);
+    let disp_h = send_ipc(json!({"command": ["get_property", "display-height"]}))
+        .ok()
+        .and_then(|v| v["data"].as_f64())
+        .unwrap_or(0.0);
+    if disp_w <= 0.0 || disp_h <= 0.0 {
+        return;
+    }
 
-/// 動画ウィンドウのサイズ制約を適用する。
-/// 常に画面の 95% に収まるようスケールを設定する。
-/// dwidth が 0 の間は最大 2 秒間ポーリングして動画ロード完了を待つ。
-fn apply_window_size_constraints() {
+    // macOS メニューバー等のシステム UI 分を除いた有効高さ
+    let usable_h = disp_h - 28.0;
+
+    // dwidth が確定するまで待つ（最大 2 秒）
     for _ in 0..10 {
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(Duration::from_millis(200));
 
-        // 接続を1本張りポーリング内で使い回す
-        let stream = match UnixStream::connect(MPV_SOCKET) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        if stream
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .is_err()
-        {
-            continue;
-        }
-
-        let w = get_prop_f64(&stream, "dwidth").unwrap_or(0.0);
+        let w = send_ipc(json!({"command": ["get_property", "dwidth"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
         if w == 0.0 {
             continue;
         }
-        let h = get_prop_f64(&stream, "dheight").unwrap_or(0.0);
+
+        let h = send_ipc(json!({"command": ["get_property", "dheight"]}))
+            .ok()
+            .and_then(|v| v["data"].as_f64())
+            .unwrap_or(0.0);
         if h == 0.0 {
             break;
         }
-        let disp_w = get_prop_f64(&stream, "display-width").unwrap_or(0.0);
-        let disp_h = get_prop_f64(&stream, "display-height").unwrap_or(0.0);
-        if disp_w <= 0.0 || disp_h <= 0.0 {
-            break;
-        }
-
-        // macOS メニューバー等のシステム UI 分を除いた有効高さ
-        let usable_h = disp_h - 28.0;
 
         // 幅・高さそれぞれ 95% に収まるスケールのうち小さい方を採用
         let scale = (0.95 * disp_w / w).min(0.95 * usable_h / h);
@@ -256,7 +257,6 @@ pub async fn play(
     let mpv_path = settings.lock().map_err(|e| e.to_string())?.mpv_path.clone();
 
     // ソケットが存在する（mpv 起動済み）なら loadfile で切り替え
-    // 永続ライタではなく毎回新規接続を使うことで、ライタが古くなっている場合も確実に動作させる
     let has_writer = state.lock().map_err(|e| e.to_string())?.writer.is_some();
     if has_writer && std::path::Path::new(MPV_SOCKET).exists() {
         eprintln!("[play] mpv 起動中 → loadfile replace (send_ipc): {path}");
@@ -277,15 +277,19 @@ pub async fn play(
     // ソケットファイルと古いプロセスを片付ける
     // generation を先にインクリメントして EOF ハンドラの誤発火を防ぐ
     let _ = std::fs::remove_file(MPV_SOCKET);
-    let old_child = {
+    let (old_child, gen_counter) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.writer = None;
-        s.generation += 1;
-        s.process.take()
+        s.generation.fetch_add(1, Ordering::SeqCst);
+        let gen_counter = Arc::clone(&s.generation);
+        (s.process.take(), gen_counter)
     };
     if let Some(mut child) = old_child {
         let _ = child.kill();
-        let _ = child.wait();
+        // wait() はブロッキングのためバックグラウンドスレッドで実行し async を妨げない
+        tokio::task::spawn_blocking(move || {
+            let _ = child.wait();
+        });
     }
 
     // mpv 起動
@@ -315,11 +319,12 @@ pub async fn play(
         });
     }
 
-    let gen = {
+    {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.process = Some(child);
-        s.generation
-    };
+    }
+
+    let current_gen = gen_counter.load(Ordering::SeqCst);
 
     // ソケットが ready になるまで待つ（最大 3 秒）
     for _ in 0..30 {
@@ -332,14 +337,15 @@ pub async fn play(
     // IPC 接続・プロパティ購読・リーダースレッド起動
     let state_arc = Arc::clone(state.inner());
     let app_clone = app.clone();
+    let gen_counter_clone = Arc::clone(&gen_counter);
     let writer = tokio::task::spawn_blocking(move || {
-        connect_and_start_reader(state_arc, app_clone, gen)
+        connect_and_start_reader(state_arc, gen_counter_clone, current_gen, app_clone)
     })
     .await
     .map_err(|e| e.to_string())
     .and_then(|r| r.map_err(|e| { eprintln!("[play] IPC 接続失敗: {e}"); e }))?;
 
-    eprintln!("[play] IPC 接続成功 gen={gen}");
+    eprintln!("[play] IPC 接続成功 gen={current_gen}");
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
 
     tokio::task::spawn_blocking(apply_window_size_constraints);
