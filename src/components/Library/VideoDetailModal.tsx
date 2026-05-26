@@ -5,6 +5,7 @@ import { useLibraryStore } from '../../store/useLibraryStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { TagBadge } from './TagBadge';
 import { TranscodeModal } from './TranscodeModal';
+import { Select } from '../common/Select';
 import type { Video, Tag } from '../../types';
 
 const COLORS = [
@@ -319,8 +320,8 @@ export function VideoDetailModal({ video, onClose }: Props) {
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
                   カテゴリ
                 </label>
-                <select
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
+                <Select
+                  fullWidth
                   value={categoryId}
                   onChange={(e) => handleCategoryChange(e.target.value)}
                 >
@@ -330,7 +331,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
                       {cat.name}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none">
                   <input
                     type="checkbox"

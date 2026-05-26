@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTagStore } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { Select } from '../common/Select';
 
 const COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -140,8 +141,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               />
             ))}
           </div>
-          <select
-            className="text-xs px-1 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+          <Select
+            variant="sm"
             value={editTagCategoryId ?? ''}
             onChange={(e) => setEditTagCategoryId(e.target.value === '' ? null : Number(e.target.value))}
           >
@@ -149,7 +150,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             {tagCategories.map((tc) => (
               <option key={tc.id} value={tc.id}>{tc.name}</option>
             ))}
-          </select>
+          </Select>
           <div className="flex gap-1">
             <button
               type="button"

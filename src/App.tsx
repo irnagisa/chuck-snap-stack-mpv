@@ -15,6 +15,7 @@ import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
 import { AppModals } from "./components/AppModals";
 import { ToastContainer } from "./components/common/ToastContainer";
+import { Select } from "./components/common/Select";
 
 type SidebarTab = 'category' | 'playlist';
 
@@ -359,15 +360,15 @@ function App() {
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
-                    <select
-                      className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    <Select
+                      variant="sm"
                       value={filterSortBy}
                       onChange={(e) => setSort(e.target.value as typeof filterSortBy, filterSortOrder)}
                     >
                       <option value="created_at">追加日</option>
                       <option value="duration">長さ</option>
                       <option value="rating">評価</option>
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
@@ -391,8 +392,8 @@ function App() {
 
                 {/* Row 2: 追加フィルタ */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <select
-                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  <Select
+                    variant="sm"
                     value={filterMinRating}
                     onChange={(e) => setMinRating(Number(e.target.value))}
                     title="評価フィルタ"
@@ -403,10 +404,10 @@ function App() {
                     <option value={3}>★3以上</option>
                     <option value={4}>★4以上</option>
                     <option value={5}>★5のみ</option>
-                  </select>
+                  </Select>
 
-                  <select
-                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  <Select
+                    variant="sm"
                     value={filterHasAudio === null ? '' : String(filterHasAudio)}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -417,10 +418,10 @@ function App() {
                     <option value="">音声: すべて</option>
                     <option value="1">音声あり</option>
                     <option value="0">音声なし</option>
-                  </select>
+                  </Select>
 
-                  <select
-                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  <Select
+                    variant="sm"
                     value={filterWatchedStatus}
                     onChange={(e) => setWatchedStatus(e.target.value as WatchedStatus)}
                     title="視聴状態フィルタ"
@@ -428,7 +429,7 @@ function App() {
                     <option value="all">視聴: すべて</option>
                     <option value="unwatched">未視聴</option>
                     <option value="watched">視聴済み</option>
-                  </select>
+                  </Select>
 
                   <div className="flex items-center gap-1">
                     <input
