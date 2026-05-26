@@ -79,7 +79,7 @@ function initListeners(
   });
 }
 
-async function invokPlay(video: Video) {
+async function invokePlay(video: Video) {
   await invoke('play', { path: video.path }).catch((e: unknown) => {
     console.error('play failed:', e);
     throw e;
@@ -103,7 +103,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
     play: async (video: Video) => {
       const { isLooping } = get();
-      await invokPlay(video);
+      await invokePlay(video);
       if (isLooping) {
         try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
       }
@@ -137,7 +137,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         idx = 0;
       }
 
-      await invokPlay(queue[idx]);
+      await invokePlay(queue[idx]);
       if (isLooping) {
         try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
       }
@@ -160,7 +160,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       if (queue.length === 0 || queueIndex >= queue.length - 1) return;
       const nextIdx = queueIndex + 1;
       const nextVideo = queue[nextIdx];
-      await invokPlay(nextVideo);
+      await invokePlay(nextVideo);
       set({
         currentVideo: nextVideo,
         playbackTime: 0,
@@ -178,7 +178,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       if (queue.length === 0 || queueIndex <= 0) return;
       const prevIdx = queueIndex - 1;
       const prevVideo = queue[prevIdx];
-      await invokPlay(prevVideo);
+      await invokePlay(prevVideo);
       set({
         currentVideo: prevVideo,
         playbackTime: 0,
@@ -278,7 +278,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
 
-      await invokPlay(shuffled[0]);
+      await invokePlay(shuffled[0]);
       if (isLooping) {
         try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
       }

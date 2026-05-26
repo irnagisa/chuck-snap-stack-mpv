@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../../store/usePlayerStore';
 
 function formatTime(sec: number): string {
@@ -33,8 +34,27 @@ export function PlayerControls() {
   const hasPrev = queue.length > 0 && queueIndex > 0;
   const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    seekTo(Number(e.target.value));
+  // シークバードラッグ中は store からの更新を無視し、ローカル値で表示する
+  const isDragging = useRef(false);
+  const [localSeek, setLocalSeek] = useState(0);
+
+  useEffect(() => {
+    if (!isDragging.current) {
+      setLocalSeek(playbackTime);
+    }
+  }, [playbackTime]);
+
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalSeek(Number(e.target.value));
+  };
+
+  const handleSeekStart = () => {
+    isDragging.current = true;
+  };
+
+  const handleSeekEnd = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
+    isDragging.current = false;
+    seekTo(Number((e.target as HTMLInputElement).value));
   };
 
   // 再生前 (未選択) の場合はシャッフル・ループ設定だけ見せるミニバー
@@ -68,7 +88,7 @@ export function PlayerControls() {
       {/* シークバー行 */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-gray-400 w-10 text-right shrink-0 tabular-nums">
-          {formatTime(playbackTime)}
+          {formatTime(localSeek)}
         </span>
         <input
           type="range"
@@ -76,8 +96,12 @@ export function PlayerControls() {
           min={0}
           max={duration > 0 ? duration : 100}
           step={0.5}
-          value={playbackTime}
-          onChange={handleSeek}
+          value={localSeek}
+          onChange={handleSeekChange}
+          onMouseDown={handleSeekStart}
+          onMouseUp={handleSeekEnd}
+          onTouchStart={handleSeekStart}
+          onTouchEnd={handleSeekEnd}
         />
         <span className="text-xs text-gray-400 w-10 shrink-0 tabular-nums">
           {duration > 0 ? formatTime(duration) : '--:--'}
@@ -94,11 +118,12 @@ export function PlayerControls() {
         <span className="flex-1 text-sm truncate text-gray-300 min-w-0">
           {currentVideo.title ?? currentVideo.path.split('/').pop()}
         </span>
-        {hasPrev && (
+        {queue.length > 0 && (
           <button
             type="button"
             onClick={playPrev}
-            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0"
+            disabled={!hasPrev}
+            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
             title="前の動画 (P)"
           >
             ⏮
@@ -112,11 +137,12 @@ export function PlayerControls() {
         >
           {isPaused ? '▶' : '⏸'}
         </button>
-        {hasNext && (
+        {queue.length > 0 && (
           <button
             type="button"
             onClick={playNext}
-            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0"
+            disabled={!hasNext}
+            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
             title="次の動画 (N)"
           >
             ⏭

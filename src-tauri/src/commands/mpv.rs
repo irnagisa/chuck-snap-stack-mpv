@@ -258,18 +258,18 @@ pub async fn play(
     let mpv_path = settings.lock().map_err(|e| e.to_string())?.mpv_path.clone();
 
     // ソケットが存在する（mpv 起動済み）なら loadfile で切り替え
-    let has_writer = state.lock().map_err(|e| e.to_string())?.writer.is_some();
-    if has_writer && std::path::Path::new(MPV_SOCKET).exists() {
-        eprintln!("[play] mpv 起動中 → loadfile replace (send_ipc): {path}");
-        match send_ipc(json!({"command": ["loadfile", path, "replace"]})) {
-            Ok(_) => {
-                eprintln!("[play] loadfile 送信成功");
-                // プロセス再利用時は --autofit-larger=95%x95% が自動でリサイズするため
-                // apply_window_size_constraints は不要
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("[play] loadfile 失敗 ({e}) → mpv 再起動");
+    let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
+    if let Some(writer) = writer_opt {
+        if std::path::Path::new(MPV_SOCKET).exists() {
+            eprintln!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
+            match send_cmd(&writer, json!({"command": ["loadfile", path, "replace"]})) {
+                Ok(_) => {
+                    eprintln!("[play] loadfile 送信成功");
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("[play] loadfile 失敗 ({e}) → mpv 再起動");
+                }
             }
         }
     } else {
