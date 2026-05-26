@@ -276,6 +276,49 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
     Ok(dest_path.to_string_lossy().into_owned())
 }
 
+/// 動画ファイルを指定ディレクトリへコピーし、新しいパスを返す。
+/// コピー先に同名ファイルが存在する場合は連番サフィックスを付与する。
+#[tauri::command]
+pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<String, String> {
+    let source = std::path::Path::new(&source_path);
+    let filename = source
+        .file_name()
+        .ok_or_else(|| "invalid filename".to_string())?;
+
+    let dest_base = std::path::Path::new(&dest_dir);
+    let mut dest_path = dest_base.join(filename);
+
+    // 同名ファイルが存在する場合は連番サフィックスを付与
+    if dest_path.exists() {
+        let stem = dest_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let ext = dest_path
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
+        let mut i = 2u32;
+        loop {
+            dest_path = dest_base.join(format!("{}_{}{}", stem, i, ext));
+            if !dest_path.exists() {
+                break;
+            }
+            i += 1;
+        }
+    }
+
+    tokio::fs::create_dir_all(&dest_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    tokio::fs::copy(&source, &dest_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(dest_path.to_string_lossy().into_owned())
+}
+
 /// 複数の動画ファイルを一括削除する。各ファイルの削除成否を (path, success) の配列で返す。
 #[tauri::command]
 pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(String, bool)>, String> {

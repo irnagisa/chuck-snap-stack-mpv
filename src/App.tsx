@@ -4,6 +4,7 @@ import { useLibraryStore } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
+import { useDragDrop } from "./hooks/useDragDrop";
 import { useTagStore } from "./store/useTagStore";
 import { useTranscodeStore } from "./store/useTranscodeStore";
 import { useModalStore } from "./store/useModalStore";
@@ -54,6 +55,7 @@ function App() {
 
   useKeyboardShortcuts({ onEscape: closeAll });
   useWatcher();
+  const { isDragging } = useDragDrop();
 
   useEffect(() => {
     initDb();
@@ -468,6 +470,22 @@ function App() {
       />
 
       <ToastContainer />
+
+      {/* D&D インポートオーバーレイ */}
+      {isDragging && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-400/20 backdrop-blur-[2px]" />
+          <div className="relative flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed border-blue-500 dark:border-blue-400 bg-white/80 dark:bg-gray-900/80 shadow-2xl">
+            <span className="text-4xl">🎬</span>
+            <p className="text-lg font-semibold text-blue-700 dark:text-blue-300">
+              動画をドロップしてインポート
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              mp4 / mkv / webm / avi / mov などに対応
+            </p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
