@@ -236,8 +236,12 @@ fn apply_window_size_constraints() {
             break;
         }
 
-        // 幅・高さそれぞれ 95% に収まるスケールのうち小さい方を採用
-        let scale = (0.95 * disp_w / w).min(0.95 * usable_h / h);
+        // 75% 以上を確保するスケール（両辺とも 75% 以上になるよう大きい方を採用）
+        let min_scale = (0.75 * disp_w / w).max(0.75 * usable_h / h);
+        // 95% を超えないスケール（両辺とも 95% 以下になるよう小さい方を採用）
+        let max_scale = (0.95 * disp_w / w).min(0.95 * usable_h / h);
+        // 75% を基準とし、いずれかの辺が 95% を超えるなら 95% を上限とする
+        let scale = min_scale.min(max_scale);
         let _ = send_ipc(json!({"command": ["set_property", "window-scale", scale]}));
         break;
     }
@@ -300,6 +304,7 @@ pub async fn play(
         .args([
             "--idle",
             "--no-terminal",
+            "--autofit-smaller=75%x75%",
             "--autofit-larger=95%x95%",
             "--cache=yes",
             "--demuxer-max-bytes=150MiB",
