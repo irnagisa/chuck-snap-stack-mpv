@@ -1,10 +1,164 @@
-import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { useRef, useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import type { Video } from '../../types';
+import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { TagBadge } from './TagBadge';
 import { DeleteVideoModal } from './DeleteVideoModal';
+
+interface VideoCardProps {
+  video: Video;
+  isPlaying: boolean;
+  isSelected: boolean;
+  tags: Tag[];
+  category: Category | null;
+  idx: number;
+  onPlay: (video: Video) => void;
+  onShowDetail: (video: Video) => void;
+  onAddToPlaylist?: (video: Video) => void;
+  onDelete: (video: Video) => void;
+  onCheckbox: (e: React.MouseEvent, video: Video, idx: number) => void;
+}
+
+const VideoCard = memo(function VideoCard({
+  video: v,
+  isPlaying,
+  isSelected,
+  tags,
+  category,
+  idx,
+  onPlay,
+  onShowDetail,
+  onAddToPlaylist,
+  onDelete,
+  onCheckbox,
+}: VideoCardProps) {
+  const progressPercent =
+    v.duration && v.duration > 0
+      ? Math.min((v.progress / v.duration) * 100, 100)
+      : null;
+
+  return (
+    <div
+      className={`group cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
+        isSelected
+          ? 'border-blue-400 dark:border-blue-500'
+          : isPlaying
+            ? 'border-blue-500'
+            : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+      }`}
+    >
+      {category && (
+        <div className="h-1 shrink-0" style={{ backgroundColor: category.color }} />
+      )}
+
+      <div
+        className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
+        onClick={() => onPlay(v)}
+      >
+        {v.thumbnail ? (
+          <img
+            src={convertFileSrc(v.thumbnail)}
+            alt={v.title ?? ''}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-2xl">
+            ▶
+          </div>
+        )}
+
+        <div
+          className={`absolute top-1 left-1 transition-opacity ${
+            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+          onClick={(e) => onCheckbox(e, v, idx)}
+        >
+          <div
+            className={`w-5 h-5 rounded border-2 flex items-center justify-center text-white text-xs font-bold transition-colors ${
+              isSelected
+                ? 'bg-blue-500 border-blue-500'
+                : 'bg-black/40 border-white/70 hover:bg-black/60'
+            }`}
+          >
+            {isSelected && '✓'}
+          </div>
+        </div>
+
+        {v.has_audio === 0 && (
+          <div className="absolute top-1 left-1 pointer-events-none group-hover:opacity-0 transition-opacity">
+            <div className="bg-black/60 rounded p-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
+                <path d="M9.547 3.062A.75.75 0 0 1 10 3.75v12.5a.75.75 0 0 1-1.264.546L4.703 13H3.167a.75.75 0 0 1-.7-.48A6.985 6.985 0 0 1 2 10c0-.887.165-1.737.468-2.52a.75.75 0 0 1 .699-.48h1.536l4.033-3.296a.75.75 0 0 1 .811-.142ZM13.28 7.22a.75.75 0 1 0-1.06 1.06L13.44 9.5l-1.22 1.22a.75.75 0 1 0 1.06 1.06l1.22-1.22 1.22 1.22a.75.75 0 1 0 1.06-1.06L15.56 9.5l1.22-1.22a.75.75 0 0 0-1.06-1.06L14.5 8.44l-1.22-1.22Z" />
+              </svg>
+            </div>
+          </div>
+        )}
+
+        {isPlaying && (
+          <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
+            再生中
+          </div>
+        )}
+        <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+          {onAddToPlaylist && (
+            <button
+              type="button"
+              className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
+              onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
+              title="プレイリストに追加"
+            >
+              +
+            </button>
+          )}
+          <button
+            type="button"
+            className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
+            onClick={(e) => { e.stopPropagation(); onShowDetail(v); }}
+            title="動画の詳細を表示"
+          >
+            詳細
+          </button>
+          <button
+            type="button"
+            className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
+            onClick={(e) => { e.stopPropagation(); onDelete(v); }}
+            title="動画を削除"
+          >
+            削除
+          </button>
+        </div>
+      </div>
+
+      {progressPercent !== null && progressPercent > 0 ? (
+        <div className="h-1 bg-gray-200 dark:bg-gray-700">
+          <div className="h-full bg-blue-500" style={{ width: `${progressPercent}%` }} />
+        </div>
+      ) : v.progress > 0 && progressPercent === null ? (
+        <div className="h-1 bg-blue-500" />
+      ) : null}
+
+      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={() => onPlay(v)}>
+        <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
+          {v.title ?? v.path.split('/').pop()}
+        </p>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-0.5">
+            {tags.slice(0, 3).map((tag) => (
+              <TagBadge key={tag.id} tag={tag} />
+            ))}
+            {tags.length > 3 && (
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                +{tags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 interface Props {
   videos: Video[];
@@ -128,135 +282,21 @@ export function LibraryGrid({
                   >
                     {rowVideos.map((v, colIdx) => {
                       const idx = virtualRow.index * columns + colIdx;
-                      const isPlaying = v.id === currentVideoId;
-                      const isSelected = selectedIds.has(v.id);
-                      const progressPercent =
-                        v.duration && v.duration > 0
-                          ? Math.min((v.progress / v.duration) * 100, 100)
-                          : null;
-                      const tags = videoTags[v.id] ?? [];
-                      const category = v.category_id != null ? categoryMap[v.category_id] : null;
-
                       return (
-                        <div
+                        <VideoCard
                           key={v.id}
-                          className={`group cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
-                            isSelected
-                              ? 'border-blue-400 dark:border-blue-500'
-                              : isPlaying
-                                ? 'border-blue-500'
-                                : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
-                          }`}
-                        >
-                          {category && (
-                            <div className="h-1 shrink-0" style={{ backgroundColor: category.color }} />
-                          )}
-
-                          <div
-                            className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
-                            onClick={() => onPlay(v)}
-                          >
-                            {v.thumbnail ? (
-                              <img
-                                src={convertFileSrc(v.thumbnail)}
-                                alt={v.title ?? ''}
-                                className="w-full h-full object-cover"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-2xl">
-                                ▶
-                              </div>
-                            )}
-
-                            <div
-                              className={`absolute top-1 left-1 transition-opacity ${
-                                isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                              }`}
-                              onClick={(e) => handleCheckbox(e, v, idx)}
-                            >
-                              <div
-                                className={`w-5 h-5 rounded border-2 flex items-center justify-center text-white text-xs font-bold transition-colors ${
-                                  isSelected
-                                    ? 'bg-blue-500 border-blue-500'
-                                    : 'bg-black/40 border-white/70 hover:bg-black/60'
-                                }`}
-                              >
-                                {isSelected && '✓'}
-                              </div>
-                            </div>
-
-                            {v.has_audio === 0 && (
-                              <div className="absolute top-1 left-1 pointer-events-none group-hover:opacity-0 transition-opacity">
-                                <div className="bg-black/60 rounded p-0.5">
-                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
-                                    <path d="M9.547 3.062A.75.75 0 0 1 10 3.75v12.5a.75.75 0 0 1-1.264.546L4.703 13H3.167a.75.75 0 0 1-.7-.48A6.985 6.985 0 0 1 2 10c0-.887.165-1.737.468-2.52a.75.75 0 0 1 .699-.48h1.536l4.033-3.296a.75.75 0 0 1 .811-.142ZM13.28 7.22a.75.75 0 1 0-1.06 1.06L13.44 9.5l-1.22 1.22a.75.75 0 1 0 1.06 1.06l1.22-1.22 1.22 1.22a.75.75 0 1 0 1.06-1.06L15.56 9.5l1.22-1.22a.75.75 0 0 0-1.06-1.06L14.5 8.44l-1.22-1.22Z" />
-                                  </svg>
-                                </div>
-                              </div>
-                            )}
-
-                            {isPlaying && (
-                              <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
-                                再生中
-                              </div>
-                            )}
-                            <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-                              {onAddToPlaylist && (
-                                <button
-                                  type="button"
-                                  className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
-                                  onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
-                                  title="プレイリストに追加"
-                                >
-                                  +
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
-                                onClick={(e) => { e.stopPropagation(); onShowDetail(v); }}
-                                title="動画の詳細を表示"
-                              >
-                                詳細
-                              </button>
-                              <button
-                                type="button"
-                                className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
-                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(v); }}
-                                title="動画を削除"
-                              >
-                                削除
-                              </button>
-                            </div>
-                          </div>
-
-                          {progressPercent !== null && progressPercent > 0 ? (
-                            <div className="h-1 bg-gray-200 dark:bg-gray-700">
-                              <div className="h-full bg-blue-500" style={{ width: `${progressPercent}%` }} />
-                            </div>
-                          ) : v.progress > 0 && progressPercent === null ? (
-                            <div className="h-1 bg-blue-500" />
-                          ) : null}
-
-                          <div className="p-1.5 bg-white dark:bg-gray-800" onClick={() => onPlay(v)}>
-                            <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
-                              {v.title ?? v.path.split('/').pop()}
-                            </p>
-                            {tags.length > 0 && (
-                              <div className="flex flex-wrap gap-0.5">
-                                {tags.slice(0, 3).map((tag) => (
-                                  <TagBadge key={tag.id} tag={tag} />
-                                ))}
-                                {tags.length > 3 && (
-                                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                                    +{tags.length - 3}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                          video={v}
+                          isPlaying={v.id === currentVideoId}
+                          isSelected={selectedIds.has(v.id)}
+                          tags={videoTags[v.id] ?? []}
+                          category={v.category_id != null ? categoryMap[v.category_id] : null}
+                          idx={idx}
+                          onPlay={onPlay}
+                          onShowDetail={onShowDetail}
+                          onAddToPlaylist={onAddToPlaylist}
+                          onDelete={setDeleteTarget}
+                          onCheckbox={handleCheckbox}
+                        />
                       );
                     })}
                   </div>

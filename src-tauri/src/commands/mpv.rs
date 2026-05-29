@@ -18,12 +18,20 @@ use super::settings::SharedAppSettings;
 
 /// プロセス固有の IPC ソケットパスを返す。
 /// $TMPDIR (macOS では /var/folders/…/T/ のようなユーザー固有ディレクトリ) と
-/// PID を組み合わせることで予測困難かつプロセス一意なパスを生成する。
+/// PID + 起動時ランダムトークンを組み合わせることで予測困難かつプロセス一意なパスを生成する。
 fn mpv_socket_path() -> String {
+    use std::sync::OnceLock;
+    static TOKEN: OnceLock<u32> = OnceLock::new();
+    let token = TOKEN.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
+            .unwrap_or(std::process::id())
+    });
     let tmpdir = std::env::var("TMPDIR")
         .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
     let tmpdir = tmpdir.trim_end_matches('/');
-    format!("{tmpdir}/mpv-chuck-{}", std::process::id())
+    format!("{tmpdir}/mpv-chuck-{}-{token:08x}", std::process::id())
 }
 
 // ----- 共有状態 -----

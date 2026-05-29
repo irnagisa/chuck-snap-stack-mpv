@@ -84,7 +84,25 @@ pub async fn transcode_video(
         let app = app.clone();
         let input_path = input_path.clone();
         let output_str = output_str.clone();
+        let dir_for_check = dir.to_path_buf();
         move || -> Result<(), String> {
+            // TOCTOU 対策: ffmpeg 起動直前にパスを再検証する
+            // (canonicalize チェック後にシンボリックリンクが差し替えられるケースを防ぐ)
+            if let Ok(canon_dir) = dir_for_check.canonicalize() {
+                let out_parent = std::path::Path::new(&output_str)
+                    .parent()
+                    .unwrap_or(&dir_for_check);
+                let canon_out = out_parent
+                    .canonicalize()
+                    .unwrap_or_else(|_| out_parent.to_path_buf());
+                if canon_dir != canon_out {
+                    return Err(
+                        "トランスコード出力先はソースと同じディレクトリである必要があります"
+                            .to_string(),
+                    );
+                }
+            }
+
             let mut child = Command::new(&ffmpeg_path)
                 .args([
                     "-y",

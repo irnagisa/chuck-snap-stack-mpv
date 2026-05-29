@@ -31,6 +31,8 @@ interface PlayerActions {
 
 // モジュールレベルで一度だけリスナーを登録する
 let listenersInitialized = false;
+// HMR 時の重複登録防止: unlisten 関数を保持しておきモジュール破棄時に解除する
+const unlistenFns: Promise<() => void>[] = [];
 
 function initListeners(
   set: (s: Partial<PlayerState>) => void,
@@ -40,30 +42,30 @@ function initListeners(
   listenersInitialized = true;
 
   // mpv のプロパティ変化をリアルタイムで受信
-  listen<number>('mpv://playback-time', (e) => {
+  unlistenFns.push(listen<number>('mpv://playback-time', (e) => {
     set({ playbackTime: e.payload });
-  });
+  }));
 
-  listen<boolean>('mpv://pause', (e) => {
+  unlistenFns.push(listen<boolean>('mpv://pause', (e) => {
     set({ isPaused: e.payload });
-  });
+  }));
 
-  listen<number>('mpv://duration', (e) => {
+  unlistenFns.push(listen<number>('mpv://duration', (e) => {
     set({ duration: e.payload });
-  });
+  }));
 
   // ファイルが自然終了した場合 → ループ中はスキップ、キューがあれば次へ進む
-  listen<string>('mpv://end-file', async (e) => {
+  unlistenFns.push(listen<string>('mpv://end-file', async (e) => {
     if (e.payload !== 'eof') return;
     const { queue, queueIndex, isLooping } = get();
     if (isLooping) return;
     if (queue.length > 0 && queueIndex < queue.length - 1) {
       await get().playNext();
     }
-  });
+  }));
 
   // mpv プロセスが終了した場合 → 進捗を保存してステートをリセット
-  listen('mpv://closed', async () => {
+  unlistenFns.push(listen('mpv://closed', async () => {
     const { currentVideo, playbackTime } = get();
     if (currentVideo && playbackTime > 0) {
       await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
@@ -76,7 +78,7 @@ function initListeners(
       queue: [],
       queueIndex: -1,
     });
-  });
+  }));
 }
 
 async function invokePlay(video: Video) {
@@ -295,3 +297,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     },
   };
 });
+
+// HMR 時にリスナーを解除して重複登録を防ぐ
+if (import.meta.hot) {
+  import.meta.hot.dispose(async () => {
+    const fns = await Promise.all(unlistenFns);
+    fns.forEach((fn) => fn());
+    unlistenFns.length = 0;
+    listenersInitialized = false;
+  });
+}

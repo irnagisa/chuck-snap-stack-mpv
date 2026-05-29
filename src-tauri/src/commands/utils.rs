@@ -45,7 +45,7 @@ pub fn validate_image_output_path(path: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
-/// ダウンロード URL を検証する (スキーム検証 + プライベート IP ブロック)。
+/// ダウンロード URL を検証する (スキーム検証 + プライベート IP ブロック + 危険ポートブロック)。
 pub fn validate_download_url(url: &str) -> Result<(), String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("URL は https:// または http:// で始まる必要があります".to_string());
@@ -64,16 +64,37 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
 
     let host_port = authority;
     // IPv6 アドレス [::1] はポートを含む場合 [::1]:8080 の形式
-    let host = if host_port.starts_with('[') {
-        host_port
+    let (host, port_str) = if host_port.starts_with('[') {
+        let host_part = host_port
             .split(']')
             .next()
             .unwrap_or("")
-            .trim_start_matches('[')
+            .trim_start_matches('[');
+        let port_part = host_port
+            .split(']')
+            .nth(1)
+            .unwrap_or("")
+            .trim_start_matches(':');
+        (host_part.to_lowercase(), port_part.to_string())
     } else {
-        host_port.split(':').next().unwrap_or("")
+        let mut parts = host_port.splitn(2, ':');
+        let h = parts.next().unwrap_or("").to_lowercase();
+        let p = parts.next().unwrap_or("").to_string();
+        (h, p)
+    };
+
+    // ポート番号を検証: 指定されている場合は許可リストに含まれるもののみ許可
+    if !port_str.is_empty() {
+        let port: u16 = port_str
+            .parse()
+            .map_err(|_| format!("不正なポート番号: {port_str}"))?;
+        const ALLOWED_PORTS: &[u16] = &[80, 443, 8080, 8443];
+        if !ALLOWED_PORTS.contains(&port) {
+            return Err(format!(
+                "ポート {port} は許可されていません。使用可能なポート: 80, 443, 8080, 8443"
+            ));
+        }
     }
-    .to_lowercase();
 
     // ローカルホスト・ループバックをブロック
     const BLOCKED_HOSTS: &[&str] = &["localhost", "127.0.0.1", "0.0.0.0", "::1"];

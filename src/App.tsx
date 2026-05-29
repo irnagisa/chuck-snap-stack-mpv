@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import type { Video } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
+import { useShallow } from "zustand/shallow";
 import type { WatchedStatus } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -21,41 +22,58 @@ import { Select } from "./components/common/Select";
 type SidebarTab = 'category' | 'playlist';
 
 function App() {
-  // 個別セレクタで購読: ストア全体ではなく使用するプロパティのみを購読し不要な再レンダリングを防ぐ
-  const videos = useLibraryStore((s) => s.videos);
-  const totalCount = useLibraryStore((s) => s.totalCount);
-  const currentPage = useLibraryStore((s) => s.currentPage);
-  const pageSize = useLibraryStore((s) => s.pageSize);
-  const filterSearch = useLibraryStore((s) => s.filterSearch);
-  const filterCategoryId = useLibraryStore((s) => s.filterCategoryId);
-  const filterTagIds = useLibraryStore((s) => s.filterTagIds);
-  const filterMinRating = useLibraryStore((s) => s.filterMinRating);
-  const filterHasAudio = useLibraryStore((s) => s.filterHasAudio);
-  const filterMinDuration = useLibraryStore((s) => s.filterMinDuration);
-  const filterWatchedStatus = useLibraryStore((s) => s.filterWatchedStatus);
-  const filterSortBy = useLibraryStore((s) => s.filterSortBy);
-  const filterSortOrder = useLibraryStore((s) => s.filterSortOrder);
-  const isScanning = useLibraryStore((s) => s.isScanning);
-  const isThumbnailGenerating = useLibraryStore((s) => s.isThumbnailGenerating);
-  const isThumbnailPaused = useLibraryStore((s) => s.isThumbnailPaused);
-  const thumbnailProgress = useLibraryStore((s) => s.thumbnailProgress);
-  const isDbReady = useLibraryStore((s) => s.isDbReady);
-  const dbError = useLibraryStore((s) => s.dbError);
-  const initDb = useLibraryStore((s) => s.initDb);
-  const scanAndImport = useLibraryStore((s) => s.scanAndImport);
-  const assignCategoryFromPath = useLibraryStore((s) => s.assignCategoryFromPath);
-  const setSearch = useLibraryStore((s) => s.setSearch);
-  const setCategoryFilter = useLibraryStore((s) => s.setCategoryFilter);
-  const toggleTagFilter = useLibraryStore((s) => s.toggleTagFilter);
-  const clearTagFilters = useLibraryStore((s) => s.clearTagFilters);
-  const setMinRating = useLibraryStore((s) => s.setMinRating);
-  const setHasAudio = useLibraryStore((s) => s.setHasAudio);
-  const setMinDuration = useLibraryStore((s) => s.setMinDuration);
-  const setWatchedStatus = useLibraryStore((s) => s.setWatchedStatus);
-  const setSort = useLibraryStore((s) => s.setSort);
-  const setPage = useLibraryStore((s) => s.setPage);
-  const pauseThumbnails = useLibraryStore((s) => s.pauseThumbnails);
-  const resumeThumbnails = useLibraryStore((s) => s.resumeThumbnails);
+  // useShallow で1サブスクリプションにまとめ、個別セレクタ35個分のオーバーヘッドを削減
+  const {
+    videos, totalCount, currentPage, pageSize,
+    filterSearch, filterCategoryId, filterTagIds,
+    filterMinRating, filterHasAudio, filterMinDuration,
+    filterWatchedStatus, filterSortBy, filterSortOrder,
+    isScanning, isThumbnailGenerating, isThumbnailPaused,
+    thumbnailProgress, isDbReady, dbError,
+  } = useLibraryStore(useShallow((s) => ({
+    videos: s.videos,
+    totalCount: s.totalCount,
+    currentPage: s.currentPage,
+    pageSize: s.pageSize,
+    filterSearch: s.filterSearch,
+    filterCategoryId: s.filterCategoryId,
+    filterTagIds: s.filterTagIds,
+    filterMinRating: s.filterMinRating,
+    filterHasAudio: s.filterHasAudio,
+    filterMinDuration: s.filterMinDuration,
+    filterWatchedStatus: s.filterWatchedStatus,
+    filterSortBy: s.filterSortBy,
+    filterSortOrder: s.filterSortOrder,
+    isScanning: s.isScanning,
+    isThumbnailGenerating: s.isThumbnailGenerating,
+    isThumbnailPaused: s.isThumbnailPaused,
+    thumbnailProgress: s.thumbnailProgress,
+    isDbReady: s.isDbReady,
+    dbError: s.dbError,
+  })));
+  const {
+    initDb, scanAndImport, assignCategoryFromPath,
+    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters,
+    setMinRating, setHasAudio, setMinDuration,
+    setWatchedStatus, setSort, setPage,
+    pauseThumbnails, resumeThumbnails,
+  } = useLibraryStore(useShallow((s) => ({
+    initDb: s.initDb,
+    scanAndImport: s.scanAndImport,
+    assignCategoryFromPath: s.assignCategoryFromPath,
+    setSearch: s.setSearch,
+    setCategoryFilter: s.setCategoryFilter,
+    toggleTagFilter: s.toggleTagFilter,
+    clearTagFilters: s.clearTagFilters,
+    setMinRating: s.setMinRating,
+    setHasAudio: s.setHasAudio,
+    setMinDuration: s.setMinDuration,
+    setWatchedStatus: s.setWatchedStatus,
+    setSort: s.setSort,
+    setPage: s.setPage,
+    pauseThumbnails: s.pauseThumbnails,
+    resumeThumbnails: s.resumeThumbnails,
+  })));
   // usePlayerStore: currentVideo のみ購読 (playbackTime の毎秒更新で App が再レンダリングされるのを防ぐ)
   const currentVideo = usePlayerStore((s) => s.currentVideo);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
@@ -82,7 +100,7 @@ function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearch(searchInput);
-    }, 300);
+    }, 500);
     return () => clearTimeout(timer);
   }, [searchInput]);
 
@@ -91,7 +109,7 @@ function App() {
     const timer = setTimeout(() => {
       const seconds = parseInt(durationInput, 10);
       setMinDuration(isNaN(seconds) || seconds <= 0 ? 0 : seconds);
-    }, 400);
+    }, 500);
     return () => clearTimeout(timer);
   }, [durationInput]);
 

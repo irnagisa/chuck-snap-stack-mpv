@@ -245,6 +245,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_category_id ON videos(category_id)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_video_tags_tag_id ON video_tags(tag_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_video_tags_video_id ON video_tags(video_id)');
       set({ db, isDbReady: true });
       await useSettingsStore.getState().loadSettings(db);
       await get().fetchVideos();
