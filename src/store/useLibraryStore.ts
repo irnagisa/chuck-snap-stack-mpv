@@ -163,9 +163,10 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
     const ph = f.filterTagIds.map(() => '?').join(', ');
     // 相関サブクエリを非相関サブクエリ (GROUP BY + HAVING) に変更
     conditions.push(
-      `v.id IN (SELECT vt.video_id FROM video_tags vt WHERE vt.tag_id IN (${ph}) GROUP BY vt.video_id HAVING COUNT(*) = ${f.filterTagIds.length})`
+      `v.id IN (SELECT vt.video_id FROM video_tags vt WHERE vt.tag_id IN (${ph}) GROUP BY vt.video_id HAVING COUNT(*) = ?)`
     );
     params.push(...f.filterTagIds);
+    params.push(f.filterTagIds.length);
   }
   if (f.filterMinRating > 0) {
     conditions.push('v.rating >= ?');

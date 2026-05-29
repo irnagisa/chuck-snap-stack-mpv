@@ -55,7 +55,14 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
         .unwrap_or("");
-    let host_port = without_scheme.split('/').next().unwrap_or("");
+
+    // ユーザー情報 (user:password@host) を拒否
+    let authority = without_scheme.split('/').next().unwrap_or("");
+    if authority.contains('@') {
+        return Err("URL にユーザー情報を含めることはできません".to_string());
+    }
+
+    let host_port = authority;
     // IPv6 アドレス [::1] はポートを含む場合 [::1]:8080 の形式
     let host = if host_port.starts_with('[') {
         host_port
@@ -74,7 +81,7 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
         return Err("ローカルホストへのアクセスは許可されていません".to_string());
     }
 
-    // プライベート IP 範囲をブロック (SSRF 対策)
+    // プライベート IPv4 範囲をブロック (SSRF 対策)
     if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
         let [a, b, ..] = ip.octets();
         if a == 10
@@ -83,6 +90,20 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
             || (a == 172 && (16..=31).contains(&b))
             || (a == 192 && b == 168)
         {
+            return Err(
+                "プライベートネットワークへのアクセスは許可されていません".to_string(),
+            );
+        }
+    }
+
+    // プライベート IPv6 範囲をブロック (SSRF 対策)
+    // ::1 (loopback), fc00::/7 (ULA), fe80::/10 (link-local), ff00::/8 (multicast), :: (unspecified)
+    if let Ok(ip) = host.parse::<std::net::Ipv6Addr>() {
+        let seg0 = ip.segments()[0];
+        let is_ula = (seg0 & 0xfe00) == 0xfc00;        // fc00::/7
+        let is_link_local = (seg0 & 0xffc0) == 0xfe80; // fe80::/10
+        let is_multicast = (seg0 & 0xff00) == 0xff00;   // ff00::/8
+        if ip.is_loopback() || ip.is_unspecified() || is_ula || is_link_local || is_multicast {
             return Err(
                 "プライベートネットワークへのアクセスは許可されていません".to_string(),
             );

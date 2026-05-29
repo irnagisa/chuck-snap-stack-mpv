@@ -1,5 +1,4 @@
 use std::io::{BufRead, BufReader};
-use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -8,6 +7,7 @@ use serde::Serialize;
 use tauri::Emitter;
 
 use super::settings::SharedAppSettings;
+use super::utils::validate_video_path;
 
 #[derive(Clone, Serialize)]
 pub struct TranscodeProgress {
@@ -50,13 +50,26 @@ pub async fn transcode_video(
         s.ffmpeg_path.clone()
     };
 
-    let input = Path::new(&input_path);
+    // 入力パスの検証 (絶対パス + `..` なし + 動画拡張子)
+    let input = validate_video_path(&input_path)?;
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("output");
-    let dir = input.parent().unwrap_or(Path::new("."));
+        .ok_or_else(|| "ファイル名が取得できません".to_string())?;
+    let dir = input
+        .parent()
+        .ok_or_else(|| "入力ファイルの親ディレクトリが取得できません".to_string())?;
     let output_path = dir.join(format!("{stem}.av1.mkv"));
+
+    // 出力パスが入力と同一ディレクトリ内にあることを確認
+    if let Ok(canon_dir) = dir.canonicalize() {
+        let out_parent = output_path.parent().unwrap_or(dir);
+        let canon_out = out_parent.canonicalize().unwrap_or_else(|_| out_parent.to_path_buf());
+        if canon_dir != canon_out {
+            return Err("トランスコード出力先はソースと同じディレクトリである必要があります".to_string());
+        }
+    }
+
     let output_str = output_path.to_string_lossy().to_string();
 
     {

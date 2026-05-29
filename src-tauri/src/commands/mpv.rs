@@ -16,7 +16,15 @@ use tauri::Emitter;
 
 use super::settings::SharedAppSettings;
 
-const MPV_SOCKET: &str = "/tmp/mpv-chuck-socket";
+/// プロセス固有の IPC ソケットパスを返す。
+/// $TMPDIR (macOS では /var/folders/…/T/ のようなユーザー固有ディレクトリ) と
+/// PID を組み合わせることで予測困難かつプロセス一意なパスを生成する。
+fn mpv_socket_path() -> String {
+    let tmpdir = std::env::var("TMPDIR")
+        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    let tmpdir = tmpdir.trim_end_matches('/');
+    format!("{tmpdir}/mpv-chuck-{}", std::process::id())
+}
 
 // ----- 共有状態 -----
 
@@ -53,7 +61,7 @@ fn send_cmd(writer: &Arc<Mutex<UnixStream>>, cmd: Value) -> Result<(), String> {
 /// 一時接続でコマンドを送信しレスポンスを読む（一回限りの問い合わせ用）。
 fn send_ipc(cmd: Value) -> Result<Value, String> {
     let stream =
-        UnixStream::connect(MPV_SOCKET).map_err(|e| format!("IPC 接続失敗: {e}"))?;
+        UnixStream::connect(mpv_socket_path()).map_err(|e| format!("IPC 接続失敗: {e}"))?;
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|e| e.to_string())?;
@@ -92,7 +100,7 @@ fn connect_and_start_reader(
     app: tauri::AppHandle,
 ) -> Result<Arc<Mutex<UnixStream>>, String> {
     let stream =
-        UnixStream::connect(MPV_SOCKET).map_err(|e| format!("IPC 接続失敗: {e}"))?;
+        UnixStream::connect(mpv_socket_path()).map_err(|e| format!("IPC 接続失敗: {e}"))?;
     let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
     let writer = Arc::new(Mutex::new(stream));
 
@@ -136,7 +144,7 @@ fn connect_and_start_reader(
                             gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
                             eprintln!("[reader gen={current_gen}] mpv//closed 送信");
-                            let _ = std::fs::remove_file(MPV_SOCKET);
+                            let _ = std::fs::remove_file(mpv_socket_path());
                             let _ = app.emit("mpv://closed", ());
                         } else {
                             eprintln!("[reader gen={current_gen}] generation 変化 → closed をスキップ");
@@ -264,7 +272,7 @@ pub async fn play(
     // ソケットが存在する（mpv 起動済み）なら loadfile で切り替え
     let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
     if let Some(writer) = writer_opt {
-        if std::path::Path::new(MPV_SOCKET).exists() {
+        if std::path::Path::new(&mpv_socket_path()).exists() {
             eprintln!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
             match send_cmd(&writer, json!({"command": ["loadfile", path, "replace"]})) {
                 Ok(_) => {
@@ -282,7 +290,7 @@ pub async fn play(
 
     // ソケットファイルと古いプロセスを片付ける
     // generation を先にインクリメントして EOF ハンドラの誤発火を防ぐ
-    let _ = std::fs::remove_file(MPV_SOCKET);
+    let _ = std::fs::remove_file(mpv_socket_path());
     let (old_child, gen_counter) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.writer = None;
@@ -299,7 +307,9 @@ pub async fn play(
     }
 
     // mpv 起動
-    eprintln!("[play] mpv 起動: {mpv_path} {path}");
+    eprintln!("[play] mpv 起動");
+    let socket_path = mpv_socket_path();
+    let ipc_server_arg = format!("--input-ipc-server={socket_path}");
     let mut child = Command::new(&mpv_path)
         .args([
             "--idle",
@@ -309,12 +319,12 @@ pub async fn play(
             "--cache=yes",
             "--demuxer-max-bytes=150MiB",
             "--demuxer-max-back-bytes=50MiB",
-            &format!("--input-ipc-server={MPV_SOCKET}"),
+            &ipc_server_arg,
             &path,
         ])
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("mpv 起動失敗 ({}): {e}", mpv_path))?;
+        .map_err(|e| format!("メディアプレイヤーの起動に失敗しました ({})", e.kind()))?;
 
     // stderr を別スレッドでログ出力
     if let Some(stderr) = child.stderr.take() {
@@ -336,7 +346,7 @@ pub async fn play(
     // ソケットが ready になるまで待つ（最大 3 秒）
     for _ in 0..30 {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        if std::path::Path::new(MPV_SOCKET).exists() {
+        if std::path::Path::new(&mpv_socket_path()).exists() {
             break;
         }
     }
@@ -471,7 +481,7 @@ pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), Str
         let _ = send_cmd(&writer, json!({"command": ["quit"]}));
     }
 
-    let _ = std::fs::remove_file(MPV_SOCKET);
+    let _ = std::fs::remove_file(mpv_socket_path());
 
     if let Some(mut child) = child_opt {
         // ["quit"] IPC でウィンドウは即座に閉じる。プロセス回収はバックグラウンドで行い

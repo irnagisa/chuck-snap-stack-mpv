@@ -254,6 +254,12 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
     let filename = source.file_name()
         .ok_or_else(|| "invalid filename".to_string())?;
 
+    // ファイル名にパス区切り文字・NULL バイトが含まれていないことを確認 (パストラバーサル対策)
+    let filename_str = filename.to_string_lossy();
+    if filename_str.contains('/') || filename_str.contains('\\') || filename_str.contains('\0') {
+        return Err("ファイル名にパス区切り文字が含まれています".to_string());
+    }
+
     // すでに正しいディレクトリにある場合はスキップ
     let source_parent = source.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let dest_dir_norm = dest_dir.trim_end_matches('/').to_string();
@@ -262,7 +268,7 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
     }
 
     let dest_base = std::path::Path::new(&dest_dir);
-    let mut dest_path = dest_base.join(filename);
+    let mut dest_path = dest_base.join(&*filename_str);
 
     // 同名ファイルが存在する場合は連番サフィックスを付与
     if dest_path.exists() {
@@ -275,6 +281,15 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
             dest_path = dest_base.join(format!("{}_{}{}", stem, i, ext));
             if !dest_path.exists() { break; }
             i += 1;
+        }
+    }
+
+    // 最終的な移動先が dest_base の配下にあることを確認 (パストラバーサル対策)
+    if let Ok(canon_base) = dest_base.canonicalize() {
+        let check_parent = dest_path.parent().unwrap_or(&dest_path);
+        let canon_parent = check_parent.canonicalize().unwrap_or_else(|_| check_parent.to_path_buf());
+        if !canon_parent.starts_with(&canon_base) {
+            return Err("移動先がディレクトリ外です".to_string());
         }
     }
 
@@ -302,8 +317,14 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
         .file_name()
         .ok_or_else(|| "invalid filename".to_string())?;
 
+    // ファイル名にパス区切り文字・NULL バイトが含まれていないことを確認 (パストラバーサル対策)
+    let filename_str = filename.to_string_lossy();
+    if filename_str.contains('/') || filename_str.contains('\\') || filename_str.contains('\0') {
+        return Err("ファイル名にパス区切り文字が含まれています".to_string());
+    }
+
     let dest_base = std::path::Path::new(&dest_dir);
-    let mut dest_path = dest_base.join(filename);
+    let mut dest_path = dest_base.join(&*filename_str);
 
     // 同名ファイルが存在する場合は連番サフィックスを付与
     if dest_path.exists() {
@@ -323,6 +344,15 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
                 break;
             }
             i += 1;
+        }
+    }
+
+    // 最終的なコピー先が dest_base の配下にあることを確認 (パストラバーサル対策)
+    if let Ok(canon_base) = dest_base.canonicalize() {
+        let check_parent = dest_path.parent().unwrap_or(&dest_path);
+        let canon_parent = check_parent.canonicalize().unwrap_or_else(|_| check_parent.to_path_buf());
+        if !canon_parent.starts_with(&canon_base) {
+            return Err("コピー先がディレクトリ外です".to_string());
         }
     }
 
