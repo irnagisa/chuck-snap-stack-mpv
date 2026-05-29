@@ -8,6 +8,7 @@ import { AddToPlaylistModal } from './Library/AddToPlaylistModal';
 import { BulkDeleteModal } from './Library/BulkDeleteModal';
 import { BulkTagModal } from './Library/BulkTagModal';
 import { BulkCategoryModal } from './Library/BulkCategoryModal';
+import { BulkRenameModal } from './Library/BulkRenameModal';
 import { DuplicatesModal } from './Library/DuplicatesModal';
 import { StatsModal } from './Library/StatsModal';
 import { ExportModal } from './Library/ExportModal';
@@ -108,6 +109,17 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
             closeBulkModal();
             onClearSelection();
             fetchVideos();
+          }}
+        />
+      )}
+
+      {bulkModal === 'rename' && selectedVideos.length > 0 && (
+        <BulkRenameModal
+          videos={selectedVideos}
+          onClose={closeBulkModal}
+          onDone={() => {
+            closeBulkModal();
+            onClearSelection();
           }}
         />
       )}

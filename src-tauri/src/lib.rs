@@ -57,6 +57,7 @@ pub fn run() {
             commands::library::capture_frame_at,
             commands::library::save_text_file,
             commands::library::read_text_file,
+            commands::library::rename_video_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

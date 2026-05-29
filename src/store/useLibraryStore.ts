@@ -64,6 +64,7 @@ interface LibraryActions {
   addVideoFromPath: (path: string, title: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
   moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
+  renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
 }
 
 const CREATE_VIDEOS_TABLE = `
@@ -717,5 +718,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       console.error('Failed to move video file:', e);
       return null;
     }
+  },
+  renameVideoFile: async (videoId: number, newPath: string) => {
+    const { db } = get();
+    if (!db) return;
+    await db.execute('UPDATE videos SET path = ? WHERE id = ?', [newPath, videoId]);
+    set((state) => ({
+      videos: state.videos.map((v) => v.id === videoId ? { ...v, path: newPath } : v),
+    }));
   },
 }));

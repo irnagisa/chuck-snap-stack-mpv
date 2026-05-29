@@ -553,6 +553,13 @@ function App() {
                   </button>
                   <button
                     type="button"
+                    className="px-2.5 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded"
+                    onClick={() => openBulkModal('rename')}
+                  >
+                    リネーム
+                  </button>
+                  <button
+                    type="button"
                     className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
                     onClick={() => openBulkModal('delete')}
                   >

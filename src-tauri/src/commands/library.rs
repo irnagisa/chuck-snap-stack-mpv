@@ -537,6 +537,38 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// 動画ファイルを同じディレクトリ内でリネームし、新しいパスを返す。
+#[tauri::command]
+pub async fn rename_video_file(old_path: String, new_name: String) -> Result<String, String> {
+    validate_video_path(&old_path)?;
+
+    // ファイル名のバリデーション
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() {
+        return Err("ファイル名が空です".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains('\0') {
+        return Err("ファイル名にパス区切り文字が含まれています".to_string());
+    }
+
+    let old = Path::new(&old_path);
+    let dir = old.parent().ok_or_else(|| "親ディレクトリが取得できません".to_string())?;
+    let new_path = dir.join(trimmed);
+
+    // パストラバーサル対策: 親ディレクトリが変わらないことを確認
+    if new_path.parent().map(|p| p != dir).unwrap_or(true) {
+        return Err("ファイル名にパス区切り文字が含まれています".to_string());
+    }
+
+    if new_path.exists() {
+        return Err(format!("同名のファイルがすでに存在します: {}", trimmed));
+    }
+
+    tokio::fs::rename(&old, &new_path).await.map_err(|e| e.to_string())?;
+
+    Ok(new_path.to_string_lossy().into_owned())
+}
+
 /// 指定タイムスタンプのフレームをカスタムサムネイルとしてキャプチャする。
 #[tauri::command]
 pub async fn capture_frame_at(

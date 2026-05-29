@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Video, Playlist } from '../types';
 
-type BulkModal = 'delete' | 'tag' | 'category' | null;
+type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | null;
 
 interface ModalStore {
   showSettings: boolean;
