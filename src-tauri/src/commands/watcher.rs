@@ -98,12 +98,16 @@ pub async fn stop_watching(
 ) -> Result<(), String> {
     let canonical = tokio::fs::canonicalize(&path)
         .await
-        .unwrap_or_else(|_| std::path::PathBuf::from(&path))
-        .to_string_lossy()
-        .to_string();
-    state
-        .lock()
-        .map_err(|e| e.to_string())?
-        .remove(&canonical);
+        .map(|p| p.to_string_lossy().into_owned());
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    // 正規化パスで検索し、見つからない場合は元パスでも試みる
+    let removed = if let Ok(ref c) = canonical {
+        guard.remove(c).is_some()
+    } else {
+        false
+    };
+    if !removed {
+        guard.remove(&path);
+    }
     Ok(())
 }

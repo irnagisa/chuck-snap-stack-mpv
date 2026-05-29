@@ -193,7 +193,7 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
 }
 
 // デバウンスタイマー: setSearch が連続呼び出しされたとき最後の呼び出しだけ fetchVideos を実行する
-let _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 
 const THUMBNAIL_CONCURRENCY = 3;
 
@@ -314,12 +314,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setSearch: async (search: string) => {
     set({ filterSearch: search, currentPage: 1 });
-    // 300ms デバウンス: 1文字ずつ入力しても最後の入力確定後に1回だけ DB クエリを実行
-    if (_searchDebounceTimer !== null) clearTimeout(_searchDebounceTimer);
-    _searchDebounceTimer = setTimeout(async () => {
-      _searchDebounceTimer = null;
-      await get().fetchVideos();
-    }, 300);
+    // App.tsx 側で 500ms デバウンス済みのため、ストアでは即座に DB クエリを実行する
+    await get().fetchVideos();
   },
 
   setCategoryFilter: async (id: number | null) => {

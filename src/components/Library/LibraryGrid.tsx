@@ -232,7 +232,7 @@ export function LibraryGrid({
     overscan: 3,
   });
 
-  const handleCheckbox = (e: React.MouseEvent, video: Video, idx: number) => {
+  const handleCheckbox = useCallback((e: React.MouseEvent, video: Video, idx: number) => {
     e.stopPropagation();
     if (e.shiftKey) e.preventDefault();
     const next = new Set(selectedIds);
@@ -253,7 +253,7 @@ export function LibraryGrid({
     }
 
     onSelectionChange(next);
-  };
+  }, [selectedIds, videos, onSelectionChange]);
 
   return (
     <>
