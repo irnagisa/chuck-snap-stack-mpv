@@ -9,6 +9,10 @@ import { BulkDeleteModal } from './Library/BulkDeleteModal';
 import { BulkTagModal } from './Library/BulkTagModal';
 import { BulkCategoryModal } from './Library/BulkCategoryModal';
 import { DuplicatesModal } from './Library/DuplicatesModal';
+import { StatsModal } from './Library/StatsModal';
+import { ExportModal } from './Library/ExportModal';
+import { SmartPlaylistModal } from './Library/SmartPlaylistModal';
+import { QueuePanel } from './Player/QueuePanel';
 import type { Video } from '../types';
 
 interface AppModalsProps {
@@ -22,6 +26,9 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
     showSettings, closeSettings,
     showDownload, closeDownload,
     showDuplicates, closeDuplicates,
+    showStats, closeStats,
+    showExport, closeExport,
+    showSmartPlaylist, closeSmartPlaylist,
     detailVideo, closeDetailVideo,
     activePlaylist, closePlaylist,
     addToPlaylistVideo, closeAddToPlaylist,
@@ -36,6 +43,14 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {showDownload && <DownloadModal onClose={closeDownload} />}
 
       {showDuplicates && <DuplicatesModal onClose={closeDuplicates} />}
+
+      {showStats && <StatsModal onClose={closeStats} />}
+
+      {showExport && <ExportModal onClose={closeExport} />}
+
+      {showSmartPlaylist && <SmartPlaylistModal onClose={closeSmartPlaylist} />}
+
+      <QueuePanel />
 
       {detailVideo && (
         <VideoDetailModal

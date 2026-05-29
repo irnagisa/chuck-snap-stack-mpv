@@ -37,6 +37,7 @@ interface LibraryState {
 
 interface LibraryActions {
   initDb: () => Promise<void>;
+  incrementWatchCount: (videoId: number) => Promise<void>;
   fetchVideos: () => Promise<void>;
   fetchAllForShuffle: () => Promise<Video[]>;
   setSearch: (search: string) => Promise<void>;
@@ -134,6 +135,15 @@ const CREATE_WATCH_DIRS_TABLE = `
   CREATE TABLE IF NOT EXISTS watch_dirs (
     path       TEXT PRIMARY KEY,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
+const CREATE_SMART_PLAYLISTS_TABLE = `
+  CREATE TABLE IF NOT EXISTS smart_playlists (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    filter_json TEXT NOT NULL,
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `;
 
@@ -239,6 +249,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       try {
         await db.execute('ALTER TABLE videos ADD COLUMN has_audio INTEGER');
       } catch { /* already exists */ }
+      try {
+        await db.execute('ALTER TABLE videos ADD COLUMN watch_count INTEGER DEFAULT 0');
+      } catch { /* already exists */ }
       // パフォーマンス最適化: よく使うフィルター/ソートカラムにインデックスを作成
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_rating ON videos(rating)');
@@ -253,6 +266,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await useTagStore.getState().init(db);
       await usePlaylistStore.getState().init(db);
       await db.execute(CREATE_WATCH_DIRS_TABLE);
+      await db.execute(CREATE_SMART_PLAYLISTS_TABLE);
       const savedDirs = await db.select<{ path: string }[]>('SELECT path FROM watch_dirs');
       set({ watchDirs: savedDirs.map((d) => d.path) });
       for (const dir of savedDirs) {
@@ -671,6 +685,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, videoIds);
     await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, videoIds);
     await get().fetchVideos();
+  },
+
+  incrementWatchCount: async (videoId: number) => {
+    const { db } = get();
+    if (!db) return;
+    await db.execute('UPDATE videos SET watch_count = COALESCE(watch_count, 0) + 1 WHERE id = ?', [videoId]);
+    set((state) => ({
+      videos: state.videos.map((v) =>
+        v.id === videoId ? { ...v, watch_count: (v.watch_count ?? 0) + 1 } : v
+      ),
+    }));
   },
 
   moveVideoFile: async (videoId: number, destDir: string) => {

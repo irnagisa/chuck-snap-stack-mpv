@@ -46,6 +46,17 @@ pub fn run() {
             commands::download::cancel_download,
             commands::transcode::transcode_video,
             commands::transcode::cancel_transcode,
+            commands::mpv::set_playback_speed,
+            commands::mpv::take_screenshot,
+            commands::mpv::set_ab_loop_a,
+            commands::mpv::set_ab_loop_b,
+            commands::mpv::clear_ab_loop,
+            commands::mpv::load_subtitle,
+            commands::library::get_chapters,
+            commands::library::scan_subtitle_files,
+            commands::library::capture_frame_at,
+            commands::library::save_text_file,
+            commands::library::read_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

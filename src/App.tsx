@@ -87,7 +87,7 @@ function App() {
   } = useTranscodeStore();
   const {
     openSettings, openDownload, openDetailVideo, openAddToPlaylist,
-    openPlaylist, openBulkModal, openDuplicates, closeAll,
+    openPlaylist, openBulkModal, openDuplicates, openStats, openExport, openSmartPlaylist, closeAll,
   } = useModalStore();
 
   const [searchInput, setSearchInput] = useState(filterSearch);
@@ -182,6 +182,24 @@ function App() {
           placeholder="動画を検索..."
           disabled={!isDbReady}
         />
+        <button
+          type="button"
+          title="統計ダッシュボード"
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
+          disabled={!isDbReady}
+          onClick={openStats}
+        >
+          📊
+        </button>
+        <button
+          type="button"
+          title="エクスポート / インポート"
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
+          disabled={!isDbReady}
+          onClick={openExport}
+        >
+          📤
+        </button>
         <button
           type="button"
           title="重複動画を検出"
@@ -436,6 +454,14 @@ function App() {
                         ⇄ 全件
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-400 dark:hover:border-amber-600 transition-colors"
+                      title="現在のフィルター条件をスマートプレイリストとして保存"
+                      onClick={openSmartPlaylist}
+                    >
+                      💾 保存
+                    </button>
                   </div>
                 </div>
 

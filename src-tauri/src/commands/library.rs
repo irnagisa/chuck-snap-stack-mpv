@@ -7,6 +7,22 @@ use super::settings::SharedAppSettings;
 use super::utils::{validate_image_output_path, validate_path, validate_video_path};
 
 #[derive(Serialize)]
+pub struct Chapter {
+    pub title: String,
+    pub start_time: f64,
+    pub end_time: f64,
+}
+
+#[derive(Serialize)]
+pub struct SubtitleFile {
+    pub path: String,
+    pub name: String,
+    pub ext: String,
+}
+
+const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "ass", "vtt", "sub", "ssa"];
+
+#[derive(Serialize)]
 pub struct ThumbnailResult {
     pub thumbnail_path: String,
     pub duration: Option<f64>,
@@ -391,4 +407,174 @@ pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(Stri
         })
         .collect();
     Ok(results)
+}
+
+/// ffprobe で動画のチャプター情報を取得する。
+#[tauri::command]
+pub async fn get_chapters(
+    app_settings: tauri::State<'_, SharedAppSettings>,
+    video_path: String,
+) -> Result<Vec<Chapter>, String> {
+    validate_video_path(&video_path)?;
+
+    let ffprobe_path = {
+        let s = app_settings.lock().map_err(|e| e.to_string())?;
+        s.ffprobe_path.clone()
+    };
+
+    let out = tokio::process::Command::new(&ffprobe_path)
+        .args([
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_chapters",
+            &video_path,
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or(serde_json::json!({"chapters": []}));
+
+    let chapters = json["chapters"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|ch| {
+                    let title = ch["tags"]["title"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string();
+                    let start_time = ch["start_time"]
+                        .as_str()
+                        .and_then(|s| s.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    let end_time = ch["end_time"]
+                        .as_str()
+                        .and_then(|s| s.parse::<f64>().ok())
+                        .unwrap_or(start_time);
+                    Chapter { title, start_time, end_time }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(chapters)
+}
+
+/// 動画と同じディレクトリから同名の字幕ファイルを検索する。
+#[tauri::command]
+pub async fn scan_subtitle_files(video_path: String) -> Result<Vec<SubtitleFile>, String> {
+    validate_video_path(&video_path)?;
+
+    let path = std::path::Path::new(&video_path);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| "ファイル名取得失敗".to_string())?
+        .to_lowercase();
+    let dir = path.parent().ok_or_else(|| "親ディレクトリ取得失敗".to_string())?;
+
+    let mut subtitles = Vec::new();
+
+    let entries = tokio::task::spawn_blocking({
+        let dir = dir.to_path_buf();
+        let stem = stem.clone();
+        move || -> Vec<SubtitleFile> {
+            let Ok(read_dir) = std::fs::read_dir(&dir) else { return vec![] };
+            let mut result = Vec::new();
+            for entry in read_dir.flatten() {
+                let entry_path = entry.path();
+                let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) else { continue };
+                let ext_lower = ext.to_lowercase();
+                if !SUBTITLE_EXTENSIONS.contains(&ext_lower.as_str()) {
+                    continue;
+                }
+                let Some(entry_stem) = entry_path.file_stem().and_then(|s| s.to_str()) else { continue };
+                // 動画のステムで始まるファイルを対象とする（言語サフィックスも許容）
+                if !entry_stem.to_lowercase().starts_with(&stem) {
+                    continue;
+                }
+                let name = entry_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                result.push(SubtitleFile {
+                    path: entry_path.to_string_lossy().into_owned(),
+                    name,
+                    ext: ext_lower,
+                });
+            }
+            result
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    subtitles.extend(entries);
+    Ok(subtitles)
+}
+
+/// テキストファイルを保存する。
+#[tauri::command]
+pub async fn save_text_file(path: String, content: String) -> Result<(), String> {
+    validate_path(&path)?;
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+    }
+    tokio::fs::write(&path, content.as_bytes())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// テキストファイルを読み込む。
+#[tauri::command]
+pub async fn read_text_file(path: String) -> Result<String, String> {
+    validate_path(&path)?;
+    tokio::fs::read_to_string(&path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 指定タイムスタンプのフレームをカスタムサムネイルとしてキャプチャする。
+#[tauri::command]
+pub async fn capture_frame_at(
+    app_settings: tauri::State<'_, SharedAppSettings>,
+    video_path: String,
+    timestamp: f64,
+    output_path: String,
+) -> Result<(), String> {
+    validate_video_path(&video_path)?;
+    validate_image_output_path(&output_path)?;
+
+    let ffmpeg_path = {
+        let s = app_settings.lock().map_err(|e| e.to_string())?;
+        s.ffmpeg_path.clone()
+    };
+
+    if let Some(parent) = Path::new(&output_path).parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let ts = timestamp.max(0.0).to_string();
+    let status = tokio::process::Command::new(&ffmpeg_path)
+        .args([
+            "-y", "-ss", &ts, "-i", &video_path,
+            "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",
+            &output_path,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("フレームキャプチャに失敗しました".to_string())
+    }
 }

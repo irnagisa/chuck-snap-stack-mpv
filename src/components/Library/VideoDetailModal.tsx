@@ -6,7 +6,7 @@ import { usePlayerStore } from '../../store/usePlayerStore';
 import { TagBadge } from './TagBadge';
 import { TranscodeModal } from './TranscodeModal';
 import { Select } from '../common/Select';
-import type { Video, Tag } from '../../types';
+import type { Video, Tag, SubtitleFile } from '../../types';
 
 const COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -57,6 +57,11 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
   const [showTranscode, setShowTranscode] = useState(false);
   const [tagInputFocused, setTagInputFocused] = useState(false);
+  const [thumbTimestamp, setThumbTimestamp] = useState('5');
+  const [isCapturingThumb, setIsCapturingThumb] = useState(false);
+  const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
+  const [isScanningSubs, setIsScanningSubs] = useState(false);
+  const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   const currentTags = videoTags[video.id] ?? [];
@@ -151,6 +156,47 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const handlePlay = () => {
     play(video);
     onClose();
+  };
+
+  const handleCaptureThumb = async () => {
+    if (!db) return;
+    const ts = parseFloat(thumbTimestamp);
+    if (isNaN(ts) || ts < 0) return;
+    setIsCapturingThumb(true);
+    try {
+      await invoke('capture_frame_at', {
+        videoPath: video.path,
+        timestamp: ts,
+        outputPath: video.thumbnail ?? '',
+      });
+      await db.execute('UPDATE videos SET thumbnail = ? WHERE id = ?', [video.thumbnail, video.id]);
+      await fetchVideos();
+    } catch (e) {
+      console.error('Capture failed:', e);
+    } finally {
+      setIsCapturingThumb(false);
+    }
+  };
+
+  const handleScanSubtitles = async () => {
+    setIsScanningSubs(true);
+    try {
+      const subs = await invoke<SubtitleFile[]>('scan_subtitle_files', { videoPath: video.path });
+      setSubtitles(subs);
+    } catch {
+      setSubtitles([]);
+    } finally {
+      setIsScanningSubs(false);
+    }
+  };
+
+  const handleLoadSubtitle = async (path: string) => {
+    try {
+      await invoke('load_subtitle', { path });
+      setLoadedSubtitle(path);
+    } catch (e) {
+      console.error('Subtitle load failed:', e);
+    }
   };
 
   return (
@@ -290,6 +336,14 @@ export function VideoDetailModal({ video, onClose }: Props) {
                     {new Date(video.created_at).toLocaleDateString('ja-JP')}
                   </p>
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    再生回数
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {(video.watch_count ?? 0)}回
+                  </p>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
@@ -422,9 +476,79 @@ export function VideoDetailModal({ video, onClose }: Props) {
               </div>
             </div>
           </div>
+
+            {/* カスタムサムネイル */}
+            <div className="pt-4 flex flex-col gap-2">
+              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
+                サムネイルを変更
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="w-24 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  value={thumbTimestamp}
+                  onChange={(e) => setThumbTimestamp(e.target.value)}
+                  placeholder="秒"
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400">秒のフレームを設定</span>
+                <button
+                  type="button"
+                  onClick={handleCaptureThumb}
+                  disabled={isCapturingThumb || !video.thumbnail}
+                  className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
+                >
+                  {isCapturingThumb ? '処理中...' : 'キャプチャ'}
+                </button>
+              </div>
+            </div>
+
+            {/* 字幕ファイル管理 */}
+            <div className="pt-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
+                  字幕ファイル
+                </label>
+                <button
+                  type="button"
+                  onClick={handleScanSubtitles}
+                  disabled={isScanningSubs}
+                  className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
+                >
+                  {isScanningSubs ? '検索中...' : '検索'}
+                </button>
+              </div>
+              {subtitles.length === 0 && !isScanningSubs && (
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  「検索」で同フォルダの字幕ファイルを探します
+                </p>
+              )}
+              {subtitles.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {subtitles.map((sub) => (
+                    <div key={sub.path} className="flex items-center gap-2 text-xs">
+                      <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{sub.name}</span>
+                      <span className="text-gray-400 dark:text-gray-500 uppercase">{sub.ext}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadSubtitle(sub.path)}
+                        className={`px-2 py-0.5 rounded text-xs ${
+                          loadedSubtitle === sub.path
+                            ? 'bg-green-600 text-white'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                      >
+                        {loadedSubtitle === sub.path ? 'ロード済' : 'ロード'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
     </div>
     </>
   );

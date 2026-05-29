@@ -1,0 +1,263 @@
+import { useEffect, useState } from 'react';
+import { useLibraryStore } from '../../store/useLibraryStore';
+
+interface Stats {
+  totalVideos: number;
+  watchedCount: number;
+  totalDurationSec: number;
+  avgRating: number;
+  categoryStats: { name: string; count: number }[];
+  topRated: { title: string | null; path: string; rating: number }[];
+  recentlyWatched: { title: string | null; path: string; watched_at: string }[];
+  topWatched: { title: string | null; path: string; watch_count: number }[];
+  topTags: { name: string; count: number }[];
+}
+
+function formatDuration(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h}時間${m}分`;
+  return `${m}分`;
+}
+
+function BarChart({ items, max }: { items: { label: string; value: number }[]; max: number }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {items.map((item) => (
+        <div key={item.label} className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 dark:text-gray-400 w-28 truncate shrink-0 text-right">{item.label}</span>
+          <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div
+              className="bg-blue-500 rounded-full h-3 transition-all"
+              style={{ width: max > 0 ? `${(item.value / max) * 100}%` : '0%' }}
+            />
+          </div>
+          <span className="text-xs text-gray-600 dark:text-gray-300 w-6 text-right shrink-0 tabular-nums">{item.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface Props {
+  onClose: () => void;
+}
+
+export function StatsModal({ onClose }: Props) {
+  const db = useLibraryStore((s) => s.db);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db) return;
+    const load = async () => {
+      try {
+        const [
+          totalRow,
+          watchedRow,
+          durationRow,
+          ratingRow,
+          catRows,
+          topRatedRows,
+          recentRows,
+          topWatchedRows,
+          topTagRows,
+        ] = await Promise.all([
+          db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM videos'),
+          db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM videos WHERE watched_at IS NOT NULL'),
+          db.select<{ total: number }[]>('SELECT COALESCE(SUM(duration), 0) as total FROM videos'),
+          db.select<{ avg: number }[]>('SELECT AVG(NULLIF(rating, 0)) as avg FROM videos'),
+          db.select<{ name: string; count: number }[]>(
+            `SELECT c.name, COUNT(v.id) as count
+             FROM categories c
+             JOIN videos v ON v.category_id = c.id
+             GROUP BY c.id ORDER BY count DESC LIMIT 10`
+          ),
+          db.select<{ title: string | null; path: string; rating: number }[]>(
+            'SELECT title, path, rating FROM videos WHERE rating > 0 ORDER BY rating DESC, watched_at DESC LIMIT 5'
+          ),
+          db.select<{ title: string | null; path: string; watched_at: string }[]>(
+            'SELECT title, path, watched_at FROM videos WHERE watched_at IS NOT NULL ORDER BY watched_at DESC LIMIT 5'
+          ),
+          db.select<{ title: string | null; path: string; watch_count: number }[]>(
+            'SELECT title, path, COALESCE(watch_count, 0) as watch_count FROM videos WHERE COALESCE(watch_count, 0) > 0 ORDER BY watch_count DESC LIMIT 5'
+          ),
+          db.select<{ name: string; count: number }[]>(
+            `SELECT t.name, COUNT(vt.video_id) as count
+             FROM tags t JOIN video_tags vt ON t.id = vt.tag_id
+             GROUP BY t.id ORDER BY count DESC LIMIT 10`
+          ),
+        ]);
+
+        setStats({
+          totalVideos: totalRow[0]?.count ?? 0,
+          watchedCount: watchedRow[0]?.count ?? 0,
+          totalDurationSec: durationRow[0]?.total ?? 0,
+          avgRating: ratingRow[0]?.avg ?? 0,
+          categoryStats: catRows,
+          topRated: topRatedRows,
+          recentlyWatched: recentRows,
+          topWatched: topWatchedRows,
+          topTags: topTagRows,
+        });
+      } catch (e) {
+        console.error('Stats load failed:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [db]);
+
+  const watchedPct = stats && stats.totalVideos > 0
+    ? Math.round((stats.watchedCount / stats.totalVideos) * 100)
+    : 0;
+
+  const maxCatCount = Math.max(...(stats?.categoryStats.map((c) => c.count) ?? [1]), 1);
+  const maxTagCount = Math.max(...(stats?.topTags.map((t) => t.count) ?? [1]), 1);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">ライブラリ統計</h2>
+          <button
+            type="button"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          {isLoading ? (
+            <div className="text-center py-10 text-gray-400">読み込み中...</div>
+          ) : !stats ? (
+            <div className="text-center py-10 text-gray-400">統計情報の取得に失敗しました</div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              {/* サマリーカード */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: '総動画数', value: `${stats.totalVideos}本` },
+                  { label: '総再生時間', value: formatDuration(stats.totalDurationSec) },
+                  { label: '視聴済み', value: `${stats.watchedCount}本 (${watchedPct}%)` },
+                  { label: '平均評価', value: stats.avgRating > 0 ? `★ ${stats.avgRating.toFixed(1)}` : '—' },
+                ].map((card) => (
+                  <div key={card.label} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{card.label}</p>
+                    <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 mt-0.5">{card.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* 視聴進捗バー */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">視聴進捗</span>
+                  <span className="text-xs text-gray-600 dark:text-gray-300 tabular-nums">
+                    {stats.watchedCount} / {stats.totalVideos}
+                  </span>
+                </div>
+                <div className="h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full">
+                  <div
+                    className="h-full bg-green-500 rounded-full transition-all"
+                    style={{ width: `${watchedPct}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                {/* カテゴリ別 */}
+                {stats.categoryStats.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">カテゴリ別動画数</h3>
+                    <BarChart
+                      items={stats.categoryStats.map((c) => ({ label: c.name, value: c.count }))}
+                      max={maxCatCount}
+                    />
+                  </div>
+                )}
+
+                {/* タグ使用数 */}
+                {stats.topTags.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">タグ使用数 Top10</h3>
+                    <BarChart
+                      items={stats.topTags.map((t) => ({ label: t.name, value: t.count }))}
+                      max={maxTagCount}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+                {/* 高評価 Top5 */}
+                {stats.topRated.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">高評価 Top5</h3>
+                    <ol className="flex flex-col gap-1.5">
+                      {stats.topRated.map((v, i) => (
+                        <li key={i} className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-400 w-4 shrink-0 tabular-nums">{i + 1}.</span>
+                          <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">
+                            {v.title ?? v.path.split('/').pop()}
+                          </span>
+                          <span className="text-xs text-yellow-500 shrink-0">{'★'.repeat(v.rating)}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* 最近視聴 */}
+                {stats.recentlyWatched.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">最近視聴</h3>
+                    <ol className="flex flex-col gap-1.5">
+                      {stats.recentlyWatched.map((v, i) => (
+                        <li key={i} className="flex flex-col">
+                          <span className="text-xs text-gray-700 dark:text-gray-300 truncate">
+                            {v.title ?? v.path.split('/').pop()}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(v.watched_at).toLocaleDateString('ja-JP')}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* 再生回数 Top5 */}
+                {stats.topWatched.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">再生回数 Top5</h3>
+                    <ol className="flex flex-col gap-1.5">
+                      {stats.topWatched.map((v, i) => (
+                        <li key={i} className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-400 w-4 shrink-0 tabular-nums">{i + 1}.</span>
+                          <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">
+                            {v.title ?? v.path.split('/').pop()}
+                          </span>
+                          <span className="text-xs text-gray-500 shrink-0 tabular-nums">{v.watch_count}回</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

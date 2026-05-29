@@ -1,79 +1,75 @@
 import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { usePlayerStore } from '../store/usePlayerStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import type { KeyBindings } from '../store/useSettingsStore';
 
 interface Options {
   onEscape?: () => void;
 }
 
 export function useKeyboardShortcuts({ onEscape }: Options = {}) {
-  // refs で最新値を保持することで、currentVideo / queue の変化ごとにリスナーを付け直さない
   const onEscapeRef = useRef(onEscape);
   useEffect(() => {
     onEscapeRef.current = onEscape;
   }, [onEscape]);
 
   useEffect(() => {
-    // ストアを直接 subscribe して currentVideo / queue を ref で追跡
     const currentVideoRef = { current: usePlayerStore.getState().currentVideo };
     const queueRef = { current: usePlayerStore.getState().queue };
+    // keybindings も ref で追跡し、設定変更時にリスナーを付け直さない
+    const bindingsRef: { current: KeyBindings } = {
+      current: useSettingsStore.getState().keybindings,
+    };
 
     const unsub = usePlayerStore.subscribe((state) => {
       currentVideoRef.current = state.currentVideo;
       queueRef.current = state.queue;
     });
 
-    const handler = async (e: KeyboardEvent) => {
-      // input / textarea フォーカス中はショートカット無効
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+    const unsubSettings = useSettingsStore.subscribe((state) => {
+      bindingsRef.current = state.keybindings;
+    });
 
-      // モーダルを閉じる
-      if (e.key === 'Escape') {
+    const handler = async (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+
+      const b = bindingsRef.current;
+      const key = e.key;
+
+      if (key === b.escape) {
         onEscapeRef.current?.();
         return;
       }
 
-      // 以下は再生中のみ有効
       if (!currentVideoRef.current) return;
 
-      switch (e.key) {
-        case ' ':
-          e.preventDefault();
-          await invoke('pause_resume').catch(() => {});
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          await invoke('relative_seek', { seconds: -5 }).catch(() => {});
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          await invoke('relative_seek', { seconds: 5 }).catch(() => {});
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          await invoke('adjust_volume', { delta: 5 }).catch(() => {});
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          await invoke('adjust_volume', { delta: -5 }).catch(() => {});
-          break;
-        case 'f':
-        case 'F':
-          await invoke('toggle_fullscreen').catch(() => {});
-          break;
-        case 'n':
-        case 'N':
-          if (queueRef.current.length > 0) {
-            await usePlayerStore.getState().playNext();
-          }
-          break;
-        case 'p':
-        case 'P':
-          if (queueRef.current.length > 0) {
-            await usePlayerStore.getState().playPrev();
-          }
-          break;
+      if (key === b.pause || key === b.pause.toUpperCase()) {
+        e.preventDefault();
+        await invoke('pause_resume').catch(() => {});
+      } else if (key === b.seekBackward) {
+        e.preventDefault();
+        await invoke('relative_seek', { seconds: -5 }).catch(() => {});
+      } else if (key === b.seekForward) {
+        e.preventDefault();
+        await invoke('relative_seek', { seconds: 5 }).catch(() => {});
+      } else if (key === b.volumeUp) {
+        e.preventDefault();
+        await invoke('adjust_volume', { delta: 5 }).catch(() => {});
+      } else if (key === b.volumeDown) {
+        e.preventDefault();
+        await invoke('adjust_volume', { delta: -5 }).catch(() => {});
+      } else if (key === b.fullscreen || key === b.fullscreen.toUpperCase()) {
+        await invoke('toggle_fullscreen').catch(() => {});
+      } else if (key === b.next || key === b.next.toUpperCase()) {
+        if (queueRef.current.length > 0) {
+          await usePlayerStore.getState().playNext();
+        }
+      } else if (key === b.prev || key === b.prev.toUpperCase()) {
+        if (queueRef.current.length > 0) {
+          await usePlayerStore.getState().playPrev();
+        }
       }
     };
 
@@ -81,6 +77,7 @@ export function useKeyboardShortcuts({ onEscape }: Options = {}) {
     return () => {
       window.removeEventListener('keydown', handler);
       unsub();
+      unsubSettings();
     };
-  }, []); // 空配列: マウント時に一度だけ登録
+  }, []);
 }

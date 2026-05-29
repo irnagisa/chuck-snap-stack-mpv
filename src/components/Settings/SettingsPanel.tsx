@@ -1,19 +1,52 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useSettingsStore, type AppSettings } from "../../store/useSettingsStore";
+import {
+  useSettingsStore, type AppSettings, type KeyAction,
+  KEY_ACTION_LABELS, DEFAULT_KEYBINDINGS,
+} from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
 
 interface Props {
   onClose: () => void;
 }
 
+function formatKey(key: string): string {
+  if (key === ' ') return 'Space';
+  if (key === 'ArrowRight') return '→';
+  if (key === 'ArrowLeft') return '←';
+  if (key === 'ArrowUp') return '↑';
+  if (key === 'ArrowDown') return '↓';
+  if (key === 'Escape') return 'Esc';
+  return key;
+}
+
+const KEY_ACTION_ORDER: KeyAction[] = [
+  'pause', 'seekForward', 'seekBackward', 'volumeUp', 'volumeDown',
+  'fullscreen', 'next', 'prev', 'escape',
+];
+
 export function SettingsPanel({ onClose }: Props) {
-  const { mpvPath, ffmpegPath, ffprobePath, downloadDir, saveSettings } = useSettingsStore();
+  const { mpvPath, ffmpegPath, ffprobePath, downloadDir, screenshotDir, keybindings, saveSettings, saveKeybindings } = useSettingsStore();
   const { db, watchDirs, scanAndImport, removeWatchDir, isScanning } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, downloadDir });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, downloadDir, screenshotDir, keybindings });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
+  const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
+
+  useEffect(() => {
+    if (!capturingAction) return;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      setLocal((prev) => ({
+        ...prev,
+        keybindings: { ...prev.keybindings, [capturingAction]: e.key },
+      }));
+      setCapturingAction(null);
+    };
+    window.addEventListener('keydown', handler, { once: true });
+    return () => window.removeEventListener('keydown', handler);
+  }, [capturingAction]);
 
   const handlePickMpv = async () => {
     const selected = await open({ multiple: false });
@@ -26,6 +59,13 @@ export function SettingsPanel({ onClose }: Props) {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
       setLocal((prev) => ({ ...prev, downloadDir: selected }));
+    }
+  };
+
+  const handlePickScreenshotDir = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (typeof selected === "string") {
+      setLocal((prev) => ({ ...prev, screenshotDir: selected }));
     }
   };
 
@@ -50,6 +90,7 @@ export function SettingsPanel({ onClose }: Props) {
     setIsSaving(true);
     try {
       await saveSettings(db, local);
+      await saveKeybindings(db, local.keybindings);
       onClose();
     } finally {
       setIsSaving(false);
@@ -61,9 +102,9 @@ export function SettingsPanel({ onClose }: Props) {
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
         {/* ヘッダー */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">設定</h2>
           <button
             type="button"
@@ -74,8 +115,8 @@ export function SettingsPanel({ onClose }: Props) {
           </button>
         </div>
 
-        {/* 本体 */}
-        <div className="px-6 py-5 space-y-4">
+        {/* 本体 - スクロール可能 */}
+        <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             実行ファイル
           </p>
@@ -134,12 +175,11 @@ export function SettingsPanel({ onClose }: Props) {
             />
           </div>
 
-          {/* 区切り線 */}
           <hr className="border-gray-200 dark:border-gray-700" />
 
-          {/* ダウンロード */}
+          {/* ダウンロード / スクリーンショット */}
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            ダウンロード
+            ダウンロード / スクリーンショット
           </p>
 
           <div>
@@ -172,14 +212,40 @@ export function SettingsPanel({ onClose }: Props) {
                 </button>
               )}
             </div>
-            {!local.downloadDir && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                未設定の場合は OS の標準 Downloads フォルダが使われます
-              </p>
-            )}
           </div>
 
-          {/* 区切り線 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              スクリーンショット保存先
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={local.screenshotDir}
+                placeholder="未設定（ダウンロード先フォルダを使用）"
+                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
+              />
+              <button
+                type="button"
+                onClick={handlePickScreenshotDir}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
+              >
+                参照
+              </button>
+              {local.screenshotDir && (
+                <button
+                  type="button"
+                  onClick={() => setLocal((prev) => ({ ...prev, screenshotDir: "" }))}
+                  className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
+                  title="リセット"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
           <hr className="border-gray-200 dark:border-gray-700" />
 
           {/* スキャンパス */}
@@ -223,10 +289,75 @@ export function SettingsPanel({ onClose }: Props) {
           >
             {isScanning ? "スキャン中..." : "+ フォルダを追加"}
           </button>
+
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          {/* キーボードショートカット */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            キーボードショートカット
+          </p>
+
+          {capturingAction && (
+            <div className="px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-300 dark:border-blue-700 rounded text-xs text-blue-700 dark:text-blue-300 text-center">
+              「{KEY_ACTION_LABELS[capturingAction]}」に割り当てるキーを押してください...
+              <button
+                type="button"
+                className="ml-2 text-blue-500 hover:text-blue-700 dark:hover:text-blue-200 underline"
+                onClick={() => setCapturingAction(null)}
+              >
+                キャンセル
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            {KEY_ACTION_ORDER.map((action) => (
+              <div key={action} className="flex items-center gap-2 py-0.5">
+                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
+                  {KEY_ACTION_LABELS[action]}
+                </span>
+                <kbd className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-gray-700 dark:text-gray-300 min-w-[3.5rem] text-center">
+                  {formatKey(local.keybindings[action])}
+                </kbd>
+                <button
+                  type="button"
+                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                    capturingAction === action
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:text-blue-400'
+                  }`}
+                  onClick={() => setCapturingAction(capturingAction === action ? null : action)}
+                >
+                  変更
+                </button>
+                {local.keybindings[action] !== DEFAULT_KEYBINDINGS[action] && (
+                  <button
+                    type="button"
+                    className="text-xs text-gray-400 hover:text-orange-500 dark:hover:text-orange-400"
+                    title="デフォルトに戻す"
+                    onClick={() => setLocal((prev) => ({
+                      ...prev,
+                      keybindings: { ...prev.keybindings, [action]: DEFAULT_KEYBINDINGS[action] },
+                    }))}
+                  >
+                    ↺
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="text-xs text-gray-400 dark:text-gray-500 hover:text-orange-500 dark:hover:text-orange-400"
+            onClick={() => setLocal((prev) => ({ ...prev, keybindings: DEFAULT_KEYBINDINGS }))}
+          >
+            すべてデフォルトに戻す
+          </button>
         </div>
 
         {/* フッター */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200 dark:border-gray-700 shrink-0">
           <button
             type="button"
             onClick={onClose}

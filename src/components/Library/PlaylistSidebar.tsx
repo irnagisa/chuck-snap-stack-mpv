@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import type { Playlist } from '../../types';
+import { useState, useEffect } from 'react';
+import type { Playlist, SmartPlaylist } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
+import { useLibraryStore, type SortBy, type SortOrder, type WatchedStatus } from '../../store/useLibraryStore';
 
 interface Props {
   onOpenPlaylist: (playlist: Playlist) => void;
@@ -8,8 +9,20 @@ interface Props {
 
 export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   const { playlists, createPlaylist, deletePlaylist } = usePlaylistStore();
+  const {
+    db, setSearch, setCategoryFilter, setMinRating, setHasAudio,
+    setMinDuration, setWatchedStatus, setSort,
+  } = useLibraryStore();
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [smartPlaylists, setSmartPlaylists] = useState<SmartPlaylist[]>([]);
+
+  useEffect(() => {
+    if (!db) return;
+    db.select<SmartPlaylist[]>('SELECT * FROM smart_playlists ORDER BY created_at DESC')
+      .then(setSmartPlaylists)
+      .catch(() => {});
+  }, [db]);
 
   const handleCreate = async () => {
     const name = newName.trim();
@@ -19,8 +32,32 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
     setIsCreating(false);
   };
 
+  const handleApplySmartPlaylist = async (sp: SmartPlaylist) => {
+    try {
+      const f = JSON.parse(sp.filter_json);
+      if (f.filterSearch !== undefined) await setSearch(f.filterSearch);
+      if (f.filterCategoryId !== undefined) await setCategoryFilter(f.filterCategoryId);
+      if (f.filterMinRating !== undefined) await setMinRating(f.filterMinRating);
+      if (f.filterHasAudio !== undefined) await setHasAudio(f.filterHasAudio);
+      if (f.filterMinDuration !== undefined) await setMinDuration(f.filterMinDuration);
+      if (f.filterWatchedStatus !== undefined) await setWatchedStatus(f.filterWatchedStatus as WatchedStatus);
+      if (f.filterSortBy !== undefined && f.filterSortOrder !== undefined) {
+        await setSort(f.filterSortBy as SortBy, f.filterSortOrder as SortOrder);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  const handleDeleteSmartPlaylist = async (id: number) => {
+    if (!db) return;
+    await db.execute('DELETE FROM smart_playlists WHERE id = ?', [id]);
+    setSmartPlaylists((prev) => prev.filter((sp) => sp.id !== id));
+  };
+
   return (
     <div className="w-44 shrink-0 flex flex-col gap-1">
+      {/* プレイリスト */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
           プレイリスト
@@ -84,6 +121,37 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
           </button>
         </div>
       ))}
+
+      {/* スマートプレイリスト */}
+      {smartPlaylists.length > 0 && (
+        <>
+          <div className="mt-3 mb-1">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              スマート
+            </span>
+          </div>
+          {smartPlaylists.map((sp) => (
+            <div key={sp.id} className="group flex items-center gap-1">
+              <button
+                type="button"
+                className="flex-1 min-w-0 text-left text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 truncate"
+                onClick={() => handleApplySmartPlaylist(sp)}
+                title="このフィルター条件を適用"
+              >
+                🔍 {sp.name}
+              </button>
+              <button
+                type="button"
+                className="opacity-0 group-hover:opacity-100 text-xs text-gray-400 hover:text-red-500 shrink-0 transition-opacity px-1"
+                onClick={() => handleDeleteSmartPlaylist(sp.id)}
+                title="削除"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { usePlayerStore } from '../../store/usePlayerStore';
+import { useModalStore } from '../../store/useModalStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
+import { invoke } from '@tauri-apps/api/core';
+
+const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 function formatTime(sec: number): string {
   const s = Math.floor(sec);
@@ -13,11 +18,12 @@ function formatTime(sec: number): string {
   return `${m}:${String(ss).padStart(2, '0')}`;
 }
 
-// playbackTime は毎秒更新されるため、シークバーだけを独立コンポーネントに分離。
-// これにより PlayerControls 本体（ボタン群）は毎秒再レンダリングされなくなる。
 function PlayerSeekBar() {
   const playbackTime = usePlayerStore((s) => s.playbackTime);
   const duration = usePlayerStore((s) => s.duration);
+  const chapters = usePlayerStore((s) => s.chapters);
+  const abLoopA = usePlayerStore((s) => s.abLoopA);
+  const abLoopB = usePlayerStore((s) => s.abLoopB);
   const seekTo = usePlayerStore((s) => s.seekTo);
 
   const isDragging = useRef(false);
@@ -42,24 +48,56 @@ function PlayerSeekBar() {
     seekTo(Number((e.target as HTMLInputElement).value));
   };
 
+  const pct = (t: number) => duration > 0 ? `${(t / duration) * 100}%` : '0%';
+
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-gray-400 w-10 text-right shrink-0 tabular-nums">
         {formatTime(localSeek)}
       </span>
-      <input
-        type="range"
-        className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
-        min={0}
-        max={duration > 0 ? duration : 100}
-        step={0.5}
-        value={localSeek}
-        onChange={handleSeekChange}
-        onMouseDown={handleSeekStart}
-        onMouseUp={handleSeekEnd}
-        onTouchStart={handleSeekStart}
-        onTouchEnd={handleSeekEnd}
-      />
+      <div className="flex-1 relative">
+        <input
+          type="range"
+          className="w-full h-1.5 accent-blue-500 cursor-pointer"
+          min={0}
+          max={duration > 0 ? duration : 100}
+          step={0.5}
+          value={localSeek}
+          onChange={handleSeekChange}
+          onMouseDown={handleSeekStart}
+          onMouseUp={handleSeekEnd}
+          onTouchStart={handleSeekStart}
+          onTouchEnd={handleSeekEnd}
+        />
+        {/* チャプターマーカー */}
+        {duration > 0 && chapters.map((ch, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-0.5 bg-yellow-400 opacity-70 pointer-events-none"
+            style={{ left: pct(ch.startTime) }}
+            title={ch.title || `チャプター ${i + 1}`}
+          />
+        ))}
+        {/* A-B ループマーカー */}
+        {duration > 0 && abLoopA !== null && (
+          <div
+            className="absolute -top-1 w-0 h-0 pointer-events-none"
+            style={{ left: pct(abLoopA) }}
+            title={`A点: ${formatTime(abLoopA)}`}
+          >
+            <div className="w-2 h-2 bg-blue-400 rounded-full -translate-x-1/2" />
+          </div>
+        )}
+        {duration > 0 && abLoopB !== null && (
+          <div
+            className="absolute -top-1 w-0 h-0 pointer-events-none"
+            style={{ left: pct(abLoopB) }}
+            title={`B点: ${formatTime(abLoopB)}`}
+          >
+            <div className="w-2 h-2 bg-red-400 rounded-full -translate-x-1/2" />
+          </div>
+        )}
+      </div>
       <span className="text-xs text-gray-400 w-10 shrink-0 tabular-nums">
         {duration > 0 ? formatTime(duration) : '--:--'}
       </span>
@@ -70,7 +108,9 @@ function PlayerSeekBar() {
 export function PlayerControls() {
   const {
     currentVideo, queue, queueIndex, isPaused, isLooping, isShuffle,
+    speed, abLoopA, abLoopB,
     quit, playNext, playPrev, pauseResume, toggleLoop, toggleShuffle,
+    setSpeed, setAbLoopA, clearAbLoop,
   } = usePlayerStore(useShallow((s) => ({
     currentVideo: s.currentVideo,
     queue: s.queue,
@@ -78,18 +118,44 @@ export function PlayerControls() {
     isPaused: s.isPaused,
     isLooping: s.isLooping,
     isShuffle: s.isShuffle,
+    speed: s.speed,
+    abLoopA: s.abLoopA,
+    abLoopB: s.abLoopB,
     quit: s.quit,
     playNext: s.playNext,
     playPrev: s.playPrev,
     pauseResume: s.pauseResume,
     toggleLoop: s.toggleLoop,
     toggleShuffle: s.toggleShuffle,
+    setSpeed: s.setSpeed,
+    setAbLoopA: s.setAbLoopA,
+    clearAbLoop: s.clearAbLoop,
   })));
+
+  const { showQueuePanel, toggleQueuePanel } = useModalStore(useShallow((s) => ({
+    showQueuePanel: s.showQueuePanel,
+    toggleQueuePanel: s.toggleQueuePanel,
+  })));
+
+  const screenshotDir = useSettingsStore((s) => s.screenshotDir);
 
   const hasPrev = queue.length > 0 && queueIndex > 0;
   const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
 
-  // 再生前 (未選択) の場合はシャッフル・ループ設定だけ見せるミニバー
+  const abActive = abLoopA !== null;
+  const abComplete = abLoopA !== null && abLoopB !== null;
+
+  const handleScreenshot = async () => {
+    try {
+      const dir = screenshotDir || (await import('@tauri-apps/api/path').then((m) => m.downloadDir()));
+      const ts = Date.now();
+      const outPath = `${dir}/screenshot-${ts}.jpg`;
+      await invoke('take_screenshot', { outputPath: outPath });
+    } catch (e) {
+      console.error('Screenshot failed:', e);
+    }
+  };
+
   if (!currentVideo) {
     return (
       <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 py-2 shadow-lg border-t border-gray-700 flex items-center gap-2">
@@ -117,11 +183,9 @@ export function PlayerControls() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 pt-2 pb-3 shadow-lg border-t border-gray-700 flex flex-col gap-2">
-      {/* シークバー行: playbackTime のみを購読する独立コンポーネント */}
       <PlayerSeekBar />
 
-      {/* コントロール行 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 flex-wrap">
         {queue.length > 0 && (
           <span className="text-xs text-gray-400 shrink-0 tabular-nums">
             {queueIndex + 1} / {queue.length}
@@ -130,6 +194,40 @@ export function PlayerControls() {
         <span className="flex-1 text-sm truncate text-gray-300 min-w-0">
           {currentVideo.title ?? currentVideo.path.split('/').pop()}
         </span>
+
+        {/* A-B ループ */}
+        <button
+          type="button"
+          onClick={setAbLoopA}
+          className={`px-2 py-1 rounded text-xs shrink-0 ${abActive ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+          title={abActive ? (abComplete ? 'A-Bループ中' : 'B点を設定') : 'A点を設定'}
+        >
+          {abComplete ? 'AB' : abActive ? 'A→B?' : 'A-B'}
+        </button>
+        {abActive && (
+          <button
+            type="button"
+            onClick={clearAbLoop}
+            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs shrink-0 text-gray-400"
+            title="A-Bループをクリア"
+          >
+            ✕AB
+          </button>
+        )}
+
+        {/* 速度セレクタ */}
+        <select
+          value={speed}
+          onChange={(e) => setSpeed(Number(e.target.value))}
+          className="bg-gray-700 text-gray-200 text-xs rounded px-1 py-1 shrink-0 cursor-pointer"
+          title="再生速度"
+        >
+          {SPEED_OPTIONS.map((s) => (
+            <option key={s} value={s}>{s === 1.0 ? '1x' : `${s}x`}</option>
+          ))}
+        </select>
+
+        {/* 前/再生/次 */}
         {queue.length > 0 && (
           <button
             type="button"
@@ -160,6 +258,8 @@ export function PlayerControls() {
             ⏭
           </button>
         )}
+
+        {/* シャッフル・ループ */}
         {queue.length > 1 && (
           <button
             type="button"
@@ -178,6 +278,29 @@ export function PlayerControls() {
         >
           ↻
         </button>
+
+        {/* スクリーンショット */}
+        <button
+          type="button"
+          onClick={handleScreenshot}
+          className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
+          title="スクリーンショット"
+        >
+          📷
+        </button>
+
+        {/* キューパネルトグル */}
+        {queue.length > 0 && (
+          <button
+            type="button"
+            onClick={toggleQueuePanel}
+            className={`px-2.5 py-1 rounded text-sm shrink-0 ${showQueuePanel ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+            title="キューを表示"
+          >
+            ≡
+          </button>
+        )}
+
         <button
           type="button"
           onClick={quit}

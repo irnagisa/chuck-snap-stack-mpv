@@ -2,11 +2,50 @@ import { create } from "zustand";
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 
+export type KeyAction =
+  | 'pause'
+  | 'seekForward'
+  | 'seekBackward'
+  | 'volumeUp'
+  | 'volumeDown'
+  | 'fullscreen'
+  | 'next'
+  | 'prev'
+  | 'escape';
+
+export type KeyBindings = Record<KeyAction, string>;
+
+export const DEFAULT_KEYBINDINGS: KeyBindings = {
+  pause: ' ',
+  seekForward: 'ArrowRight',
+  seekBackward: 'ArrowLeft',
+  volumeUp: 'ArrowUp',
+  volumeDown: 'ArrowDown',
+  fullscreen: 'f',
+  next: 'n',
+  prev: 'p',
+  escape: 'Escape',
+};
+
+export const KEY_ACTION_LABELS: Record<KeyAction, string> = {
+  pause: '一時停止/再開',
+  seekForward: '5秒進む',
+  seekBackward: '5秒戻る',
+  volumeUp: '音量+',
+  volumeDown: '音量-',
+  fullscreen: 'フルスクリーン',
+  next: '次の動画',
+  prev: '前の動画',
+  escape: 'モーダルを閉じる',
+};
+
 export interface AppSettings {
   mpvPath: string;
   ffmpegPath: string;
   ffprobePath: string;
   downloadDir: string;
+  screenshotDir: string;
+  keybindings: KeyBindings;
 }
 
 const DEFAULTS: AppSettings = {
@@ -14,12 +53,15 @@ const DEFAULTS: AppSettings = {
   ffmpegPath: "ffmpeg",
   ffprobePath: "ffprobe",
   downloadDir: "",
+  screenshotDir: "",
+  keybindings: DEFAULT_KEYBINDINGS,
 };
 
 interface SettingsStore extends AppSettings {
   isLoaded: boolean;
   loadSettings: (db: Database) => Promise<void>;
   saveSettings: (db: Database, settings: AppSettings) => Promise<void>;
+  saveKeybindings: (db: Database, bindings: KeyBindings) => Promise<void>;
 }
 
 async function syncToRust(settings: AppSettings) {
@@ -30,7 +72,6 @@ async function syncToRust(settings: AppSettings) {
   });
 }
 
-// 保存済みパスが存在する場合はそれを使い、存在しない場合は自動検出にフォールバック
 async function resolveMpvPath(saved: string | undefined): Promise<string> {
   if (saved && saved.trim().length > 0) {
     const exists = await invoke<boolean>("path_exists", { path: saved }).catch(() => false);
@@ -42,7 +83,6 @@ async function resolveMpvPath(saved: string | undefined): Promise<string> {
     return DEFAULTS.mpvPath;
   }
 }
-
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
   ...DEFAULTS,
@@ -57,7 +97,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     `);
 
     const rows = await db.select<{ key: string; value: string }[]>(
-      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'download_dir')"
+      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'download_dir', 'screenshot_dir', 'keybindings')"
     );
 
     const map: Record<string, string> = {};
@@ -65,15 +105,24 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       map[row.key] = row.value;
     }
 
-    // DB に保存されたパスが存在しない場合はデフォルトにフォールバック
     const savedMpvPath = map["mpv_path"];
     const resolvedMpvPath = await resolveMpvPath(savedMpvPath);
+
+    let keybindings = DEFAULT_KEYBINDINGS;
+    if (map["keybindings"]) {
+      try {
+        const parsed = JSON.parse(map["keybindings"]) as Partial<KeyBindings>;
+        keybindings = { ...DEFAULT_KEYBINDINGS, ...parsed };
+      } catch { /* use defaults */ }
+    }
 
     const settings: AppSettings = {
       mpvPath: resolvedMpvPath,
       ffmpegPath: map["ffmpeg_path"] ?? DEFAULTS.ffmpegPath,
       ffprobePath: map["ffprobe_path"] ?? DEFAULTS.ffprobePath,
       downloadDir: map["download_dir"] ?? DEFAULTS.downloadDir,
+      screenshotDir: map["screenshot_dir"] ?? DEFAULTS.screenshotDir,
+      keybindings,
     };
 
     set({ ...settings, isLoaded: true });
@@ -97,8 +146,20 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       "INSERT OR REPLACE INTO settings (key, value) VALUES ('download_dir', ?)",
       [settings.downloadDir]
     );
+    await db.execute(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('screenshot_dir', ?)",
+      [settings.screenshotDir]
+    );
 
     set({ ...settings });
     await syncToRust(settings);
+  },
+
+  saveKeybindings: async (db: Database, bindings: KeyBindings) => {
+    await db.execute(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('keybindings', ?)",
+      [JSON.stringify(bindings)]
+    );
+    set({ keybindings: bindings });
   },
 }));

@@ -9,6 +9,26 @@ export interface Video {
   rating: number;
   category_id: number | null;
   has_audio: number | null;
+  watch_count: number;
+  created_at: string;
+}
+
+export interface Chapter {
+  title: string;
+  startTime: number;
+  endTime: number;
+}
+
+export interface SubtitleFile {
+  path: string;
+  name: string;
+  ext: string;
+}
+
+export interface SmartPlaylist {
+  id: number;
+  name: string;
+  filter_json: string;
   created_at: string;
 }
 

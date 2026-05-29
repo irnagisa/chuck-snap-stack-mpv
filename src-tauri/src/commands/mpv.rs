@@ -506,6 +506,98 @@ pub async fn set_loop(
     send_cmd(&writer, json!({"command": ["set_property", "loop-file", value]}))
 }
 
+/// 再生速度を設定する (0.1 〜 10.0)。
+#[tauri::command]
+pub async fn set_playback_speed(
+    state: tauri::State<'_, SharedMpvState>,
+    speed: f64,
+) -> Result<(), String> {
+    let speed = speed.clamp(0.1, 10.0);
+    let writer = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .writer
+        .clone()
+        .ok_or("mpv が起動していません")?;
+    send_cmd(&writer, serde_json::json!({"command": ["set_property", "speed", speed]}))
+}
+
+/// 現在フレームのスクリーンショットを指定パスに保存する。
+#[tauri::command]
+pub async fn take_screenshot(
+    state: tauri::State<'_, SharedMpvState>,
+    output_path: String,
+) -> Result<(), String> {
+    // パストラバーサル防止
+    if output_path.contains('\0') || output_path.contains("..") {
+        return Err("不正なパスです".to_string());
+    }
+    let writer = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .writer
+        .clone()
+        .ok_or("mpv が起動していません")?;
+    send_cmd(&writer, serde_json::json!({"command": ["screenshot-to-file", output_path, "video"]}))
+}
+
+/// A-B ループの A 点を現在の再生位置に設定する。
+#[tauri::command]
+pub async fn set_ab_loop_a(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
+    let writer = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .writer
+        .clone()
+        .ok_or("mpv が起動していません")?;
+    send_cmd(&writer, serde_json::json!({"command": ["ab-loop"]}))
+}
+
+/// A-B ループの B 点を現在の再生位置に設定する（A 点設定後に呼び出す）。
+#[tauri::command]
+pub async fn set_ab_loop_b(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
+    let writer = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .writer
+        .clone()
+        .ok_or("mpv が起動していません")?;
+    send_cmd(&writer, serde_json::json!({"command": ["ab-loop"]}))
+}
+
+/// A-B ループをクリアする。
+#[tauri::command]
+pub async fn clear_ab_loop(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
+    let writer = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .writer
+        .clone()
+        .ok_or("mpv が起動していません")?;
+    // ab-loop-a と ab-loop-b を "no" に設定してクリア
+    send_cmd(&writer, serde_json::json!({"command": ["set_property", "ab-loop-a", "no"]}))?;
+    send_cmd(&writer, serde_json::json!({"command": ["set_property", "ab-loop-b", "no"]}))
+}
+
+/// 字幕ファイルをロードする。
+#[tauri::command]
+pub async fn load_subtitle(
+    state: tauri::State<'_, SharedMpvState>,
+    path: String,
+) -> Result<(), String> {
+    // パス検証
+    if path.contains('\0') {
+        return Err("不正なパスです".to_string());
+    }
+    let writer = state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .writer
+        .clone()
+        .ok_or("mpv が起動していません")?;
+    send_cmd(&writer, serde_json::json!({"command": ["sub-add", path, "select"]}))
+}
+
 /// mpv を終了する。
 #[tauri::command]
 pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {

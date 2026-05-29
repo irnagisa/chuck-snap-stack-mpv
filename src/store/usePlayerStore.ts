@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Video } from '../types';
+import type { Video, Chapter } from '../types';
 import { useLibraryStore } from './useLibraryStore';
 
 interface PlayerState {
@@ -14,6 +14,10 @@ interface PlayerState {
   queue: Video[];
   queueIndex: number;
   originalQueue: Video[];
+  speed: number;
+  abLoopA: number | null;
+  abLoopB: number | null;
+  chapters: Chapter[];
 }
 
 interface PlayerActions {
@@ -27,6 +31,14 @@ interface PlayerActions {
   toggleLoop: () => Promise<void>;
   toggleShuffle: () => void;
   playShuffleAll: () => Promise<void>;
+  setSpeed: (speed: number) => Promise<void>;
+  setAbLoopA: () => Promise<void>;
+  setAbLoopB: () => Promise<void>;
+  clearAbLoop: () => Promise<void>;
+  setChapters: (chapters: Chapter[]) => void;
+  reorderQueue: (newQueue: Video[]) => void;
+  removeFromQueue: (videoId: number) => void;
+  jumpToQueue: (index: number) => Promise<void>;
 }
 
 // モジュールレベルで一度だけリスナーを登録する
@@ -102,6 +114,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     queue: [],
     queueIndex: -1,
     originalQueue: [],
+    speed: 1.0,
+    abLoopA: null,
+    abLoopB: null,
+    chapters: [],
 
     play: async (video: Video) => {
       const { isLooping } = get();
@@ -116,7 +132,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         isPaused: false,
         queue: [],
         queueIndex: -1,
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
       });
+      useLibraryStore.getState().incrementWatchCount(video.id).catch(() => {});
+      invoke<Chapter[]>('get_chapters', { videoPath: video.path })
+        .then((chapters) => set({ chapters }))
+        .catch(() => {});
     },
 
     playWithQueue: async (videos: Video[], startIndex = 0) => {
@@ -151,7 +174,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         queue,
         queueIndex: idx,
         originalQueue,
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
       });
+      useLibraryStore.getState().incrementWatchCount(queue[idx].id).catch(() => {});
+      invoke<Chapter[]>('get_chapters', { videoPath: queue[idx].path })
+        .then((chapters) => set({ chapters }))
+        .catch(() => {});
     },
 
     playNext: async () => {
@@ -169,7 +199,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         duration: 0,
         isPaused: false,
         queueIndex: nextIdx,
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
       });
+      useLibraryStore.getState().incrementWatchCount(nextVideo.id).catch(() => {});
+      invoke<Chapter[]>('get_chapters', { videoPath: nextVideo.path })
+        .then((chapters) => set({ chapters }))
+        .catch(() => {});
     },
 
     playPrev: async () => {
@@ -187,7 +224,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         duration: 0,
         isPaused: false,
         queueIndex: prevIdx,
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
       });
+      useLibraryStore.getState().incrementWatchCount(prevVideo.id).catch(() => {});
+      invoke<Chapter[]>('get_chapters', { videoPath: prevVideo.path })
+        .then((chapters) => set({ chapters }))
+        .catch(() => {});
     },
 
     quit: async () => {
@@ -293,7 +337,91 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         originalQueue: [],
         queue: shuffled,
         queueIndex: 0,
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
       });
+      useLibraryStore.getState().incrementWatchCount(shuffled[0].id).catch(() => {});
+      invoke<Chapter[]>('get_chapters', { videoPath: shuffled[0].path })
+        .then((chapters) => set({ chapters }))
+        .catch(() => {});
+    },
+
+    setSpeed: async (speed: number) => {
+      set({ speed });
+      try {
+        await invoke('set_playback_speed', { speed });
+      } catch { /* 無視 */ }
+    },
+
+    setAbLoopA: async () => {
+      const { playbackTime, abLoopA } = get();
+      if (abLoopA !== null) {
+        // A がすでにセット済みなら ab-loop コマンドで B に進む
+        try { await invoke('set_ab_loop_b'); } catch { /* 無視 */ }
+        set({ abLoopB: playbackTime });
+      } else {
+        try { await invoke('set_ab_loop_a'); } catch { /* 無視 */ }
+        set({ abLoopA: playbackTime, abLoopB: null });
+      }
+    },
+
+    setAbLoopB: async () => {
+      const { playbackTime } = get();
+      try { await invoke('set_ab_loop_b'); } catch { /* 無視 */ }
+      set({ abLoopB: playbackTime });
+    },
+
+    clearAbLoop: async () => {
+      try { await invoke('clear_ab_loop'); } catch { /* 無視 */ }
+      set({ abLoopA: null, abLoopB: null });
+    },
+
+    setChapters: (chapters: Chapter[]) => {
+      set({ chapters });
+    },
+
+    reorderQueue: (newQueue: Video[]) => {
+      const { currentVideo } = get();
+      const newIndex = currentVideo ? newQueue.findIndex((v) => v.id === currentVideo.id) : -1;
+      set({ queue: newQueue, queueIndex: newIndex >= 0 ? newIndex : 0 });
+    },
+
+    removeFromQueue: (videoId: number) => {
+      const { queue, queueIndex } = get();
+      const removeIdx = queue.findIndex((v) => v.id === videoId);
+      if (removeIdx === -1) return;
+      const newQueue = queue.filter((_, i) => i !== removeIdx);
+      const newIndex = removeIdx < queueIndex
+        ? queueIndex - 1
+        : removeIdx === queueIndex
+          ? Math.min(queueIndex, newQueue.length - 1)
+          : queueIndex;
+      set({ queue: newQueue, queueIndex: newIndex });
+    },
+
+    jumpToQueue: async (index: number) => {
+      const { queue, currentVideo, playbackTime } = get();
+      if (index < 0 || index >= queue.length) return;
+      if (currentVideo && playbackTime > 0) {
+        await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
+      }
+      const video = queue[index];
+      await invokePlay(video);
+      set({
+        currentVideo: video,
+        playbackTime: 0,
+        duration: 0,
+        isPaused: false,
+        queueIndex: index,
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
+      });
+      useLibraryStore.getState().incrementWatchCount(video.id).catch(() => {});
+      invoke<Chapter[]>('get_chapters', { videoPath: video.path })
+        .then((chapters) => set({ chapters }))
+        .catch(() => {});
     },
   };
 });
