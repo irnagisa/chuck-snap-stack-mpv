@@ -99,17 +99,24 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   },
 
   createTag: async (db, name, color) => {
-    await db.execute('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)', [name, color]);
-    const rows = await db.select<Tag[]>('SELECT * FROM tags WHERE name = ?', [name]);
-    const tag = rows[0];
-    // fetchTags() で全件再取得せず、取得済みの tag を直接ストアに追加してクエリを節約
-    if (tag) {
+    const result = await db.execute('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)', [name, color]);
+    if (result.rowsAffected > 0 && result.lastInsertId != null) {
+      // 新規挿入: lastInsertId で SELECT を省略
+      const tag: Tag = { id: result.lastInsertId, name, color, tag_category_id: null, created_at: new Date().toISOString() };
       set((state) => {
         if (state.tags.some((t) => t.id === tag.id)) return state;
-        return { tags: [...state.tags, tag].sort((a, b) => a.name.localeCompare(b.name)) };
+        // ソート済み位置に挿入 (append + sort より効率的)
+        const tags = [...state.tags];
+        const idx = tags.findIndex((t) => t.name.localeCompare(name) > 0);
+        if (idx === -1) tags.push(tag); else tags.splice(idx, 0, tag);
+        return { tags };
       });
+      return tag;
+    } else {
+      // 既存 (IGNORE): 1回 SELECT で取得
+      const rows = await db.select<Tag[]>('SELECT * FROM tags WHERE name = ?', [name]);
+      return rows[0];
     }
-    return tag;
   },
 
   updateTag: async (db, tagId, name, color, tagCategoryId) => {
@@ -144,16 +151,21 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   },
 
   createTagCategory: async (db, name) => {
-    await db.execute('INSERT OR IGNORE INTO tag_categories (name) VALUES (?)', [name]);
-    const rows = await db.select<TagCategory[]>('SELECT * FROM tag_categories WHERE name = ?', [name]);
-    const tc = rows[0];
-    if (tc) {
+    const result = await db.execute('INSERT OR IGNORE INTO tag_categories (name) VALUES (?)', [name]);
+    if (result.rowsAffected > 0 && result.lastInsertId != null) {
+      const tc: TagCategory = { id: result.lastInsertId, name, created_at: new Date().toISOString() };
       set((state) => {
         if (state.tagCategories.some((c) => c.id === tc.id)) return state;
-        return { tagCategories: [...state.tagCategories, tc].sort((a, b) => a.name.localeCompare(b.name)) };
+        const tagCategories = [...state.tagCategories];
+        const idx = tagCategories.findIndex((c) => c.name.localeCompare(name) > 0);
+        if (idx === -1) tagCategories.push(tc); else tagCategories.splice(idx, 0, tc);
+        return { tagCategories };
       });
+      return tc;
+    } else {
+      const rows = await db.select<TagCategory[]>('SELECT * FROM tag_categories WHERE name = ?', [name]);
+      return rows[0];
     }
-    return tc;
   },
 
   updateTagCategory: async (db, id, name) => {
@@ -169,16 +181,21 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   },
 
   createCategory: async (db, name, color) => {
-    await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, color]);
-    const rows = await db.select<Category[]>('SELECT * FROM categories WHERE name = ?', [name]);
-    const category = rows[0];
-    if (category) {
+    const result = await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, color]);
+    if (result.rowsAffected > 0 && result.lastInsertId != null) {
+      const category: Category = { id: result.lastInsertId, name, color, created_at: new Date().toISOString() };
       set((state) => {
         if (state.categories.some((c) => c.id === category.id)) return state;
-        return { categories: [...state.categories, category].sort((a, b) => a.name.localeCompare(b.name)) };
+        const categories = [...state.categories];
+        const idx = categories.findIndex((c) => c.name.localeCompare(name) > 0);
+        if (idx === -1) categories.push(category); else categories.splice(idx, 0, category);
+        return { categories };
       });
+      return category;
+    } else {
+      const rows = await db.select<Category[]>('SELECT * FROM categories WHERE name = ?', [name]);
+      return rows[0];
     }
-    return category;
   },
 
   updateCategory: async (db, categoryId, name, color) => {

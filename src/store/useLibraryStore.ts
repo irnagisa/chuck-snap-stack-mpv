@@ -192,7 +192,8 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
   };
 }
 
-let _thumbnailPaused = false;
+// デバウンスタイマー: setSearch が連続呼び出しされたとき最後の呼び出しだけ fetchVideos を実行する
+let _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const THUMBNAIL_CONCURRENCY = 3;
 
@@ -313,7 +314,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setSearch: async (search: string) => {
     set({ filterSearch: search, currentPage: 1 });
-    await get().fetchVideos();
+    // 300ms デバウンス: 1文字ずつ入力しても最後の入力確定後に1回だけ DB クエリを実行
+    if (_searchDebounceTimer !== null) clearTimeout(_searchDebounceTimer);
+    _searchDebounceTimer = setTimeout(async () => {
+      _searchDebounceTimer = null;
+      await get().fetchVideos();
+    }, 300);
   },
 
   setCategoryFilter: async (id: number | null) => {
@@ -432,12 +438,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   pauseThumbnails: () => {
-    _thumbnailPaused = true;
     set({ isThumbnailPaused: true });
   },
 
   resumeThumbnails: () => {
-    _thumbnailPaused = false;
     set({ isThumbnailPaused: false });
   },
 
@@ -450,13 +454,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const cacheDir = await appCacheDir();
     const thumbDir = await join(cacheDir, 'thumbnails');
 
-    // Query DB directly so all pages are covered, not just the current page
+    // ペンディング件数が多い場合でもメモリを大量消費しないよう 500 件ずつ処理する
+    const PENDING_BATCH_SIZE = 500;
     const pending = await db.select<{ id: number; path: string; thumbnail: string | null }[]>(
-      'SELECT id, path, thumbnail FROM videos WHERE thumbnail IS NULL OR has_audio IS NULL'
+      'SELECT id, path, thumbnail FROM videos WHERE thumbnail IS NULL OR has_audio IS NULL LIMIT ?',
+      [PENDING_BATCH_SIZE]
     );
     if (pending.length === 0) return;
 
-    _thumbnailPaused = false;
     set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: pending.length } });
 
     type VideoUpdate = { id: number; thumbnail?: string; duration?: number | null; has_audio: number };
@@ -499,7 +504,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     try {
       let doneCount = 0;
       for (let i = 0; i < pending.length; i += THUMBNAIL_CONCURRENCY) {
-        while (_thumbnailPaused) {
+        // ストアの isThumbnailPaused を参照 (モジュール変数を排除)
+        while (get().isThumbnailPaused) {
           await new Promise<void>((resolve) => setTimeout(resolve, 200));
         }
         const batch = pending.slice(i, i + THUMBNAIL_CONCURRENCY);
@@ -521,7 +527,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }));
       }
     } finally {
-      _thumbnailPaused = false;
       set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
       await get().fetchVideos();
     }
@@ -588,13 +593,30 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       rows.map((r) => getParentDirName(r.path)).filter((n): n is string => n != null)
     )];
 
-    const categoryIdMap: Record<string, number> = {};
-    for (const name of uniqueDirNames) {
-      await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, '#6366f1']);
-      const catRows = await db.select<{ id: number }[]>('SELECT id FROM categories WHERE name = ?', [name]);
-      if (catRows[0]) categoryIdMap[name] = catRows[0].id;
+    if (uniqueDirNames.length === 0) {
+      await get().fetchVideos();
+      return;
     }
 
+    // バッチ INSERT: N 回の個別 INSERT を 1 回にまとめる
+    const insertPh = uniqueDirNames.map(() => '(?, ?)').join(', ');
+    const insertParams: unknown[] = [];
+    for (const name of uniqueDirNames) insertParams.push(name, '#6366f1');
+    await db.execute(
+      `INSERT OR IGNORE INTO categories (name, color) VALUES ${insertPh}`,
+      insertParams
+    );
+
+    // バッチ SELECT: N 回の個別 SELECT を 1 回にまとめる
+    const selectPh = uniqueDirNames.map(() => '?').join(', ');
+    const catRows = await db.select<{ id: number; name: string }[]>(
+      `SELECT id, name FROM categories WHERE name IN (${selectPh})`,
+      uniqueDirNames
+    );
+    const categoryIdMap: Record<string, number> = {};
+    for (const row of catRows) categoryIdMap[row.name] = row.id;
+
+    // 動画の category_id を一括更新
     for (const row of rows) {
       const dirName = getParentDirName(row.path);
       if (dirName && categoryIdMap[dirName] != null) {
@@ -602,9 +624,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
     }
 
-    if (uniqueDirNames.length > 0) {
-      await useTagStore.getState().init(db);
-    }
+    await useTagStore.getState().init(db);
     await get().fetchVideos();
   },
 

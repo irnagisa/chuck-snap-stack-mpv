@@ -67,12 +67,14 @@ export function useDragDrop() {
           let imported = 0;
           const errors: string[] = [];
 
+          // watch ディレクトリの正規化をループ外で一度だけ実行
+          const normalizedDirs = dirs.map((dir) => dir.replace(/\\/g, '/').replace(/\/$/, ''));
+
           for (const path of dropped) {
             const normPath = path.replace(/\\/g, '/');
-            const isAlreadyInWatchDir = dirs.some((dir) => {
-              const normDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
-              return normPath.startsWith(normDir + '/');
-            });
+            const isAlreadyInWatchDir = normalizedDirs.some((normDir) =>
+              normPath.startsWith(normDir + '/')
+            );
 
             try {
               if (isAlreadyInWatchDir) {

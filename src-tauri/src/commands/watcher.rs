@@ -23,13 +23,14 @@ pub async fn start_watching(
     app_handle: tauri::AppHandle,
     path: String,
 ) -> Result<(), String> {
-    let canonical = std::fs::canonicalize(&path)
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
         .map_err(|e| e.to_string())?
         .to_string_lossy()
         .to_string();
 
     {
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| e.to_string())?;
         if guard.contains_key(&canonical) {
             return Ok(());
         }
@@ -44,7 +45,10 @@ pub async fn start_watching(
         )
         .map_err(|e| e.to_string())?;
 
-    state.lock().unwrap().insert(canonical, watcher);
+    state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(canonical, watcher);
 
     let handle = app_handle.clone();
     std::thread::spawn(move || {
@@ -92,10 +96,14 @@ pub async fn stop_watching(
     state: tauri::State<'_, SharedWatcherState>,
     path: String,
 ) -> Result<(), String> {
-    let canonical = std::fs::canonicalize(&path)
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
         .unwrap_or_else(|_| std::path::PathBuf::from(&path))
         .to_string_lossy()
         .to_string();
-    state.lock().unwrap().remove(&canonical);
+    state
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&canonical);
     Ok(())
 }

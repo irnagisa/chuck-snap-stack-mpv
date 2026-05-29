@@ -3,8 +3,12 @@ use std::path::{Component, Path, PathBuf};
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 
-/// 絶対パスであり `..` コンポーネントを含まないことを検証する。
+/// 絶対パスであり `..` コンポーネントや制御文字を含まないことを検証する。
 pub fn validate_path(path: &str) -> Result<PathBuf, String> {
+    // null バイト・改行文字はパスインジェクションに使われる可能性がある
+    if path.contains('\0') || path.contains('\n') || path.contains('\r') {
+        return Err(format!("パスに無効な制御文字が含まれています: {path}"));
+    }
     let p = Path::new(path);
     if !p.is_absolute() {
         return Err(format!("絶対パスを指定してください: {path}"));
@@ -100,6 +104,12 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
     const BLOCKED_HOSTS: &[&str] = &["localhost", "127.0.0.1", "0.0.0.0", "::1"];
     if BLOCKED_HOSTS.iter().any(|&h| host == h) {
         return Err("ローカルホストへのアクセスは許可されていません".to_string());
+    }
+
+    // mDNS (.local) ホスト名をブロック
+    // .local ホスト名は mDNS 経由でプライベート IP に解決される可能性があり SSRF の原因となる
+    if host.ends_with(".local") || host == "local" {
+        return Err("mDNS (.local) ホストへのアクセスは許可されていません".to_string());
     }
 
     // プライベート IPv4 範囲をブロック (SSRF 対策)

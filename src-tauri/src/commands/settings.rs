@@ -50,6 +50,7 @@ pub async fn path_exists(path: String) -> bool {
 
 /// 実行ファイルパスを検証する。
 /// - NULL バイト・改行文字を拒否
+/// - `..` を含む相対パスを拒否 (PATH ハイジャック防止)
 /// - 絶対パスの場合はファイル存在・実行権限を確認
 fn validate_executable_path(path: &str, name: &str) -> Result<(), String> {
     if path.is_empty() {
@@ -57,6 +58,12 @@ fn validate_executable_path(path: &str, name: &str) -> Result<(), String> {
     }
     if path.contains('\0') || path.contains('\n') || path.contains('\r') {
         return Err(format!("{name} のパスに無効な文字が含まれています"));
+    }
+    // `..` コンポーネントを含むパスは PATH ハイジャックに悪用される恐れがある
+    for component in std::path::Path::new(path).components() {
+        if component == std::path::Component::ParentDir {
+            return Err(format!("{name} のパスに '..' を含めることはできません"));
+        }
     }
     // 絶対パスの場合のみ存在・実行可能チェック
     if path.starts_with('/') {

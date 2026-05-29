@@ -60,6 +60,8 @@ pub async fn transcode_video(
         .parent()
         .ok_or_else(|| "入力ファイルの親ディレクトリが取得できません".to_string())?;
     let output_path = dir.join(format!("{stem}.av1.mkv"));
+    // 一時出力ファイル: 完成後にアトミックリネームすることで TOCTOU を防ぐ
+    let tmp_output_path = dir.join(format!("._{stem}.av1.mkv.tmp"));
 
     // 出力パスが入力と同一ディレクトリ内にあることを確認
     if let Ok(canon_dir) = dir.canonicalize() {
@@ -71,10 +73,11 @@ pub async fn transcode_video(
     }
 
     let output_str = output_path.to_string_lossy().to_string();
+    let tmp_output_str = tmp_output_path.to_string_lossy().to_string();
 
     {
         let mut p = state.current_output.lock().map_err(|e| e.to_string())?;
-        *p = Some(output_str.clone());
+        *p = Some(tmp_output_str.clone());
     }
 
     let cancel_flag = state.cancel_flag.clone();
@@ -84,12 +87,12 @@ pub async fn transcode_video(
         let app = app.clone();
         let input_path = input_path.clone();
         let output_str = output_str.clone();
+        let tmp_output_str = tmp_output_str.clone();
         let dir_for_check = dir.to_path_buf();
         move || -> Result<(), String> {
-            // TOCTOU 対策: ffmpeg 起動直前にパスを再検証する
-            // (canonicalize チェック後にシンボリックリンクが差し替えられるケースを防ぐ)
+            // TOCTOU 対策: ffmpeg 起動直前にディレクトリを再検証する
             if let Ok(canon_dir) = dir_for_check.canonicalize() {
-                let out_parent = std::path::Path::new(&output_str)
+                let out_parent = std::path::Path::new(&tmp_output_str)
                     .parent()
                     .unwrap_or(&dir_for_check);
                 let canon_out = out_parent
@@ -103,6 +106,9 @@ pub async fn transcode_video(
                 }
             }
 
+            // 一時ファイルが既に存在する場合は削除
+            let _ = std::fs::remove_file(&tmp_output_str);
+
             let mut child = Command::new(&ffmpeg_path)
                 .args([
                     "-y",
@@ -114,7 +120,7 @@ pub async fn transcode_video(
                     "-preset", &preset.to_string(),
                     "-c:a", "libopus",
                     "-b:a", "128k",
-                    &output_str,
+                    &tmp_output_str,
                 ])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
@@ -135,7 +141,7 @@ pub async fn transcode_video(
                 if cancel_flag.load(Ordering::SeqCst) {
                     child.kill().ok();
                     child.wait().ok();
-                    let _ = std::fs::remove_file(&output_str);
+                    let _ = std::fs::remove_file(&tmp_output_str);
                     return Err("キャンセルされました".to_string());
                 }
 
@@ -173,12 +179,16 @@ pub async fn transcode_video(
 
             let status = child.wait().map_err(|e| e.to_string())?;
             if !status.success() {
-                let _ = std::fs::remove_file(&output_str);
+                let _ = std::fs::remove_file(&tmp_output_str);
                 return Err(format!(
                     "FFmpeg がエラーで終了しました (code: {:?})",
                     status.code()
                 ));
             }
+            // アトミックリネーム: 完成した一時ファイルを最終パスへ移動
+            // これにより不完全なファイルが output_str に残らない
+            std::fs::rename(&tmp_output_str, &output_str)
+                .map_err(|e| format!("出力ファイルの移動に失敗しました: {e}"))?;
             Ok(())
         }
     })

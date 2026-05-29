@@ -17,21 +17,41 @@ use tauri::Emitter;
 use super::settings::SharedAppSettings;
 
 /// プロセス固有の IPC ソケットパスを返す。
-/// $TMPDIR (macOS では /var/folders/…/T/ のようなユーザー固有ディレクトリ) と
-/// PID + 起動時ランダムトークンを組み合わせることで予測困難かつプロセス一意なパスを生成する。
+/// オーナーのみアクセス可能な専用ディレクトリ (0700) を作成し、
+/// その中にソケットを配置することで他プロセスからの盗聴・改ざんを防ぐ。
 fn mpv_socket_path() -> String {
     use std::sync::OnceLock;
-    static TOKEN: OnceLock<u32> = OnceLock::new();
-    let token = TOKEN.get_or_init(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
-            .unwrap_or(std::process::id())
-    });
-    let tmpdir = std::env::var("TMPDIR")
-        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
-    let tmpdir = tmpdir.trim_end_matches('/');
-    format!("{tmpdir}/mpv-chuck-{}-{token:08x}", std::process::id())
+    static SOCKET_PATH: OnceLock<String> = OnceLock::new();
+    SOCKET_PATH
+        .get_or_init(|| {
+            let token = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
+                .unwrap_or(std::process::id());
+            let tmpdir = std::env::var("TMPDIR")
+                .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+            let sock_dir = format!(
+                "{}/mpv-chuck-{}-{token:08x}",
+                tmpdir.trim_end_matches('/'),
+                std::process::id()
+            );
+            // オーナー専用ディレクトリ (0700) を作成して他ユーザーからアクセス不可にする
+            #[cfg(unix)]
+            {
+                let _ = std::fs::create_dir_all(&sock_dir);
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &sock_dir,
+                    std::fs::Permissions::from_mode(0o700),
+                );
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = std::fs::create_dir_all(&sock_dir);
+            }
+            format!("{sock_dir}/mpv.sock")
+        })
+        .clone()
 }
 
 // ----- 共有状態 -----

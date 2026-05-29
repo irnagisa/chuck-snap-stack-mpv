@@ -4,22 +4,32 @@ import { useLibraryStore } from '../store/useLibraryStore';
 
 export function useWatcher() {
   useEffect(() => {
-    // getState() で常に最新の関数を参照するため依存配列を空にできる。
-    // これにより addVideoFromPath / removeVideoByPath の参照変化でリスナーが付け直されない。
-    const u1 = listen<{ path: string; title: string }>(
-      'video-file-created',
-      (e) => useLibraryStore.getState().addVideoFromPath(e.payload.path, e.payload.title)
-    );
-    const u2 = listen<string>(
-      'video-file-removed',
-      (e) => useLibraryStore.getState().removeVideoByPath(e.payload)
-    );
+    // アンマウント前に Promise が解決していない場合も確実にクリーンアップできるよう
+    // cancelled フラグで二重クリーンアップを保証する
+    let cancelled = false;
+    let u1: (() => void) | undefined;
+    let u2: (() => void) | undefined;
+
+    (async () => {
+      u1 = await listen<{ path: string; title: string }>(
+        'video-file-created',
+        (e) => useLibraryStore.getState().addVideoFromPath(e.payload.path, e.payload.title)
+      );
+      u2 = await listen<string>(
+        'video-file-removed',
+        (e) => useLibraryStore.getState().removeVideoByPath(e.payload)
+      );
+      // cleanup がすでに実行されていた場合は即座に登録解除
+      if (cancelled) {
+        u1();
+        u2();
+      }
+    })();
+
     return () => {
-      // Promise.all でクリーンアップを確実に並列実行
-      Promise.all([u1, u2]).then(([fn1, fn2]) => {
-        fn1();
-        fn2();
-      });
+      cancelled = true;
+      u1?.();
+      u2?.();
     };
   }, []); // 空配列: マウント時に一度だけリスナーを登録
 }
