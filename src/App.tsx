@@ -21,21 +21,46 @@ import { Select } from "./components/common/Select";
 type SidebarTab = 'category' | 'playlist';
 
 function App() {
-  const {
-    videos, totalCount, currentPage, pageSize,
-    filterSearch, filterCategoryId, filterTagIds,
-    filterMinRating, filterHasAudio, filterMinDuration, filterWatchedStatus,
-    filterSortBy, filterSortOrder,
-    isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress,
-    isDbReady, dbError,
-    initDb, scanAndImport, assignCategoryFromPath,
-    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters,
-    setMinRating, setHasAudio, setMinDuration, setWatchedStatus,
-    setSort, setPage,
-    pauseThumbnails, resumeThumbnails,
-  } = useLibraryStore();
-  const { playWithQueue, playShuffleAll, currentVideo } = usePlayerStore();
-  const { tags } = useTagStore();
+  // 個別セレクタで購読: ストア全体ではなく使用するプロパティのみを購読し不要な再レンダリングを防ぐ
+  const videos = useLibraryStore((s) => s.videos);
+  const totalCount = useLibraryStore((s) => s.totalCount);
+  const currentPage = useLibraryStore((s) => s.currentPage);
+  const pageSize = useLibraryStore((s) => s.pageSize);
+  const filterSearch = useLibraryStore((s) => s.filterSearch);
+  const filterCategoryId = useLibraryStore((s) => s.filterCategoryId);
+  const filterTagIds = useLibraryStore((s) => s.filterTagIds);
+  const filterMinRating = useLibraryStore((s) => s.filterMinRating);
+  const filterHasAudio = useLibraryStore((s) => s.filterHasAudio);
+  const filterMinDuration = useLibraryStore((s) => s.filterMinDuration);
+  const filterWatchedStatus = useLibraryStore((s) => s.filterWatchedStatus);
+  const filterSortBy = useLibraryStore((s) => s.filterSortBy);
+  const filterSortOrder = useLibraryStore((s) => s.filterSortOrder);
+  const isScanning = useLibraryStore((s) => s.isScanning);
+  const isThumbnailGenerating = useLibraryStore((s) => s.isThumbnailGenerating);
+  const isThumbnailPaused = useLibraryStore((s) => s.isThumbnailPaused);
+  const thumbnailProgress = useLibraryStore((s) => s.thumbnailProgress);
+  const isDbReady = useLibraryStore((s) => s.isDbReady);
+  const dbError = useLibraryStore((s) => s.dbError);
+  const initDb = useLibraryStore((s) => s.initDb);
+  const scanAndImport = useLibraryStore((s) => s.scanAndImport);
+  const assignCategoryFromPath = useLibraryStore((s) => s.assignCategoryFromPath);
+  const setSearch = useLibraryStore((s) => s.setSearch);
+  const setCategoryFilter = useLibraryStore((s) => s.setCategoryFilter);
+  const toggleTagFilter = useLibraryStore((s) => s.toggleTagFilter);
+  const clearTagFilters = useLibraryStore((s) => s.clearTagFilters);
+  const setMinRating = useLibraryStore((s) => s.setMinRating);
+  const setHasAudio = useLibraryStore((s) => s.setHasAudio);
+  const setMinDuration = useLibraryStore((s) => s.setMinDuration);
+  const setWatchedStatus = useLibraryStore((s) => s.setWatchedStatus);
+  const setSort = useLibraryStore((s) => s.setSort);
+  const setPage = useLibraryStore((s) => s.setPage);
+  const pauseThumbnails = useLibraryStore((s) => s.pauseThumbnails);
+  const resumeThumbnails = useLibraryStore((s) => s.resumeThumbnails);
+  // usePlayerStore: currentVideo のみ購読 (playbackTime の毎秒更新で App が再レンダリングされるのを防ぐ)
+  const currentVideo = usePlayerStore((s) => s.currentVideo);
+  const playWithQueue = usePlayerStore((s) => s.playWithQueue);
+  const playShuffleAll = usePlayerStore((s) => s.playShuffleAll);
+  const tags = useTagStore((s) => s.tags);
   const {
     isRunning: isTranscoding, isDone: isTranscodeDone, error: transcodeError,
     progress: transcodeProgress, videoName: transcodeVideoName,

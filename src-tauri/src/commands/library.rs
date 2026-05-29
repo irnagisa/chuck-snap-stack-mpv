@@ -27,7 +27,7 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
         let mut files = Vec::new();
         let root = std::path::PathBuf::from(&path);
 
-        for entry in WalkDir::new(&path).follow_links(true) {
+        for entry in WalkDir::new(&path).follow_links(false) {
             let entry = entry.map_err(|e| e.to_string())?;
             if !entry.file_type().is_file() {
                 continue;

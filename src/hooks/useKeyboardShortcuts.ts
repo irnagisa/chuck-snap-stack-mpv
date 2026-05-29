@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { usePlayerStore } from '../store/usePlayerStore';
 
@@ -7,9 +7,22 @@ interface Options {
 }
 
 export function useKeyboardShortcuts({ onEscape }: Options = {}) {
-  const { currentVideo, queue, playNext, playPrev } = usePlayerStore();
+  // refs で最新値を保持することで、currentVideo / queue の変化ごとにリスナーを付け直さない
+  const onEscapeRef = useRef(onEscape);
+  useEffect(() => {
+    onEscapeRef.current = onEscape;
+  }, [onEscape]);
 
   useEffect(() => {
+    // ストアを直接 subscribe して currentVideo / queue を ref で追跡
+    const currentVideoRef = { current: usePlayerStore.getState().currentVideo };
+    const queueRef = { current: usePlayerStore.getState().queue };
+
+    const unsub = usePlayerStore.subscribe((state) => {
+      currentVideoRef.current = state.currentVideo;
+      queueRef.current = state.queue;
+    });
+
     const handler = async (e: KeyboardEvent) => {
       // input / textarea フォーカス中はショートカット無効
       const target = e.target as HTMLElement;
@@ -17,12 +30,12 @@ export function useKeyboardShortcuts({ onEscape }: Options = {}) {
 
       // モーダルを閉じる
       if (e.key === 'Escape') {
-        onEscape?.();
+        onEscapeRef.current?.();
         return;
       }
 
       // 以下は再生中のみ有効
-      if (!currentVideo) return;
+      if (!currentVideoRef.current) return;
 
       switch (e.key) {
         case ' ':
@@ -51,16 +64,23 @@ export function useKeyboardShortcuts({ onEscape }: Options = {}) {
           break;
         case 'n':
         case 'N':
-          if (queue.length > 0) await playNext();
+          if (queueRef.current.length > 0) {
+            await usePlayerStore.getState().playNext();
+          }
           break;
         case 'p':
         case 'P':
-          if (queue.length > 0) await playPrev();
+          if (queueRef.current.length > 0) {
+            await usePlayerStore.getState().playPrev();
+          }
           break;
       }
     };
 
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [currentVideo, queue, playNext, playPrev, onEscape]);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      unsub();
+    };
+  }, []); // 空配列: マウント時に一度だけ登録
 }

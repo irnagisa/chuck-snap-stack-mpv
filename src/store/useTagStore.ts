@@ -201,12 +201,17 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   },
 
   addTagToMultiple: async (db, videoIds, tagId) => {
+    if (videoIds.length === 0) return;
+    // N+1 クエリを避けるため VALUES (...), (...) でバッチ INSERT
+    const placeholders = videoIds.map(() => '(?, ?)').join(', ');
+    const params: number[] = [];
     for (const videoId of videoIds) {
-      await db.execute(
-        'INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)',
-        [videoId, tagId]
-      );
+      params.push(videoId, tagId);
     }
+    await db.execute(
+      `INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES ${placeholders}`,
+      params
+    );
     // Refresh tags for current page videos
     const currentIds = Object.keys(get().videoTags).map(Number);
     if (currentIds.length > 0) {
@@ -215,8 +220,12 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   },
 
   setCategoryMultiple: async (db, videoIds, categoryId) => {
-    for (const videoId of videoIds) {
-      await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryId, videoId]);
-    }
+    if (videoIds.length === 0) return;
+    // N+1 クエリを避けるため IN (...) でバッチ UPDATE
+    const ph = videoIds.map(() => '?').join(', ');
+    await db.execute(
+      `UPDATE videos SET category_id = ? WHERE id IN (${ph})`,
+      [categoryId, ...videoIds]
+    );
   },
 }));

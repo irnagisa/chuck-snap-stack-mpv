@@ -640,11 +640,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   removeMultiple: async (videoIds: number[]) => {
     const { db } = get();
     if (!db || videoIds.length === 0) return;
-    for (const videoId of videoIds) {
-      await db.execute('DELETE FROM playlist_items WHERE video_id = ?', [videoId]);
-      await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
-      await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
-    }
+    // N+1 クエリを避けるため IN (...) でバッチ削除
+    const ph = videoIds.map(() => '?').join(', ');
+    await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, videoIds);
+    await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, videoIds);
+    await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, videoIds);
     await get().fetchVideos();
   },
 

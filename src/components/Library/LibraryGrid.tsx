@@ -28,7 +28,9 @@ export function LibraryGrid({
   selectedIds,
   onSelectionChange,
 }: Props) {
-  const { videoTags, categories } = useTagStore();
+  // 個別セレクタ: tags が変わっても LibraryGrid は再レンダリングされない
+  const videoTags = useTagStore((s) => s.videoTags);
+  const categories = useTagStore((s) => s.categories);
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const lastSelectedIdxRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -47,9 +49,18 @@ export function LibraryGrid({
       setColumns(cols);
     };
     measure();
-    const ro = new ResizeObserver(measure);
+    // debounce: リサイズ中の高頻度な measure 呼び出しを抑制
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedMeasure = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(measure, 150);
+    };
+    const ro = new ResizeObserver(debouncedMeasure);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      ro.disconnect();
+    };
   }, []);
 
   const rows = useMemo(() => {

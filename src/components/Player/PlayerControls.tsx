@@ -12,29 +12,13 @@ function formatTime(sec: number): string {
   return `${m}:${String(ss).padStart(2, '0')}`;
 }
 
-export function PlayerControls() {
-  const {
-    currentVideo,
-    queue,
-    queueIndex,
-    playbackTime,
-    duration,
-    isPaused,
-    isLooping,
-    isShuffle,
-    quit,
-    playNext,
-    playPrev,
-    pauseResume,
-    seekTo,
-    toggleLoop,
-    toggleShuffle,
-  } = usePlayerStore();
+// playbackTime は毎秒更新されるため、シークバーだけを独立コンポーネントに分離。
+// これにより PlayerControls 本体（ボタン群）は毎秒再レンダリングされなくなる。
+function PlayerSeekBar() {
+  const playbackTime = usePlayerStore((s) => s.playbackTime);
+  const duration = usePlayerStore((s) => s.duration);
+  const seekTo = usePlayerStore((s) => s.seekTo);
 
-  const hasPrev = queue.length > 0 && queueIndex > 0;
-  const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
-
-  // シークバードラッグ中は store からの更新を無視し、ローカル値で表示する
   const isDragging = useRef(false);
   const [localSeek, setLocalSeek] = useState(0);
 
@@ -56,6 +40,48 @@ export function PlayerControls() {
     isDragging.current = false;
     seekTo(Number((e.target as HTMLInputElement).value));
   };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-400 w-10 text-right shrink-0 tabular-nums">
+        {formatTime(localSeek)}
+      </span>
+      <input
+        type="range"
+        className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
+        min={0}
+        max={duration > 0 ? duration : 100}
+        step={0.5}
+        value={localSeek}
+        onChange={handleSeekChange}
+        onMouseDown={handleSeekStart}
+        onMouseUp={handleSeekEnd}
+        onTouchStart={handleSeekStart}
+        onTouchEnd={handleSeekEnd}
+      />
+      <span className="text-xs text-gray-400 w-10 shrink-0 tabular-nums">
+        {duration > 0 ? formatTime(duration) : '--:--'}
+      </span>
+    </div>
+  );
+}
+
+export function PlayerControls() {
+  const currentVideo = usePlayerStore((s) => s.currentVideo);
+  const queue = usePlayerStore((s) => s.queue);
+  const queueIndex = usePlayerStore((s) => s.queueIndex);
+  const isPaused = usePlayerStore((s) => s.isPaused);
+  const isLooping = usePlayerStore((s) => s.isLooping);
+  const isShuffle = usePlayerStore((s) => s.isShuffle);
+  const quit = usePlayerStore((s) => s.quit);
+  const playNext = usePlayerStore((s) => s.playNext);
+  const playPrev = usePlayerStore((s) => s.playPrev);
+  const pauseResume = usePlayerStore((s) => s.pauseResume);
+  const toggleLoop = usePlayerStore((s) => s.toggleLoop);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+
+  const hasPrev = queue.length > 0 && queueIndex > 0;
+  const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
 
   // 再生前 (未選択) の場合はシャッフル・ループ設定だけ見せるミニバー
   if (!currentVideo) {
@@ -85,28 +111,8 @@ export function PlayerControls() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 pt-2 pb-3 shadow-lg border-t border-gray-700 flex flex-col gap-2">
-      {/* シークバー行 */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400 w-10 text-right shrink-0 tabular-nums">
-          {formatTime(localSeek)}
-        </span>
-        <input
-          type="range"
-          className="flex-1 h-1.5 accent-blue-500 cursor-pointer"
-          min={0}
-          max={duration > 0 ? duration : 100}
-          step={0.5}
-          value={localSeek}
-          onChange={handleSeekChange}
-          onMouseDown={handleSeekStart}
-          onMouseUp={handleSeekEnd}
-          onTouchStart={handleSeekStart}
-          onTouchEnd={handleSeekEnd}
-        />
-        <span className="text-xs text-gray-400 w-10 shrink-0 tabular-nums">
-          {duration > 0 ? formatTime(duration) : '--:--'}
-        </span>
-      </div>
+      {/* シークバー行: playbackTime のみを購読する独立コンポーネント */}
+      <PlayerSeekBar />
 
       {/* コントロール行 */}
       <div className="flex items-center gap-2">
