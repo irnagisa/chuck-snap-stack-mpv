@@ -36,6 +36,11 @@ pub async fn download_video(
     url: String,
     save_path: String,
 ) -> Result<String, String> {
+    // URL 検証 (スキーム・プライベート IP ブロック)
+    super::utils::validate_download_url(&url)?;
+    // 保存先パス検証 (絶対パス・パストラバーサル禁止)
+    super::utils::validate_path(&save_path)?;
+
     state.cancel_flag.store(false, Ordering::SeqCst);
     {
         let mut p = state.current_path.lock().map_err(|e| e.to_string())?;

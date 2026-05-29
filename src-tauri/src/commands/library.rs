@@ -4,6 +4,7 @@ use std::path::Path;
 use std::fs;
 
 use super::settings::SharedAppSettings;
+use super::utils::{validate_image_output_path, validate_path, validate_video_path};
 
 #[derive(Serialize)]
 pub struct ThumbnailResult {
@@ -74,6 +75,10 @@ pub async fn generate_thumbnail(
     video_path: String,
     output_path: String,
 ) -> Result<ThumbnailResult, String> {
+    // パス検証
+    validate_video_path(&video_path)?;
+    validate_image_output_path(&output_path)?;
+
     let (ffmpeg_path, ffprobe_path) = {
         let s = app_settings.lock().map_err(|e| e.to_string())?;
         (s.ffmpeg_path.clone(), s.ffprobe_path.clone())
@@ -233,6 +238,7 @@ pub async fn get_video_dimensions(
 /// 動画ファイルをファイルシステムから削除する。
 #[tauri::command]
 pub async fn delete_video_file(path: String) -> Result<(), String> {
+    validate_video_path(&path)?;
     fs::remove_file(&path).map_err(|e| format!("ファイル削除失敗: {e}"))
 }
 
@@ -240,6 +246,10 @@ pub async fn delete_video_file(path: String) -> Result<(), String> {
 /// 移動先に同名ファイルが存在する場合は連番サフィックスを付与する。
 #[tauri::command]
 pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<String, String> {
+    // パス検証
+    validate_video_path(&source_path)?;
+    validate_path(&dest_dir)?;
+
     let source = std::path::Path::new(&source_path);
     let filename = source.file_name()
         .ok_or_else(|| "invalid filename".to_string())?;
@@ -283,6 +293,10 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
 /// コピー先に同名ファイルが存在する場合は連番サフィックスを付与する。
 #[tauri::command]
 pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<String, String> {
+    // パス検証
+    validate_video_path(&source_path)?;
+    validate_path(&dest_dir)?;
+
     let source = std::path::Path::new(&source_path);
     let filename = source
         .file_name()
@@ -328,6 +342,10 @@ pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(Stri
     let results = paths
         .into_iter()
         .map(|path| {
+            // 動画パス検証に失敗した場合は削除せず false を返す
+            if validate_video_path(&path).is_err() {
+                return (path, false);
+            }
             let ok = fs::remove_file(&path).is_ok();
             (path, ok)
         })
