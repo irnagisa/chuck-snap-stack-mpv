@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import type { Video } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
 import type { WatchedStatus } from "./store/useLibraryStore";
@@ -27,7 +28,7 @@ function App() {
     filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused, thumbnailProgress,
     isDbReady, dbError,
-    initDb, fetchVideos, scanAndImport, assignCategoryFromPath,
+    initDb, scanAndImport, assignCategoryFromPath,
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters,
     setMinRating, setHasAudio, setMinDuration, setWatchedStatus,
     setSort, setPage,
@@ -94,6 +95,11 @@ function App() {
   const selectedVideos = useMemo(
     () => videos.filter((v) => selectedVideoIds.has(v.id)),
     [videos, selectedVideoIds]
+  );
+
+  const handlePlay = useCallback(
+    (v: Video) => playWithQueue(videos, videos.findIndex((x) => x.id === v.id)),
+    [videos, playWithQueue]
   );
 
   return (
@@ -497,7 +503,7 @@ function App() {
                 <LibraryGrid
                   videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
-                  onPlay={(v) => playWithQueue(videos, videos.findIndex((x) => x.id === v.id))}
+                  onPlay={handlePlay}
                   onShowDetail={openDetailVideo}
                   onAddToPlaylist={openAddToPlaylist}
                   selectedIds={selectedVideoIds}

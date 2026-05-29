@@ -23,41 +23,47 @@ pub struct ScannedFile {
 
 #[tauri::command]
 pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
-    let mut files = Vec::new();
-    let root = Path::new(&path);
+    let files = tokio::task::spawn_blocking(move || -> Result<Vec<ScannedFile>, String> {
+        let mut files = Vec::new();
+        let root = std::path::PathBuf::from(&path);
 
-    for entry in WalkDir::new(&path).follow_links(true) {
-        let entry = entry.map_err(|e| e.to_string())?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let ext = entry
-            .path()
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase())
-            .unwrap_or_default();
-        if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-            let title = entry
+        for entry in WalkDir::new(&path).follow_links(true) {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let ext = entry
                 .path()
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_string();
-            let parent_dir_name = entry.path().parent().and_then(|p| {
-                if p == root {
-                    None
-                } else {
-                    p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
-                }
-            });
-            files.push(ScannedFile {
-                path: entry.path().to_string_lossy().to_string(),
-                title,
-                parent_dir_name,
-            });
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase())
+                .unwrap_or_default();
+            if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+                let title = entry
+                    .path()
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let parent_dir_name = entry.path().parent().and_then(|p| {
+                    if p == root {
+                        None
+                    } else {
+                        p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+                    }
+                });
+                files.push(ScannedFile {
+                    path: entry.path().to_string_lossy().to_string(),
+                    title,
+                    parent_dir_name,
+                });
+            }
         }
-    }
+
+        Ok(files)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     Ok(files)
 }
@@ -79,32 +85,29 @@ pub async fn generate_thumbnail(
             .map_err(|e| e.to_string())?;
     }
 
-    // ffprobe で動画の長さを取得
-    let duration = tokio::process::Command::new(&ffprobe_path)
+    // ffprobe で duration と音声ストリーム有無を一括取得 (1プロセス)
+    let probe = tokio::process::Command::new(&ffprobe_path)
         .args([
             "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
             &video_path,
         ])
         .output()
         .await
         .ok()
-        .and_then(|out| String::from_utf8(out.stdout).ok())
-        .and_then(|s| s.trim().parse::<f64>().ok());
+        .and_then(|out| serde_json::from_slice::<serde_json::Value>(&out.stdout).ok());
 
-    // ffprobe で音声ストリームの有無を確認
-    let has_audio = tokio::process::Command::new(&ffprobe_path)
-        .args([
-            "-v", "quiet",
-            "-select_streams", "a:0",
-            "-show_entries", "stream=codec_type",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            &video_path,
-        ])
-        .output()
-        .await
-        .map(|out| !out.stdout.iter().all(|b| b.is_ascii_whitespace()))
+    let duration = probe.as_ref()
+        .and_then(|v| v["format"]["duration"].as_str())
+        .and_then(|s| s.parse::<f64>().ok());
+
+    let has_audio = probe.as_ref()
+        .and_then(|v| v["streams"].as_array())
+        .map(|streams| {
+            streams.iter().any(|s| s["codec_type"].as_str() == Some("audio"))
+        })
         .unwrap_or(true);
 
     // 5秒地点からフレームを抽出 (高速シーク)

@@ -161,7 +161,10 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
   }
   if (f.filterTagIds.length > 0) {
     const ph = f.filterTagIds.map(() => '?').join(', ');
-    conditions.push(`(SELECT COUNT(*) FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag_id IN (${ph})) = ${f.filterTagIds.length}`);
+    // 相関サブクエリを非相関サブクエリ (GROUP BY + HAVING) に変更
+    conditions.push(
+      `v.id IN (SELECT vt.video_id FROM video_tags vt WHERE vt.tag_id IN (${ph}) GROUP BY vt.video_id HAVING COUNT(*) = ${f.filterTagIds.length})`
+    );
     params.push(...f.filterTagIds);
   }
   if (f.filterMinRating > 0) {
@@ -234,6 +237,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       try {
         await db.execute('ALTER TABLE videos ADD COLUMN has_audio INTEGER');
       } catch { /* already exists */ }
+      // パフォーマンス最適化: よく使うフィルター/ソートカラムにインデックスを作成
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_rating ON videos(rating)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_category_id ON videos(category_id)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_video_tags_tag_id ON video_tags(tag_id)');
       set({ db, isDbReady: true });
       await useSettingsStore.getState().loadSettings(db);
       await get().fetchVideos();
@@ -447,7 +457,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     _thumbnailPaused = false;
     set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: pending.length } });
 
-    const processVideo = async (video: { id: number; path: string; thumbnail: string | null }) => {
+    type VideoUpdate = { id: number; thumbnail?: string; duration?: number | null; has_audio: number };
+
+    const processVideoData = async (video: { id: number; path: string; thumbnail: string | null }): Promise<VideoUpdate | null> => {
       try {
         if (!video.thumbnail) {
           const hashBuffer = await crypto.subtle.digest(
@@ -468,41 +480,43 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             'UPDATE videos SET thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
             [result.thumbnail_path, result.duration, hasAudio, video.id]
           );
-          set((state) => ({
-            videos: state.videos.map((v) =>
-              v.id === video.id
-                ? { ...v, thumbnail: result.thumbnail_path, duration: result.duration ?? v.duration, has_audio: hasAudio }
-                : v
-            ),
-          }));
+          return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, has_audio: hasAudio };
         } else {
           // サムネイルはあるが音声情報が未取得の動画
           const hasAudioRaw = await invoke<boolean>('check_has_audio', { videoPath: video.path });
           const hasAudio = hasAudioRaw ? 1 : 0;
           await db.execute('UPDATE videos SET has_audio = ? WHERE id = ?', [hasAudio, video.id]);
-          set((state) => ({
-            videos: state.videos.map((v) =>
-              v.id === video.id ? { ...v, has_audio: hasAudio } : v
-            ),
-          }));
+          return { id: video.id, has_audio: hasAudio };
         }
       } catch (e) {
         console.warn(`Audio/thumbnail processing failed for ${video.path}:`, e);
+        return null;
       }
-      set((state) => ({
-        thumbnailProgress: state.thumbnailProgress
-          ? { ...state.thumbnailProgress, done: state.thumbnailProgress.done + 1 }
-          : null,
-      }));
     };
 
     try {
+      let doneCount = 0;
       for (let i = 0; i < pending.length; i += THUMBNAIL_CONCURRENCY) {
         while (_thumbnailPaused) {
           await new Promise<void>((resolve) => setTimeout(resolve, 200));
         }
         const batch = pending.slice(i, i + THUMBNAIL_CONCURRENCY);
-        await Promise.all(batch.map(processVideo));
+        const results = await Promise.all(batch.map(processVideoData));
+        doneCount += batch.length;
+
+        // バッチ完了後に一括 set（動画更新 + 進捗を1回の state 更新で処理）
+        const updateMap = new Map(
+          results
+            .filter((r): r is VideoUpdate => r !== null)
+            .map((r) => [r.id, r])
+        );
+        set((state) => ({
+          videos: state.videos.map((v) => {
+            const upd = updateMap.get(v.id);
+            return upd ? { ...v, ...upd } : v;
+          }),
+          thumbnailProgress: { done: doneCount, total: pending.length },
+        }));
       }
     } finally {
       _thumbnailPaused = false;
