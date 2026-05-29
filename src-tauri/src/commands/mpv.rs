@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicU32, Ordering},
         Arc, Mutex,
     },
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde_json::{json, Value};
@@ -150,6 +150,8 @@ fn connect_and_start_reader(
     // リーダースレッド: mpv からのイベント行を受信して Tauri イベントに変換する
     std::thread::spawn(move || {
         let mut reader = BufReader::new(read_stream);
+        // playback-time は ~200ms に1回だけ emit してスロットリング
+        let mut last_playback_emit_ms: u64 = 0;
         loop {
             let mut line = String::new();
             match reader.read_line(&mut line) {
@@ -202,7 +204,14 @@ fn connect_and_start_reader(
                     match val["name"].as_str().unwrap_or("") {
                         "playback-time" => {
                             if let Some(t) = val["data"].as_f64() {
-                                let _ = app.emit("mpv://playback-time", t);
+                                let now_ms = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .map(|d| d.as_millis() as u64)
+                                    .unwrap_or(0);
+                                if now_ms.saturating_sub(last_playback_emit_ms) >= 200 {
+                                    last_playback_emit_ms = now_ms;
+                                    let _ = app.emit("mpv://playback-time", t);
+                                }
                             }
                         }
                         "pause" => {

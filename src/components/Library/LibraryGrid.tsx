@@ -187,6 +187,8 @@ export function LibraryGrid({
   const categories = useTagStore((s) => s.categories);
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const lastSelectedIdxRef = useRef<number | null>(null);
+  const selectedIdsRef = useRef(selectedIds);
+  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [columns, setColumns] = useState(4);
 
@@ -235,7 +237,7 @@ export function LibraryGrid({
   const handleCheckbox = useCallback((e: React.MouseEvent, video: Video, idx: number) => {
     e.stopPropagation();
     if (e.shiftKey) e.preventDefault();
-    const next = new Set(selectedIds);
+    const next = new Set(selectedIdsRef.current);
 
     if (e.shiftKey && lastSelectedIdxRef.current !== null) {
       const from = Math.min(lastSelectedIdxRef.current, idx);
@@ -253,7 +255,7 @@ export function LibraryGrid({
     }
 
     onSelectionChange(next);
-  }, [selectedIds, videos, onSelectionChange]);
+  }, [videos, onSelectionChange]);
 
   return (
     <>

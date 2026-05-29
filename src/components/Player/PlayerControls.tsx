@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/shallow';
 import { usePlayerStore } from '../../store/usePlayerStore';
 
 function formatTime(sec: number): string {
@@ -67,18 +68,23 @@ function PlayerSeekBar() {
 }
 
 export function PlayerControls() {
-  const currentVideo = usePlayerStore((s) => s.currentVideo);
-  const queue = usePlayerStore((s) => s.queue);
-  const queueIndex = usePlayerStore((s) => s.queueIndex);
-  const isPaused = usePlayerStore((s) => s.isPaused);
-  const isLooping = usePlayerStore((s) => s.isLooping);
-  const isShuffle = usePlayerStore((s) => s.isShuffle);
-  const quit = usePlayerStore((s) => s.quit);
-  const playNext = usePlayerStore((s) => s.playNext);
-  const playPrev = usePlayerStore((s) => s.playPrev);
-  const pauseResume = usePlayerStore((s) => s.pauseResume);
-  const toggleLoop = usePlayerStore((s) => s.toggleLoop);
-  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const {
+    currentVideo, queue, queueIndex, isPaused, isLooping, isShuffle,
+    quit, playNext, playPrev, pauseResume, toggleLoop, toggleShuffle,
+  } = usePlayerStore(useShallow((s) => ({
+    currentVideo: s.currentVideo,
+    queue: s.queue,
+    queueIndex: s.queueIndex,
+    isPaused: s.isPaused,
+    isLooping: s.isLooping,
+    isShuffle: s.isShuffle,
+    quit: s.quit,
+    playNext: s.playNext,
+    playPrev: s.playPrev,
+    pauseResume: s.pauseResume,
+    toggleLoop: s.toggleLoop,
+    toggleShuffle: s.toggleShuffle,
+  })));
 
   const hasPrev = queue.length > 0 && queueIndex > 0;
   const hasNext = queue.length > 0 && queueIndex < queue.length - 1;

@@ -612,12 +612,19 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const categoryIdMap: Record<string, number> = {};
     for (const row of catRows) categoryIdMap[row.name] = row.id;
 
-    // 動画の category_id を一括更新
-    for (const row of rows) {
-      const dirName = getParentDirName(row.path);
-      if (dirName && categoryIdMap[dirName] != null) {
-        await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryIdMap[dirName], row.id]);
+    // 動画の category_id を一括更新 (トランザクションでバッチ化)
+    await db.execute('BEGIN');
+    try {
+      for (const row of rows) {
+        const dirName = getParentDirName(row.path);
+        if (dirName && categoryIdMap[dirName] != null) {
+          await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryIdMap[dirName], row.id]);
+        }
       }
+      await db.execute('COMMIT');
+    } catch (e) {
+      await db.execute('ROLLBACK');
+      throw e;
     }
 
     await useTagStore.getState().init(db);
