@@ -64,7 +64,7 @@ jobs:
         run: pnpm tauri icon public/icon.png
 
       - name: Build and upload
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
