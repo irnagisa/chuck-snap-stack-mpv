@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* class ベースの dark モード: <html class="dark"> で切り替え */
+@custom-variant dark (&:where(.dark, .dark *));
+
 html {
   font-size: 13px;
 }

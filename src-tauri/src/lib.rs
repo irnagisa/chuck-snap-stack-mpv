@@ -17,6 +17,7 @@ pub fn run() {
         .manage(new_watcher_state())
         .manage(DownloadState::new())
         .manage(TranscodeState::new())
+        .manage(commands::ytdlp::YtdlpState::new())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
@@ -58,6 +59,9 @@ pub fn run() {
             commands::library::save_text_file,
             commands::library::read_text_file,
             commands::library::rename_video_file,
+            commands::ytdlp::download_with_ytdlp,
+            commands::ytdlp::cancel_ytdlp_download,
+            commands::ytdlp::detect_ytdlp_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  useSettingsStore, type AppSettings, type KeyAction,
+  useSettingsStore, type AppSettings, type KeyAction, type Theme,
   KEY_ACTION_LABELS, DEFAULT_KEYBINDINGS,
 } from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
@@ -26,10 +27,10 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 ];
 
 export function SettingsPanel({ onClose }: Props) {
-  const { mpvPath, ffmpegPath, ffprobePath, downloadDir, screenshotDir, keybindings, saveSettings, saveKeybindings } = useSettingsStore();
+  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, saveSettings, saveKeybindings } = useSettingsStore();
   const { db, watchDirs, scanAndImport, removeWatchDir, isScanning } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, downloadDir, screenshotDir, keybindings });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
@@ -47,6 +48,22 @@ export function SettingsPanel({ onClose }: Props) {
     window.addEventListener('keydown', handler, { once: true });
     return () => window.removeEventListener('keydown', handler);
   }, [capturingAction]);
+
+  const handlePickYtdlp = async () => {
+    const selected = await open({ multiple: false });
+    if (typeof selected === "string") {
+      setLocal((prev) => ({ ...prev, ytdlpPath: selected }));
+    }
+  };
+
+  const handleDetectYtdlp = async () => {
+    try {
+      const detected = await invoke<string>("detect_ytdlp_path");
+      setLocal((prev) => ({ ...prev, ytdlpPath: detected }));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const handlePickMpv = async () => {
     const selected = await open({ multiple: false });
@@ -117,6 +134,34 @@ export function SettingsPanel({ onClose }: Props) {
 
         {/* 本体 - スクロール可能 */}
         <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
+          {/* 外観 */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            外観
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              テーマ
+            </label>
+            <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
+              {([['light', 'ライト'], ['dark', 'ダーク'], ['auto', '自動']] as [Theme, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`px-4 py-1 rounded-md text-sm font-medium transition-all ${
+                    local.theme === value
+                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                  onClick={() => setLocal((prev) => ({ ...prev, theme: value }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <hr className="border-gray-200 dark:border-gray-700" />
+
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             実行ファイル
           </p>
@@ -173,6 +218,39 @@ export function SettingsPanel({ onClose }: Props) {
               className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
               placeholder="ffprobe"
             />
+          </div>
+
+          {/* yt-dlp パス */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              yt-dlp パス
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={local.ytdlpPath}
+                onChange={(e) => setLocal((prev) => ({ ...prev, ytdlpPath: e.target.value }))}
+                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
+                placeholder="/opt/homebrew/bin/yt-dlp"
+              />
+              <button
+                type="button"
+                onClick={handlePickYtdlp}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
+              >
+                参照
+              </button>
+              <button
+                type="button"
+                onClick={handleDetectYtdlp}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
+              >
+                自動検出
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              空の場合はバンドルバイナリまたは PATH 上の yt-dlp を使用
+            </p>
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />

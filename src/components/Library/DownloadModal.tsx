@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { join, downloadDir as systemDownloadDir } from "@tauri-apps/api/path";
+import { join, downloadDir as systemDownloadDir, basename } from "@tauri-apps/api/path";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useSettingsStore } from "../../store/useSettingsStore";
 
@@ -33,11 +33,12 @@ function fileNameFromUrl(url: string): string {
 
 export function DownloadModal({ onClose }: Props) {
   const { addVideoFromPath } = useLibraryStore();
-  const { downloadDir: settingsDownloadDir } = useSettingsStore();
+  const { downloadDir: settingsDownloadDir, ytdlpPath } = useSettingsStore();
 
   const [url, setUrl] = useState("");
   const [saveDir, setSaveDir] = useState("");
   const [filename, setFilename] = useState("video.mp4");
+  const [useYtdlp, setUseYtdlp] = useState(() => ytdlpPath !== "");
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<DownloadProgress>({ downloaded: 0, total: 0, percent: 0 });
   const [errorMsg, setErrorMsg] = useState("");
@@ -64,7 +65,9 @@ export function DownloadModal({ onClose }: Props) {
 
   const handleUrlChange = (value: string) => {
     setUrl(value);
-    setFilename(fileNameFromUrl(value));
+    if (!useYtdlp) {
+      setFilename(fileNameFromUrl(value));
+    }
   };
 
   const handlePickDir = async () => {
@@ -77,8 +80,6 @@ export function DownloadModal({ onClose }: Props) {
   const handleDownload = async () => {
     if (!url.trim() || !saveDir) return;
 
-    const savePath = await join(saveDir, filename);
-
     setPhase("downloading");
     setProgress({ downloaded: 0, total: 0, percent: 0 });
     setErrorMsg("");
@@ -90,17 +91,34 @@ export function DownloadModal({ onClose }: Props) {
     );
 
     try {
-      const resultPath = await invoke<string>("download_video", {
-        url: url.trim(),
-        savePath,
-      });
+      let resultPath: string;
+
+      if (useYtdlp) {
+        resultPath = await invoke<string>("download_with_ytdlp", {
+          url: url.trim(),
+          saveDir,
+        });
+      } else {
+        const savePath = await join(saveDir, filename);
+        resultPath = await invoke<string>("download_video", {
+          url: url.trim(),
+          savePath,
+        });
+      }
 
       unlistenRef.current?.();
       unlistenRef.current = null;
 
-      const title = filename.replace(/\.[^.]+$/, "");
-      await addVideoFromPath(resultPath, title);
+      // ファイル名からタイトルを生成
+      let title: string;
+      try {
+        const base = await basename(resultPath);
+        title = base.replace(/\.[^.]+$/, "");
+      } catch {
+        title = useYtdlp ? "" : filename.replace(/\.[^.]+$/, "");
+      }
 
+      await addVideoFromPath(resultPath, title);
       setPhase("done");
     } catch (e) {
       unlistenRef.current?.();
@@ -116,7 +134,11 @@ export function DownloadModal({ onClose }: Props) {
   };
 
   const handleCancel = async () => {
-    await invoke("cancel_download").catch(() => {});
+    if (useYtdlp) {
+      await invoke("cancel_ytdlp_download").catch(() => {});
+    } else {
+      await invoke("cancel_download").catch(() => {});
+    }
   };
 
   const formatBytes = (n: number) => {
@@ -127,7 +149,7 @@ export function DownloadModal({ onClose }: Props) {
     return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
   };
 
-  const canStart = url.trim() !== "" && saveDir !== "" && filename.trim() !== "";
+  const canStart = url.trim() !== "" && saveDir !== "" && (useYtdlp || filename.trim() !== "");
 
   return (
     <div
@@ -135,14 +157,34 @@ export function DownloadModal({ onClose }: Props) {
       onClick={(e) => e.target === e.currentTarget && phase !== "downloading" && onClose()}
     >
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">URL からダウンロード</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">URL からダウンロード</h2>
+          {/* yt-dlp トグル */}
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <span className="text-xs text-gray-500 dark:text-gray-400">yt-dlp</span>
+            <div
+              className={`relative w-9 h-5 rounded-full transition-colors ${
+                useYtdlp ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
+              } ${phase === "downloading" ? "opacity-50 pointer-events-none" : ""}`}
+              onClick={() => phase !== "downloading" && setUseYtdlp((v) => !v)}
+            >
+              <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${useYtdlp ? "translate-x-4" : ""}`} />
+            </div>
+          </label>
+        </div>
+
+        {useYtdlp && ytdlpPath === "" && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 -mt-2">
+            yt-dlp のパスが未設定です。PATH 上にある場合はそのまま使用されます。設定で明示的にパスを指定することもできます。
+          </p>
+        )}
 
         {/* URL */}
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 dark:text-gray-400">URL</label>
           <input
             className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50"
-            placeholder="https://example.com/video.mp4"
+            placeholder={useYtdlp ? "https://www.youtube.com/watch?v=..." : "https://example.com/video.mp4"}
             value={url}
             onChange={(e) => handleUrlChange(e.target.value)}
             disabled={phase === "downloading"}
@@ -170,16 +212,24 @@ export function DownloadModal({ onClose }: Props) {
           </div>
         </div>
 
-        {/* ファイル名 */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">ファイル名</label>
-          <input
-            className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
-            value={filename}
-            onChange={(e) => setFilename(e.target.value)}
-            disabled={phase === "downloading"}
-          />
-        </div>
+        {/* ファイル名 (HTTP モードのみ) */}
+        {!useYtdlp && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 dark:text-gray-400">ファイル名</label>
+            <input
+              className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              disabled={phase === "downloading"}
+            />
+          </div>
+        )}
+
+        {useYtdlp && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+            ファイル名は動画タイトルから自動決定されます
+          </p>
+        )}
 
         {/* プログレス */}
         {phase === "downloading" && (
@@ -192,11 +242,11 @@ export function DownloadModal({ onClose }: Props) {
             </div>
             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
               <span>
-                {progress.total > 0
+                {!useYtdlp && progress.total > 0
                   ? `${formatBytes(progress.downloaded)} / ${formatBytes(progress.total)}`
-                  : formatBytes(progress.downloaded)}
+                  : useYtdlp ? "ダウンロード中..." : formatBytes(progress.downloaded)}
               </span>
-              <span>{progress.percent}%</span>
+              <span>{progress.percent.toFixed(1)}%</span>
             </div>
           </div>
         )}

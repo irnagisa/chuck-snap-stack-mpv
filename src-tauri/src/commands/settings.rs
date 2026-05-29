@@ -6,6 +6,7 @@ pub struct AppSettings {
     pub mpv_path: String,
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
+    pub ytdlp_path: String,
 }
 
 pub type SharedAppSettings = Arc<Mutex<AppSettings>>;
@@ -16,6 +17,7 @@ impl AppSettings {
             mpv_path: detect_mpv_path(),
             ffmpeg_path: "ffmpeg".to_string(),
             ffprobe_path: "ffprobe".to_string(),
+            ytdlp_path: String::new(),
         }))
     }
 }
@@ -90,14 +92,20 @@ pub async fn update_settings(
     mpv_path: String,
     ffmpeg_path: String,
     ffprobe_path: String,
+    ytdlp_path: String,
 ) -> Result<(), String> {
     validate_executable_path(&mpv_path, "mpv")?;
     validate_executable_path(&ffmpeg_path, "ffmpeg")?;
     validate_executable_path(&ffprobe_path, "ffprobe")?;
+    // ytdlp_path は空可（PATH 依存）なので空の場合はスキップ
+    if !ytdlp_path.is_empty() {
+        validate_executable_path(&ytdlp_path, "yt-dlp")?;
+    }
 
     let mut s = state.lock().map_err(|e| e.to_string())?;
     s.mpv_path = mpv_path;
     s.ffmpeg_path = ffmpeg_path;
     s.ffprobe_path = ffprobe_path;
+    s.ytdlp_path = ytdlp_path;
     Ok(())
 }

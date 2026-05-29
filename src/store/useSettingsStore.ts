@@ -39,22 +39,28 @@ export const KEY_ACTION_LABELS: Record<KeyAction, string> = {
   escape: 'モーダルを閉じる',
 };
 
+export type Theme = 'light' | 'dark' | 'auto';
+
 export interface AppSettings {
   mpvPath: string;
   ffmpegPath: string;
   ffprobePath: string;
+  ytdlpPath: string;
   downloadDir: string;
   screenshotDir: string;
   keybindings: KeyBindings;
+  theme: Theme;
 }
 
 const DEFAULTS: AppSettings = {
   mpvPath: "/usr/local/bin/mpv",
   ffmpegPath: "ffmpeg",
   ffprobePath: "ffprobe",
+  ytdlpPath: "",
   downloadDir: "",
   screenshotDir: "",
   keybindings: DEFAULT_KEYBINDINGS,
+  theme: "auto",
 };
 
 interface SettingsStore extends AppSettings {
@@ -69,6 +75,7 @@ async function syncToRust(settings: AppSettings) {
     mpvPath: settings.mpvPath,
     ffmpegPath: settings.ffmpegPath,
     ffprobePath: settings.ffprobePath,
+    ytdlpPath: settings.ytdlpPath,
   });
 }
 
@@ -97,7 +104,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     `);
 
     const rows = await db.select<{ key: string; value: string }[]>(
-      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'download_dir', 'screenshot_dir', 'keybindings')"
+      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'ytdlp_path', 'download_dir', 'screenshot_dir', 'keybindings', 'theme')"
     );
 
     const map: Record<string, string> = {};
@@ -120,9 +127,11 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       mpvPath: resolvedMpvPath,
       ffmpegPath: map["ffmpeg_path"] ?? DEFAULTS.ffmpegPath,
       ffprobePath: map["ffprobe_path"] ?? DEFAULTS.ffprobePath,
+      ytdlpPath: map["ytdlp_path"] ?? DEFAULTS.ytdlpPath,
       downloadDir: map["download_dir"] ?? DEFAULTS.downloadDir,
       screenshotDir: map["screenshot_dir"] ?? DEFAULTS.screenshotDir,
       keybindings,
+      theme: (map["theme"] as Theme | undefined) ?? DEFAULTS.theme,
     };
 
     set({ ...settings, isLoaded: true });
@@ -143,12 +152,20 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       [settings.ffprobePath]
     );
     await db.execute(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('ytdlp_path', ?)",
+      [settings.ytdlpPath]
+    );
+    await db.execute(
       "INSERT OR REPLACE INTO settings (key, value) VALUES ('download_dir', ?)",
       [settings.downloadDir]
     );
     await db.execute(
       "INSERT OR REPLACE INTO settings (key, value) VALUES ('screenshot_dir', ?)",
       [settings.screenshotDir]
+    );
+    await db.execute(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('theme', ?)",
+      [settings.theme]
     );
 
     set({ ...settings });

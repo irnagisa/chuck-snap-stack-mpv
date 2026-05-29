@@ -11,6 +11,7 @@ import { useDragDrop } from "./hooks/useDragDrop";
 import { useTagStore } from "./store/useTagStore";
 import { useTranscodeStore } from "./store/useTranscodeStore";
 import { useModalStore } from "./store/useModalStore";
+import { useSettingsStore } from "./store/useSettingsStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
@@ -90,6 +91,9 @@ function App() {
     openPlaylist, openBulkModal, openDuplicates, openStats, openExport, openSmartPlaylist, closeAll,
   } = useModalStore();
 
+  const theme = useSettingsStore((s) => s.theme);
+  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
+
   const [searchInput, setSearchInput] = useState(filterSearch);
   const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
@@ -112,6 +116,28 @@ function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [durationInput]);
+
+  // テーマ適用: <html> に dark クラスを付与/除去
+  useEffect(() => {
+    if (!isSettingsLoaded) return;
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      return;
+    }
+    if (theme === 'light') {
+      root.classList.remove('dark');
+      return;
+    }
+    // 'auto': OS 設定に追従
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = (e: MediaQueryList | MediaQueryListEvent) => {
+      root.classList.toggle('dark', e.matches);
+    };
+    apply(mq);
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [theme, isSettingsLoaded]);
 
   useKeyboardShortcuts({ onEscape: closeAll });
   useWatcher();
