@@ -501,6 +501,7 @@ function App() {
                     title="評価フィルタ"
                   >
                     <option value={0}>評価: すべて</option>
+                    <option value={-1}>未評価のみ</option>
                     <option value={1}>★1以上</option>
                     <option value={2}>★2以上</option>
                     <option value={3}>★3以上</option>

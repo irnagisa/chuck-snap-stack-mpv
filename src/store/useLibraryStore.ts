@@ -179,7 +179,9 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
     params.push(...f.filterTagIds);
     params.push(f.filterTagIds.length);
   }
-  if (f.filterMinRating > 0) {
+  if (f.filterMinRating === -1) {
+    conditions.push('(v.rating = 0 OR v.rating IS NULL)');
+  } else if (f.filterMinRating > 0) {
     conditions.push('v.rating >= ?');
     params.push(f.filterMinRating);
   }
