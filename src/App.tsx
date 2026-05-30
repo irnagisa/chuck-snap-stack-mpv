@@ -18,6 +18,7 @@ import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
 import { AppModals } from "./components/AppModals";
 import { ToastContainer } from "./components/common/ToastContainer";
+import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { Select } from "./components/common/Select";
 
 type SidebarTab = 'category' | 'playlist';
@@ -650,6 +651,8 @@ function App() {
         selectedVideos={selectedVideos}
         onClearSelection={() => setSelectedVideoIds(new Set())}
       />
+
+      <DownloadQueuePanel />
 
       <ToastContainer />
 
