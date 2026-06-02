@@ -10,6 +10,7 @@ import { usePlaylistStore } from './usePlaylistStore';
 export type SortBy = 'created_at' | 'duration' | 'rating';
 export type SortOrder = 'desc' | 'asc';
 export type WatchedStatus = 'all' | 'watched' | 'unwatched';
+export type TagFilterMode = 'and' | 'or';
 
 interface LibraryState {
   videos: Video[];
@@ -19,6 +20,7 @@ interface LibraryState {
   filterSearch: string;
   filterCategoryId: number | null;
   filterTagIds: number[];
+  filterTagMode: TagFilterMode;
   filterMinRating: number;
   filterHasAudio: number | null;
   filterMinDuration: number;
@@ -44,6 +46,7 @@ interface LibraryActions {
   setCategoryFilter: (id: number | null) => Promise<void>;
   toggleTagFilter: (tagId: number) => Promise<void>;
   clearTagFilters: () => Promise<void>;
+  setTagMode: (mode: TagFilterMode) => Promise<void>;
   setMinRating: (rating: number) => Promise<void>;
   setHasAudio: (hasAudio: number | null) => Promise<void>;
   setMinDuration: (seconds: number) => Promise<void>;
@@ -149,7 +152,7 @@ const CREATE_SMART_PLAYLISTS_TABLE = `
 `;
 
 type FilterState = Pick<LibraryState,
-  'filterSearch' | 'filterCategoryId' | 'filterTagIds' |
+  'filterSearch' | 'filterCategoryId' | 'filterTagIds' | 'filterTagMode' |
   'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus'
 >;
 
@@ -172,12 +175,18 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
   }
   if (f.filterTagIds.length > 0) {
     const ph = f.filterTagIds.map(() => '?').join(', ');
-    // 相関サブクエリを非相関サブクエリ (GROUP BY + HAVING) に変更
-    conditions.push(
-      `v.id IN (SELECT vt.video_id FROM video_tags vt WHERE vt.tag_id IN (${ph}) GROUP BY vt.video_id HAVING COUNT(*) = ?)`
-    );
-    params.push(...f.filterTagIds);
-    params.push(f.filterTagIds.length);
+    if (f.filterTagMode === 'or') {
+      conditions.push(
+        `v.id IN (SELECT vt.video_id FROM video_tags vt WHERE vt.tag_id IN (${ph}))`
+      );
+      params.push(...f.filterTagIds);
+    } else {
+      conditions.push(
+        `v.id IN (SELECT vt.video_id FROM video_tags vt WHERE vt.tag_id IN (${ph}) GROUP BY vt.video_id HAVING COUNT(*) = ?)`
+      );
+      params.push(...f.filterTagIds);
+      params.push(f.filterTagIds.length);
+    }
   }
   if (f.filterMinRating === -1) {
     conditions.push('(v.rating = 0 OR v.rating IS NULL)');
@@ -218,6 +227,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterSearch: '',
   filterCategoryId: null,
   filterTagIds: [],
+  filterTagMode: 'and',
   filterMinRating: 0,
   filterHasAudio: null,
   filterMinDuration: 0,
@@ -351,6 +361,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   clearTagFilters: async () => {
     set({ filterTagIds: [], currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setTagMode: async (mode: TagFilterMode) => {
+    set({ filterTagMode: mode, currentPage: 1 });
     await get().fetchVideos();
   },
 

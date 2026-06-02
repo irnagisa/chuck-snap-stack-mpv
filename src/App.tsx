@@ -27,7 +27,7 @@ function App() {
   // useShallow で1サブスクリプションにまとめ、個別セレクタ35個分のオーバーヘッドを削減
   const {
     videos, totalCount, currentPage, pageSize,
-    filterSearch, filterCategoryId, filterTagIds,
+    filterSearch, filterCategoryId, filterTagIds, filterTagMode,
     filterMinRating, filterHasAudio, filterMinDuration,
     filterWatchedStatus, filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused,
@@ -40,6 +40,7 @@ function App() {
     filterSearch: s.filterSearch,
     filterCategoryId: s.filterCategoryId,
     filterTagIds: s.filterTagIds,
+    filterTagMode: s.filterTagMode,
     filterMinRating: s.filterMinRating,
     filterHasAudio: s.filterHasAudio,
     filterMinDuration: s.filterMinDuration,
@@ -55,7 +56,7 @@ function App() {
   })));
   const {
     initDb, scanAndImport, assignCategoryFromPath,
-    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters,
+    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration,
     setWatchedStatus, setSort, setPage,
     pauseThumbnails, resumeThumbnails,
@@ -67,6 +68,7 @@ function App() {
     setCategoryFilter: s.setCategoryFilter,
     toggleTagFilter: s.toggleTagFilter,
     clearTagFilters: s.clearTagFilters,
+    setTagMode: s.setTagMode,
     setMinRating: s.setMinRating,
     setHasAudio: s.setHasAudio,
     setMinDuration: s.setMinDuration,
@@ -449,6 +451,16 @@ function App() {
                             {tag.name}
                           </button>
                         ))}
+                        {filterTagIds.length >= 2 && (
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            title={filterTagMode === 'and' ? 'AND: 選択タグをすべて含む動画 (クリックで OR に切替)' : 'OR: 選択タグのいずれかを含む動画 (クリックで AND に切替)'}
+                            onClick={() => setTagMode(filterTagMode === 'and' ? 'or' : 'and')}
+                          >
+                            {filterTagMode === 'and' ? 'AND' : 'OR'}
+                          </button>
+                        )}
                         {filterTagIds.length > 0 && (
                           <button
                             type="button"
