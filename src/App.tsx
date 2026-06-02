@@ -279,7 +279,7 @@ function App() {
 
       {/* AV1 変換ステータスバー */}
       {(isTranscoding || isTranscodeDone || transcodeError) && (
-        <div style={{ zIndex: 60 }} className={`fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl mx-auto px-4 py-2 flex items-center gap-3 rounded-xl shadow-lg border ${
+        <div style={{ zIndex: 60 }} className={`fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl mx-auto px-4 py-2 flex items-start gap-3 rounded-xl shadow-lg border ${
           transcodeError
             ? 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700'
             : isTranscodeDone
@@ -292,15 +292,24 @@ function App() {
             {transcodeError ? '✕' : isTranscodeDone ? '✓' : '⟳'}
           </span>
 
-          <span className={`text-xs shrink-0 font-medium truncate max-w-48 ${
-            transcodeError ? 'text-red-700 dark:text-red-300' : isTranscodeDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'
-          }`}>
-            {transcodeError
-              ? `変換失敗: ${transcodeVideoName}`
-              : isTranscodeDone
-              ? `変換完了: ${transcodeVideoName}`
-              : `AV1 変換中: ${transcodeVideoName}`}
-          </span>
+          {transcodeError ? (
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-xs font-medium text-red-700 dark:text-red-300 truncate">
+                {`変換失敗: ${transcodeVideoName}`}
+              </span>
+              <span className="text-xs text-red-600 dark:text-red-400 line-clamp-2 break-all leading-tight mt-0.5">
+                {transcodeError}
+              </span>
+            </div>
+          ) : (
+            <span className={`text-xs shrink-0 font-medium truncate max-w-48 ${
+              isTranscodeDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'
+            }`}>
+              {isTranscodeDone
+                ? `変換完了: ${transcodeVideoName}`
+                : `AV1 変換中: ${transcodeVideoName}`}
+            </span>
+          )}
 
           {isTranscodeDone && transcodeInputSize != null && transcodeOutputSize != null && (() => {
             const fmt = (b: number) => b >= 1073741824

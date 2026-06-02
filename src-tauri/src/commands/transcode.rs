@@ -120,14 +120,22 @@ pub async fn transcode_video(
                     "-preset", &preset.to_string(),
                     "-c:a", "libopus",
                     "-b:a", "128k",
+                    "-f", "matroska",
                     &tmp_output_str,
                 ])
                 .stdout(Stdio::piped())
-                .stderr(Stdio::null())
+                .stderr(Stdio::piped())
                 .spawn()
                 .map_err(|e| format!("FFmpeg 起動失敗: {e}"))?;
 
             let stdout = child.stdout.take().expect("stdout not captured");
+            let stderr = child.stderr.take().expect("stderr not captured");
+            let stderr_handle = std::thread::spawn(move || {
+                use std::io::Read;
+                let mut s = String::new();
+                BufReader::new(stderr).read_to_string(&mut s).ok();
+                s
+            });
             let reader = BufReader::new(stdout);
 
             let start = std::time::Instant::now();
@@ -178,10 +186,16 @@ pub async fn transcode_video(
             }
 
             let status = child.wait().map_err(|e| e.to_string())?;
+            let stderr_output = stderr_handle.join().unwrap_or_default();
             if !status.success() {
                 let _ = std::fs::remove_file(&tmp_output_str);
+                let detail = if stderr_output.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!("\n{}", stderr_output.trim())
+                };
                 return Err(format!(
-                    "FFmpeg がエラーで終了しました (code: {:?})",
+                    "FFmpeg がエラーで終了しました (code: {:?}){detail}",
                     status.code()
                 ));
             }
