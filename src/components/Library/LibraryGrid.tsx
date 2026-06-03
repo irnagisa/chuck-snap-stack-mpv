@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { TagBadge } from './TagBadge';
@@ -38,16 +38,53 @@ const VideoCard = memo(function VideoCard({
       ? Math.min((v.progress / v.duration) * 100, 100)
       : null;
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [fileMissing, setFileMissing] = useState(false);
+  const checkedRef = useRef(false);
+
+  useEffect(() => {
+    checkedRef.current = false;
+    setFileMissing(false);
+  }, [v.path]);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !checkedRef.current) {
+          checkedRef.current = true;
+          invoke<boolean>('path_exists', { path: v.path }).then((exists) => {
+            if (!exists) setFileMissing(true);
+          });
+        }
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [v.path]);
+
   return (
     <div
-      className={`group cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
-        isSelected
-          ? 'border-blue-400 dark:border-blue-500'
-          : isPlaying
-            ? 'border-blue-500'
-            : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+      ref={cardRef}
+      className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
+        fileMissing
+          ? 'border-red-500/60 opacity-60'
+          : isSelected
+            ? 'border-blue-400 dark:border-blue-500'
+            : isPlaying
+              ? 'border-blue-500'
+              : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
       }`}
     >
+      {fileMissing && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+          <span className="bg-red-600/80 text-white text-xs font-semibold px-2 py-0.5 rounded shadow">
+            ファイルなし
+          </span>
+        </div>
+      )}
       {category && (
         <div className="h-1 shrink-0" style={{ backgroundColor: category.color }} />
       )}
