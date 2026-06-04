@@ -53,6 +53,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
   const [moveFile, setMoveFile] = useState(true);
+  const [renameFile, setRenameFile] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
   const [showTranscode, setShowTranscode] = useState(false);
@@ -108,7 +109,22 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const handleTitleSave = async () => {
     const trimmed = localTitle.trim();
     if (!trimmed || trimmed === (video.title ?? video.path.split('/').pop())) return;
-    await updateVideo(video.id, { title: trimmed });
+
+    if (renameFile) {
+      const ext = video.path.includes('.') ? '.' + video.path.split('.').pop() : '';
+      const newFilename = trimmed + ext;
+      try {
+        const newPath = await invoke<string>('rename_video_file', {
+          oldPath: video.path,
+          newName: newFilename,
+        });
+        await updateVideo(video.id, { title: trimmed, path: newPath });
+      } catch (e) {
+        alert(`ファイルのリネームに失敗しました: ${e}`);
+      }
+    } else {
+      await updateVideo(video.id, { title: trimmed });
+    }
   };
 
   const handleRatingClick = async (star: number) => {
@@ -284,6 +300,15 @@ export function VideoDetailModal({ video, onClose }: Props) {
                   onBlur={handleTitleSave}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
                 />
+                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer w-fit">
+                  <input
+                    type="checkbox"
+                    checked={renameFile}
+                    onChange={(e) => setRenameFile(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-blue-500"
+                  />
+                  <span className="text-xs text-gray-400 dark:text-gray-500">ファイル名も変更する</span>
+                </label>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">

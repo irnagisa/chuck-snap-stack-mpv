@@ -59,7 +59,7 @@ interface LibraryActions {
   pauseThumbnails: () => void;
   resumeThumbnails: () => void;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
-  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
+  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
@@ -574,7 +574,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }));
   },
 
-  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => {
+  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path'>>) => {
     const { db } = get();
     if (!db) return;
     const fields = Object.keys(updates) as (keyof typeof updates)[];
