@@ -15,6 +15,7 @@ interface PlaylistActions {
   fetchPlaylistVideos: (playlistId: number) => Promise<Video[]>;
   addVideoToPlaylist: (playlistId: number, videoId: number) => Promise<void>;
   removeVideoFromPlaylist: (playlistId: number, videoId: number) => Promise<void>;
+  reorderPlaylistItems: (playlistId: number, videoIds: number[]) => Promise<void>;
 }
 
 export const usePlaylistStore = create<PlaylistState & PlaylistActions>((set, get) => ({
@@ -79,5 +80,16 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>((set, ge
       'DELETE FROM playlist_items WHERE playlist_id = ? AND video_id = ?',
       [playlistId, videoId]
     );
+  },
+
+  reorderPlaylistItems: async (playlistId: number, videoIds: number[]) => {
+    const { db } = get();
+    if (!db) return;
+    for (let i = 0; i < videoIds.length; i++) {
+      await db.execute(
+        'UPDATE playlist_items SET position = ? WHERE playlist_id = ? AND video_id = ?',
+        [i + 1, playlistId, videoIds[i]]
+      );
+    }
   },
 }));
