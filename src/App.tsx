@@ -16,12 +16,13 @@ import { PlayerControls } from "./components/Player/PlayerControls";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
+import { WatchDirSidebar } from "./components/Library/WatchDirSidebar";
 import { AppModals } from "./components/AppModals";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { Select } from "./components/common/Select";
 
-type SidebarTab = 'category' | 'playlist';
+type SidebarTab = 'category' | 'playlist' | 'folder';
 
 function App() {
   // useShallow で1サブスクリプションにまとめ、個別セレクタ35個分のオーバーヘッドを削減
@@ -29,7 +30,7 @@ function App() {
     videos, totalCount, currentPage, pageSize,
     filterSearch, filterCategoryId, filterTagIds, filterTagMode,
     filterMinRating, filterHasAudio, filterMinDuration,
-    filterWatchedStatus, filterSortBy, filterSortOrder,
+    filterWatchedStatus, filterWatchDir, filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused,
     thumbnailProgress, isDbReady, dbError,
   } = useLibraryStore(useShallow((s) => ({
@@ -45,6 +46,7 @@ function App() {
     filterHasAudio: s.filterHasAudio,
     filterMinDuration: s.filterMinDuration,
     filterWatchedStatus: s.filterWatchedStatus,
+    filterWatchDir: s.filterWatchDir,
     filterSortBy: s.filterSortBy,
     filterSortOrder: s.filterSortOrder,
     isScanning: s.isScanning,
@@ -58,7 +60,7 @@ function App() {
     initDb, scanAndImport, assignCategoryFromPath,
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration,
-    setWatchedStatus, setSort, setPage,
+    setWatchedStatus, setWatchDirFilter, setSort, setPage,
     pauseThumbnails, resumeThumbnails,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
@@ -73,6 +75,7 @@ function App() {
     setHasAudio: s.setHasAudio,
     setMinDuration: s.setMinDuration,
     setWatchedStatus: s.setWatchedStatus,
+    setWatchDirFilter: s.setWatchDirFilter,
     setSort: s.setSort,
     setPage: s.setPage,
     pauseThumbnails: s.pauseThumbnails,
@@ -395,6 +398,17 @@ function App() {
               <button
                 type="button"
                 className={`flex-1 py-1 rounded font-medium transition-colors ${
+                  sidebarTab === 'folder'
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                }`}
+                onClick={() => setSidebarTab('folder')}
+              >
+                フォルダ
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1 rounded font-medium transition-colors ${
                   sidebarTab === 'playlist'
                     ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
@@ -410,6 +424,11 @@ function App() {
                 <CategorySidebar
                   selectedCategoryId={filterCategoryId}
                   onSelectCategory={setCategoryFilter}
+                />
+              ) : sidebarTab === 'folder' ? (
+                <WatchDirSidebar
+                  selectedDir={filterWatchDir}
+                  onSelectDir={setWatchDirFilter}
                 />
               ) : (
                 <PlaylistSidebar onOpenPlaylist={openPlaylist} />

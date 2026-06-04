@@ -25,6 +25,7 @@ interface LibraryState {
   filterHasAudio: number | null;
   filterMinDuration: number;
   filterWatchedStatus: WatchedStatus;
+  filterWatchDir: string | null;
   filterSortBy: SortBy;
   filterSortOrder: SortOrder;
   watchDirs: string[];
@@ -51,6 +52,7 @@ interface LibraryActions {
   setHasAudio: (hasAudio: number | null) => Promise<void>;
   setMinDuration: (seconds: number) => Promise<void>;
   setWatchedStatus: (status: WatchedStatus) => Promise<void>;
+  setWatchDirFilter: (dir: string | null) => Promise<void>;
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
@@ -153,7 +155,7 @@ const CREATE_SMART_PLAYLISTS_TABLE = `
 
 type FilterState = Pick<LibraryState,
   'filterSearch' | 'filterCategoryId' | 'filterTagIds' | 'filterTagMode' |
-  'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus'
+  'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus' | 'filterWatchDir'
 >;
 
 function buildWhereClause(f: FilterState): { where: string; params: unknown[] } {
@@ -207,6 +209,11 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
   } else if (f.filterWatchedStatus === 'watched') {
     conditions.push('v.watched_at IS NOT NULL');
   }
+  if (f.filterWatchDir !== null) {
+    const dir = f.filterWatchDir.replace(/\\/g, '/').replace(/\/$/, '');
+    conditions.push("REPLACE(v.path, '\\', '/') LIKE ?");
+    params.push(`${dir}/%`);
+  }
 
   return {
     where: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
@@ -232,6 +239,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterHasAudio: null,
   filterMinDuration: 0,
   filterWatchedStatus: 'all',
+  filterWatchDir: null,
   filterSortBy: 'created_at',
   filterSortOrder: 'desc',
   watchDirs: [],
@@ -389,6 +397,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await get().fetchVideos();
   },
 
+  setWatchDirFilter: async (dir: string | null) => {
+    set({ filterWatchDir: dir, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
   setSort: async (sortBy: SortBy, sortOrder: SortOrder) => {
     set({ filterSortBy: sortBy, filterSortOrder: sortOrder, currentPage: 1 });
     await get().fetchVideos();
@@ -458,11 +471,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   removeWatchDir: async (path: string) => {
-    const { db } = get();
+    const { db, filterWatchDir } = get();
     if (!db) return;
     await db.execute('DELETE FROM watch_dirs WHERE path = ?', [path]);
     await invoke('stop_watching', { path }).catch(() => {});
-    set((state) => ({ watchDirs: state.watchDirs.filter((d) => d !== path) }));
+    set((state) => ({
+      watchDirs: state.watchDirs.filter((d) => d !== path),
+      filterWatchDir: state.filterWatchDir === path ? null : state.filterWatchDir,
+    }));
+    if (filterWatchDir === path) {
+      await get().fetchVideos();
+    }
   },
 
   pauseThumbnails: () => {
