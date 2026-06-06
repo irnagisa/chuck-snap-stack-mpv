@@ -79,8 +79,10 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
                         p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
                     }
                 });
+                let canonical_path = entry.path().canonicalize()
+                    .unwrap_or_else(|_| entry.path().to_path_buf());
                 files.push(ScannedFile {
-                    path: entry.path().to_string_lossy().to_string(),
+                    path: canonical_path.to_string_lossy().to_string(),
                     title,
                     parent_dir_name,
                 });
@@ -389,7 +391,11 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(dest_path.to_string_lossy().into_owned())
+    // ウォッチャーが正規化パスでイベントを発火するため、返すパスも正規化して二重登録を防ぐ
+    let canonical = tokio::fs::canonicalize(&dest_path)
+        .await
+        .unwrap_or(dest_path);
+    Ok(canonical.to_string_lossy().into_owned())
 }
 
 /// 複数の動画ファイルを一括削除する。各ファイルの削除成否を (path, success) の配列で返す。

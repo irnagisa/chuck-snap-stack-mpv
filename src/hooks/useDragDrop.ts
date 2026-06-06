@@ -37,6 +37,7 @@ export function useDragDrop() {
   useEffect(() => { addToastRef.current = addToast; }, [addToast]);
 
   useEffect(() => {
+    let cancelled = false;
     let unlistenFn: (() => void) | null = null;
 
     const setup = async () => {
@@ -78,17 +79,16 @@ export function useDragDrop() {
 
             try {
               if (isAlreadyInWatchDir) {
-                // ウォッチ対象内にあるファイルは直接インポート
+                // ウォッチ対象内にあるファイルは直接インポート (ウォッチャーは新規ファイルのみ検知)
                 const title = getFileStem(getBasename(path));
                 await addVideoFromPathRef.current(path, title);
               } else {
-                // ウォッチ対象外はコピーしてからインポート
-                const destPath = await invoke<string>('copy_video_file', {
+                // ウォッチ対象外はコピーのみ行い、DB 登録はウォッチャーに委ねる
+                // (DnD ハンドラとウォッチャーの両方が addVideoFromPath を呼ぶと SQLite 競合でエラーになる)
+                await invoke<string>('copy_video_file', {
                   sourcePath: path,
                   destDir,
                 });
-                const title = getFileStem(getBasename(destPath));
-                await addVideoFromPathRef.current(destPath, title);
               }
               imported++;
             } catch (e) {
@@ -105,11 +105,16 @@ export function useDragDrop() {
           }
         }
       });
+      // setup 完了前に cleanup が走った場合は即座に解除
+      if (cancelled) {
+        unlistenFn?.();
+      }
     };
 
     setup().catch(console.error);
 
     return () => {
+      cancelled = true;
       unlistenFn?.();
     };
   }, []); // ← 一度だけ登録。最新の値は ref 経由で参照
