@@ -1,6 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv"];
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 
 /// 絶対パスであり `..` コンポーネントや制御文字を含まないことを検証する。

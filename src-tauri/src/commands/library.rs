@@ -29,7 +29,7 @@ pub struct ThumbnailResult {
     pub has_audio: bool,
 }
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv"];
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
 
 #[derive(Serialize)]
 pub struct ScannedFile {

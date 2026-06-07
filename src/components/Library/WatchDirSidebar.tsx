@@ -11,15 +11,31 @@ function basename(path: string): string {
 }
 
 export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
-  const { watchDirs, removeWatchDir } = useLibraryStore(
-    useShallow((s) => ({ watchDirs: s.watchDirs, removeWatchDir: s.removeWatchDir }))
+  const { watchDirs, isScanning, removeWatchDir, rescanAllDirs } = useLibraryStore(
+    useShallow((s) => ({
+      watchDirs: s.watchDirs,
+      isScanning: s.isScanning,
+      removeWatchDir: s.removeWatchDir,
+      rescanAllDirs: s.rescanAllDirs,
+    }))
   );
 
   return (
     <aside className="flex flex-col gap-0.5 w-full min-w-0">
-      <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 px-2">
-        フォルダ
-      </h2>
+      <div className="flex items-center justify-between mb-1 px-2">
+        <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          フォルダ
+        </h2>
+        <button
+          type="button"
+          title="全フォルダを再スキャン"
+          disabled={isScanning || watchDirs.length === 0}
+          onClick={() => rescanAllDirs()}
+          className="text-xs text-gray-400 hover:text-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {isScanning ? '⟳' : '↺'}
+        </button>
+      </div>
 
       <button
         type="button"
@@ -53,6 +69,15 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
           >
             <span className="text-gray-400 dark:text-gray-500 shrink-0">📁</span>
             <span className="truncate">{basename(dir)}</span>
+          </button>
+          <button
+            type="button"
+            title="再スキャン"
+            disabled={isScanning}
+            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 disabled:opacity-30 text-xs px-0.5 shrink-0 transition-colors"
+            onClick={() => rescanAllDirs(dir)}
+          >
+            ↺
           </button>
           <button
             type="button"

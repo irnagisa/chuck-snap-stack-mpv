@@ -56,6 +56,7 @@ interface LibraryActions {
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
+  rescanAllDirs: (targetDir?: string) => Promise<void>;
   removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
   pauseThumbnails: () => void;
@@ -158,6 +159,17 @@ type FilterState = Pick<LibraryState,
   'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus' | 'filterWatchDir'
 >;
 
+// SQLite LIKE パターン内の特殊文字 (%, _, !) をエスケープする。
+// ESCAPE '!' を使用: !% → 実リテラル%, !_ → 実リテラル_, !! → 実リテラル!
+function escapeLikeDir(dir: string): string {
+  return dir
+    .replace(/\\/g, '/')
+    .replace(/\/$/, '')
+    .replace(/!/g, '!!')
+    .replace(/%/g, '!%')
+    .replace(/_/g, '!_');
+}
+
 function buildWhereClause(f: FilterState): { where: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -210,9 +222,8 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
     conditions.push('v.watched_at IS NOT NULL');
   }
   if (f.filterWatchDir !== null) {
-    const dir = f.filterWatchDir.replace(/\\/g, '/').replace(/\/$/, '');
-    conditions.push("REPLACE(v.path, '\\', '/') LIKE ?");
-    params.push(`${dir}/%`);
+    conditions.push("REPLACE(v.path, '\\', '/') LIKE ? ESCAPE '!'");
+    params.push(`${escapeLikeDir(f.filterWatchDir)}/%`);
   }
 
   return {
@@ -468,6 +479,57 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       set({ isScanning: false });
     }
     get().generateThumbnails().catch(() => {});
+  },
+
+  rescanAllDirs: async (targetDir?: string) => {
+    const { db, watchDirs } = get();
+    if (!db) return;
+    const dirs = targetDir ? [targetDir] : watchDirs;
+    if (dirs.length === 0) return;
+    set({ isScanning: true });
+    try {
+      for (const dir of dirs) {
+        const files = await invoke<ScannedFile[]>('scan_directory', { path: dir });
+        await db.execute('BEGIN');
+        try {
+          for (const file of files) {
+            await db.execute(
+              'INSERT OR IGNORE INTO videos (path, title) VALUES (?, ?)',
+              [file.path, file.title]
+            );
+          }
+          await db.execute('COMMIT');
+        } catch (e) {
+          await db.execute('ROLLBACK');
+          throw e;
+        }
+      }
+
+      // 対象ディレクトリ内のDB登録済みファイルのうち実在しないものを削除
+      const dirConditions = dirs.map(() => "REPLACE(path, '\\', '/') LIKE ? ESCAPE '!'").join(' OR ');
+      const dirParams = dirs.map((d) => `${escapeLikeDir(d)}/%`);
+      const dbVideos = await db.select<{ id: number; path: string }[]>(
+        `SELECT id, path FROM videos WHERE ${dirConditions}`,
+        dirParams
+      );
+      if (dbVideos.length > 0) {
+        const sizes = await invoke<(number | null)[]>('get_file_sizes', {
+          paths: dbVideos.map((v) => v.path),
+        });
+        const missingIds = dbVideos.filter((_, i) => sizes[i] === null).map((v) => v.id);
+        if (missingIds.length > 0) {
+          const ph = missingIds.map(() => '?').join(', ');
+          await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, missingIds);
+          await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, missingIds);
+          await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, missingIds);
+        }
+      }
+
+      await get().fetchVideos();
+      get().generateThumbnails().catch(() => {});
+    } finally {
+      set({ isScanning: false });
+    }
   },
 
   removeWatchDir: async (path: string) => {

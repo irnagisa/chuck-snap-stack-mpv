@@ -9,7 +9,7 @@ pub fn new_watcher_state() -> SharedWatcherState {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv"];
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
 
 #[derive(Clone, serde::Serialize)]
 pub struct FileEventPayload {
@@ -55,7 +55,7 @@ pub async fn start_watching(
         let is_video = |p: &std::path::Path| {
             p.extension()
                 .and_then(|e| e.to_str())
-                .map(|ext| VIDEO_EXTENSIONS.contains(&ext))
+                .map(|ext| VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
                 .unwrap_or(false)
         };
         for result in rx {

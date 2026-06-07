@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useToastStore } from '../store/useToastStore';
 
-const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv']);
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv', 'media']);
 
 function getBasename(path: string) {
   return path.replace(/\\/g, '/').split('/').pop() ?? '';
@@ -83,12 +83,16 @@ export function useDragDrop() {
                 const title = getFileStem(getBasename(path));
                 await addVideoFromPathRef.current(path, title);
               } else {
-                // ウォッチ対象外はコピーのみ行い、DB 登録はウォッチャーに委ねる
-                // (DnD ハンドラとウォッチャーの両方が addVideoFromPath を呼ぶと SQLite 競合でエラーになる)
-                await invoke<string>('copy_video_file', {
+                // ウォッチ対象外はコピーしてから直接 DB 登録する。
+                // ウォッチャーのイベントは遅延・欠落することがあるため、
+                // copy_video_file が返す正規化済みパスで確実に addVideoFromPath を呼ぶ。
+                // ウォッチャーが後で同じパスを通知しても INSERT OR IGNORE で無害に無視される。
+                const newPath = await invoke<string>('copy_video_file', {
                   sourcePath: path,
                   destDir,
                 });
+                const title = getFileStem(getBasename(newPath));
+                await addVideoFromPathRef.current(newPath, title);
               }
               imported++;
             } catch (e) {
