@@ -267,7 +267,9 @@ fn connect_and_start_reader(
 
 /// 動画ウィンドウのサイズ制約を適用する。
 /// ディスプレイ寸法を一度だけ取得し、dwidth が確定するまでポーリングする。
-fn apply_window_size_constraints() {
+/// gen_counter/current_gen を渡すことで、古い play() 呼び出しから起動した
+/// スレッドが新しい mpv に誤ったスケールを適用しないようにする。
+fn apply_window_size_constraints(gen_counter: Arc<AtomicU32>, current_gen: u32) {
     // ディスプレイ寸法は起動中に変わらないため一度だけ取得する
     let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
         .ok()
@@ -286,6 +288,11 @@ fn apply_window_size_constraints() {
 
     // dwidth が確定するまで待つ（最大 2 秒）
     for _ in 0..10 {
+        // 世代チェック: 新しい play() が呼ばれていたら即終了
+        if gen_counter.load(Ordering::Acquire) != current_gen {
+            return;
+        }
+
         std::thread::sleep(Duration::from_millis(200));
 
         let w = send_ipc(json!({"command": ["get_property", "dwidth"]}))
@@ -302,6 +309,11 @@ fn apply_window_size_constraints() {
             .unwrap_or(0.0);
         if h == 0.0 {
             break;
+        }
+
+        // 世代チェック: dwidth/dheight 取得後にも確認
+        if gen_counter.load(Ordering::Acquire) != current_gen {
+            return;
         }
 
         // 75% 以上を確保するスケール（両辺とも 75% 以上になるよう大きい方を採用）
@@ -429,7 +441,10 @@ pub async fn play(
     eprintln!("[play] IPC 接続成功 gen={current_gen}");
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
 
-    tokio::task::spawn_blocking(apply_window_size_constraints);
+    let gen_for_constraints = Arc::clone(&gen_counter);
+    tokio::task::spawn_blocking(move || {
+        apply_window_size_constraints(gen_for_constraints, current_gen)
+    });
 
     Ok(())
 }
@@ -630,6 +645,9 @@ pub async fn load_subtitle(
 pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
     let (writer_opt, child_opt) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
+        // generation をインクリメントしてリーダースレッドが mpv://closed を
+        // emit しないようにする（ユーザー操作による明示的な終了のため不要）
+        s.generation.fetch_add(1, Ordering::SeqCst);
         (s.writer.take(), s.process.take())
     };
 

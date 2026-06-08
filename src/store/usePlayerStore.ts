@@ -95,6 +95,10 @@ function initListeners(
       isMiniPlayer: false,
       queue: [],
       queueIndex: -1,
+      originalQueue: [],
+      abLoopA: null,
+      abLoopB: null,
+      chapters: [],
     });
   }));
 }
@@ -262,6 +266,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         isMiniPlayer: false,
         queue: [],
         queueIndex: -1,
+        originalQueue: [],
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
       });
     },
 
