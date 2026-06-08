@@ -457,15 +457,23 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }
       }
 
+      // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (3列: path, title, category_id)
+      const INSERT_BATCH_3 = 333;
       await db.execute('BEGIN');
       try {
-        for (const file of files) {
-          const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
-            ? (categoryIdMap[file.parent_dir_name] ?? null)
-            : null;
+        for (let i = 0; i < files.length; i += INSERT_BATCH_3) {
+          const batch = files.slice(i, i + INSERT_BATCH_3);
+          const ph = batch.map(() => '(?, ?, ?)').join(', ');
+          const params: unknown[] = [];
+          for (const file of batch) {
+            const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
+              ? (categoryIdMap[file.parent_dir_name] ?? null)
+              : null;
+            params.push(file.path, file.title, categoryId);
+          }
           await db.execute(
-            'INSERT OR IGNORE INTO videos (path, title, category_id) VALUES (?, ?, ?)',
-            [file.path, file.title, categoryId]
+            `INSERT OR IGNORE INTO videos (path, title, category_id) VALUES ${ph}`,
+            params
           );
         }
         await db.execute('COMMIT');
@@ -488,14 +496,21 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     if (dirs.length === 0) return;
     set({ isScanning: true });
     try {
+      // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (2列: path, title)
+      const INSERT_BATCH_2 = 499;
       for (const dir of dirs) {
         const files = await invoke<ScannedFile[]>('scan_directory', { path: dir });
+        if (files.length === 0) continue;
         await db.execute('BEGIN');
         try {
-          for (const file of files) {
+          for (let i = 0; i < files.length; i += INSERT_BATCH_2) {
+            const batch = files.slice(i, i + INSERT_BATCH_2);
+            const ph = batch.map(() => '(?, ?)').join(', ');
+            const params: unknown[] = [];
+            for (const file of batch) params.push(file.path, file.title);
             await db.execute(
-              'INSERT OR IGNORE INTO videos (path, title) VALUES (?, ?)',
-              [file.path, file.title]
+              `INSERT OR IGNORE INTO videos (path, title) VALUES ${ph}`,
+              params
             );
           }
           await db.execute('COMMIT');
@@ -563,15 +578,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const cacheDir = await appCacheDir();
     const thumbDir = await join(cacheDir, 'thumbnails');
 
-    // ペンディング件数が多い場合でもメモリを大量消費しないよう 500 件ずつ処理する
-    const PENDING_BATCH_SIZE = 500;
-    const pending = await db.select<{ id: number; path: string; thumbnail: string | null }[]>(
-      'SELECT id, path, thumbnail FROM videos WHERE thumbnail IS NULL OR has_audio IS NULL LIMIT ?',
-      [PENDING_BATCH_SIZE]
-    );
-    if (pending.length === 0) return;
-
-    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: pending.length } });
+    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: null });
 
     type VideoUpdate = { id: number; thumbnail?: string; duration?: number | null; has_audio: number };
 
@@ -610,30 +617,46 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
     };
 
-    try {
-      let doneCount = 0;
-      for (let i = 0; i < pending.length; i += THUMBNAIL_CONCURRENCY) {
-        // ストアの isThumbnailPaused を参照 (モジュール変数を排除)
-        while (get().isThumbnailPaused) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 200));
-        }
-        const batch = pending.slice(i, i + THUMBNAIL_CONCURRENCY);
-        const results = await Promise.all(batch.map(processVideoData));
-        doneCount += batch.length;
+    // 処理済み ID を記録し、エラー等で終わらないファイルの無限再試行を防ぐ。
+    // スキャン後に追加された新規ファイルは未記録なので次ループで処理される。
+    const processedIds = new Set<number>();
+    const PENDING_BATCH_SIZE = 500;
 
-        // バッチ完了後に一括 set（動画更新 + 進捗を1回の state 更新で処理）
-        const updateMap = new Map(
-          results
-            .filter((r): r is VideoUpdate => r !== null)
-            .map((r) => [r.id, r])
+    try {
+      while (true) {
+        const pending = await db.select<{ id: number; path: string; thumbnail: string | null }[]>(
+          'SELECT id, path, thumbnail FROM videos WHERE thumbnail IS NULL OR has_audio IS NULL LIMIT ?',
+          [PENDING_BATCH_SIZE]
         );
-        set((state) => ({
-          videos: state.videos.map((v) => {
-            const upd = updateMap.get(v.id);
-            return upd ? { ...v, ...upd } : v;
-          }),
-          thumbnailProgress: { done: doneCount, total: pending.length },
-        }));
+        const toProcess = pending.filter((v) => !processedIds.has(v.id));
+        if (toProcess.length === 0) break;
+
+        set({ thumbnailProgress: { done: 0, total: toProcess.length } });
+
+        let doneCount = 0;
+        for (let i = 0; i < toProcess.length; i += THUMBNAIL_CONCURRENCY) {
+          while (get().isThumbnailPaused) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+          }
+          const batch = toProcess.slice(i, i + THUMBNAIL_CONCURRENCY);
+          const results = await Promise.all(batch.map(processVideoData));
+          doneCount += batch.length;
+          for (const v of batch) processedIds.add(v.id);
+
+          // バッチ完了後に一括 set（動画更新 + 進捗を1回の state 更新で処理）
+          const updateMap = new Map(
+            results
+              .filter((r): r is VideoUpdate => r !== null)
+              .map((r) => [r.id, r])
+          );
+          set((state) => ({
+            videos: state.videos.map((v) => {
+              const upd = updateMap.get(v.id);
+              return upd ? { ...v, ...upd } : v;
+            }),
+            thumbnailProgress: { done: doneCount, total: toProcess.length },
+          }));
+        }
       }
     } finally {
       set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });

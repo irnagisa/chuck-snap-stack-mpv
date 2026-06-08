@@ -42,7 +42,10 @@ pub struct ScannedFile {
 pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
     let files = tokio::task::spawn_blocking(move || -> Result<Vec<ScannedFile>, String> {
         let mut files = Vec::new();
-        let root = std::path::PathBuf::from(&path);
+        // シンボリックリンクを解決して parent_dir_name の比較を正確にする
+        let root = std::path::PathBuf::from(&path)
+            .canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from(&path));
 
         // 深さ・件数の上限を設けて DoS を防ぐ
         const MAX_DEPTH: usize = 10;
@@ -55,7 +58,11 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
             if files.len() >= MAX_FILES {
                 break;
             }
-            let entry = entry.map_err(|e| e.to_string())?;
+            // アクセス権エラー等は個別エントリをスキップし、スキャン全体は継続する
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -72,15 +79,16 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
-                let parent_dir_name = entry.path().parent().and_then(|p| {
+                let canonical_path = entry.path().canonicalize()
+                    .unwrap_or_else(|_| entry.path().to_path_buf());
+                // canonicalize 済みのパスで親ディレクトリを比較する
+                let parent_dir_name = canonical_path.parent().and_then(|p| {
                     if p == root {
                         None
                     } else {
                         p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
                     }
                 });
-                let canonical_path = entry.path().canonicalize()
-                    .unwrap_or_else(|_| entry.path().to_path_buf());
                 files.push(ScannedFile {
                     path: canonical_path.to_string_lossy().to_string(),
                     title,

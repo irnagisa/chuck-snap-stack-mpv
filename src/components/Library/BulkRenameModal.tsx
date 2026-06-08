@@ -128,14 +128,15 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
         failed.push(`${basename} → 重複のためスキップ`);
         continue;
       }
+      const newPath = video.path.substring(0, video.path.lastIndexOf('/') + 1) + newName;
+      // DB を先行更新してウォッチャーの Remove イベントとの競合を防ぐ
+      await renameVideoFile(video.id, newPath);
       try {
-        const newPath = await invoke<string>('rename_video_file', {
-          oldPath: video.path,
-          newName,
-        });
-        await renameVideoFile(video.id, newPath);
+        await invoke<string>('rename_video_file', { oldPath: video.path, newName });
         ok++;
       } catch (e) {
+        // リネーム失敗時は DB を元のパスへ戻す
+        await renameVideoFile(video.id, video.path);
         failed.push(`${basename}: ${String(e)}`);
       }
     }

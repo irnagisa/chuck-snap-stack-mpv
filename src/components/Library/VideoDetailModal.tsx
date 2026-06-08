@@ -111,15 +111,21 @@ export function VideoDetailModal({ video, onClose }: Props) {
     if (!trimmed || trimmed === (video.title ?? video.path.split('/').pop())) return;
 
     if (renameFile) {
-      const ext = video.path.includes('.') ? '.' + video.path.split('.').pop() : '';
+      const filename = video.path.split('/').pop() ?? video.path;
+      const dotIdx = filename.lastIndexOf('.');
+      const ext = dotIdx > 0 ? filename.slice(dotIdx) : '';
       const newFilename = trimmed + ext;
+      const oldPath = video.path;
+      // dir は末尾スラッシュ込みで計算
+      const newPath = oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + newFilename;
+
+      // DB を先行更新してウォッチャーの Remove イベントとの競合を防ぐ
+      await updateVideo(video.id, { title: trimmed, path: newPath });
       try {
-        const newPath = await invoke<string>('rename_video_file', {
-          oldPath: video.path,
-          newName: newFilename,
-        });
-        await updateVideo(video.id, { title: trimmed, path: newPath });
+        await invoke<void>('rename_video_file', { oldPath, newName: newFilename });
       } catch (e) {
+        // リネーム失敗時は DB を元の状態へ戻す
+        await updateVideo(video.id, { title: video.title ?? '', path: oldPath });
         alert(`ファイルのリネームに失敗しました: ${e}`);
       }
     } else {
