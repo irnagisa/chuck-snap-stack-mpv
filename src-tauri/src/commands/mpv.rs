@@ -185,7 +185,30 @@ fn connect_and_start_reader(
                     return;
                 }
                 Ok(_) => {}
-                Err(_) => return,
+                Err(e) => {
+                    // I/O エラー (ECONNRESET 等): EOF と同様にクリーンアップして終了する
+                    eprintln!("[reader gen={current_gen}] read error: {e} → cleanup");
+                    let is_current = gen_counter.load(Ordering::Acquire) == current_gen;
+                    if is_current {
+                        let child_opt = state.lock().ok().and_then(|mut s| {
+                            s.writer = None;
+                            s.process.take()
+                        });
+                        if let Some(mut child) = child_opt {
+                            std::thread::spawn(move || {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                            });
+                        }
+                        let still_current = gen_counter.load(Ordering::Acquire) == current_gen;
+                        if still_current {
+                            eprintln!("[reader gen={current_gen}] error → mpv//closed 送信");
+                            let _ = std::fs::remove_file(mpv_socket_path());
+                            let _ = app.emit("mpv://closed", ());
+                        }
+                    }
+                    return;
+                }
             }
 
             // 世代チェック: mpv が再起動された場合は古いスレッドを終了
@@ -307,18 +330,22 @@ pub async fn play(
     let mpv_path = settings.lock().map_err(|e| e.to_string())?.mpv_path.clone();
 
     // ソケットが存在する（mpv 起動済み）なら loadfile で切り替え
+    // send_ipc (新規コネクション + レスポンス確認) を使い、mpv が実際にコマンドを
+    // 受理したことを確認する。fire-and-forget の send_cmd だとカーネルバッファへの
+    // 書き込み成功だけで「成功」と見なされ、mpv が死んでいても検知できない。
     let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
-    if let Some(writer) = writer_opt {
-        if std::path::Path::new(&mpv_socket_path()).exists() {
-            eprintln!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
-            match send_cmd(&writer, json!({"command": ["loadfile", path, "replace"]})) {
-                Ok(_) => {
-                    eprintln!("[play] loadfile 送信成功");
-                    return Ok(());
-                }
-                Err(e) => {
-                    eprintln!("[play] loadfile 失敗 ({e}) → mpv 再起動");
-                }
+    if writer_opt.is_some() && std::path::Path::new(&mpv_socket_path()).exists() {
+        eprintln!("[play] mpv 起動中 → loadfile replace (send_ipc): {path}");
+        match send_ipc(json!({"command": ["loadfile", path, "replace"]})) {
+            Ok(val) if val.get("error").and_then(|e| e.as_str()) == Some("success") => {
+                eprintln!("[play] loadfile 成功");
+                return Ok(());
+            }
+            Ok(val) => {
+                eprintln!("[play] loadfile mpv エラー応答: {val} → 再起動");
+            }
+            Err(e) => {
+                eprintln!("[play] loadfile IPC 失敗 ({e}) → 再起動");
             }
         }
     } else {

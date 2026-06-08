@@ -11,6 +11,7 @@ interface PlayerState {
   isPaused: boolean;
   isLooping: boolean;
   isShuffle: boolean;
+  isMiniPlayer: boolean;
   queue: Video[];
   queueIndex: number;
   originalQueue: Video[];
@@ -30,6 +31,7 @@ interface PlayerActions {
   seekTo: (seconds: number) => Promise<void>;
   toggleLoop: () => Promise<void>;
   toggleShuffle: () => void;
+  toggleMiniPlayer: () => void;
   playShuffleAll: () => Promise<void>;
   setSpeed: (speed: number) => Promise<void>;
   setAbLoopA: () => Promise<void>;
@@ -78,15 +80,19 @@ function initListeners(
 
   // mpv プロセスが終了した場合 → 進捗を保存してステートをリセット
   unlistenFns.push(listen('mpv://closed', async () => {
-    const { currentVideo, playbackTime } = get();
+    const { currentVideo, playbackTime, isMiniPlayer } = get();
     if (currentVideo && playbackTime > 0) {
       await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
+    }
+    if (isMiniPlayer) {
+      invoke('exit_mini_player').catch(console.error);
     }
     set({
       currentVideo: null,
       playbackTime: 0,
       duration: 0,
       isPaused: false,
+      isMiniPlayer: false,
       queue: [],
       queueIndex: -1,
     });
@@ -111,6 +117,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     isPaused: false,
     isLooping: false,
     isShuffle: false,
+    isMiniPlayer: false,
     queue: [],
     queueIndex: -1,
     originalQueue: [],
@@ -235,9 +242,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     },
 
     quit: async () => {
-      const { currentVideo, playbackTime } = get();
+      const { currentVideo, playbackTime, isMiniPlayer } = get();
       if (currentVideo && playbackTime > 0) {
         await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
+      }
+      if (isMiniPlayer) {
+        invoke('exit_mini_player').catch(console.error);
       }
       try {
         await invoke('quit_mpv');
@@ -249,6 +259,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         playbackTime: 0,
         duration: 0,
         isPaused: false,
+        isMiniPlayer: false,
         queue: [],
         queueIndex: -1,
       });
@@ -277,6 +288,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         await invoke('set_loop', { enabled: next });
       } catch {
         // 無視
+      }
+    },
+
+    toggleMiniPlayer: () => {
+      const next = !get().isMiniPlayer;
+      set({ isMiniPlayer: next });
+      if (next) {
+        invoke('enter_mini_player').catch(console.error);
+      } else {
+        invoke('exit_mini_player').catch(console.error);
       }
     },
 

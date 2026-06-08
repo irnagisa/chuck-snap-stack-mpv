@@ -4,19 +4,9 @@ import { usePlayerStore } from '../../store/usePlayerStore';
 import { useModalStore } from '../../store/useModalStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { invoke } from '@tauri-apps/api/core';
+import { formatTime } from '../../utils/time';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-
-function formatTime(sec: number): string {
-  const s = Math.floor(sec);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-  }
-  return `${m}:${String(ss).padStart(2, '0')}`;
-}
 
 function PlayerSeekBar() {
   const playbackTime = usePlayerStore((s) => s.playbackTime);
@@ -107,9 +97,9 @@ function PlayerSeekBar() {
 
 export function PlayerControls() {
   const {
-    currentVideo, queue, queueIndex, isPaused, isLooping, isShuffle,
+    currentVideo, queue, queueIndex, isPaused, isLooping, isShuffle, isMiniPlayer,
     speed, abLoopA, abLoopB,
-    quit, playNext, playPrev, pauseResume, toggleLoop, toggleShuffle,
+    quit, playNext, playPrev, pauseResume, toggleLoop, toggleShuffle, toggleMiniPlayer,
     setSpeed, setAbLoopA, clearAbLoop,
   } = usePlayerStore(useShallow((s) => ({
     currentVideo: s.currentVideo,
@@ -118,6 +108,7 @@ export function PlayerControls() {
     isPaused: s.isPaused,
     isLooping: s.isLooping,
     isShuffle: s.isShuffle,
+    isMiniPlayer: s.isMiniPlayer,
     speed: s.speed,
     abLoopA: s.abLoopA,
     abLoopB: s.abLoopB,
@@ -127,6 +118,7 @@ export function PlayerControls() {
     pauseResume: s.pauseResume,
     toggleLoop: s.toggleLoop,
     toggleShuffle: s.toggleShuffle,
+    toggleMiniPlayer: s.toggleMiniPlayer,
     setSpeed: s.setSpeed,
     setAbLoopA: s.setAbLoopA,
     clearAbLoop: s.clearAbLoop,
@@ -155,6 +147,9 @@ export function PlayerControls() {
       console.error('Screenshot failed:', e);
     }
   };
+
+  // ミニプレイヤーモード中はフッターを非表示
+  if (isMiniPlayer) return null;
 
   if (!currentVideo) {
     return (
@@ -301,6 +296,14 @@ export function PlayerControls() {
           </button>
         )}
 
+        <button
+          type="button"
+          onClick={toggleMiniPlayer}
+          className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
+          title="ミニプレイヤーに切替"
+        >
+          ⇱
+        </button>
         <button
           type="button"
           onClick={quit}

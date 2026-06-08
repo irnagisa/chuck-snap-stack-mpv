@@ -1,6 +1,7 @@
 pub mod commands;
 
 use commands::download::DownloadState;
+use commands::window::MiniPlayerWindowState;
 use commands::mpv::MpvState;
 use commands::settings::AppSettings;
 use commands::transcode::TranscodeState;
@@ -18,6 +19,7 @@ pub fn run() {
         .manage(DownloadState::new())
         .manage(TranscodeState::new())
         .manage(commands::ytdlp::YtdlpState::new())
+        .manage(MiniPlayerWindowState::new())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
@@ -62,6 +64,8 @@ pub fn run() {
             commands::ytdlp::download_with_ytdlp,
             commands::ytdlp::cancel_ytdlp_download,
             commands::ytdlp::detect_ytdlp_path,
+            commands::window::enter_mini_player,
+            commands::window::exit_mini_player,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

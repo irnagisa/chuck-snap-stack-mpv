@@ -13,6 +13,7 @@ import { useTranscodeStore } from "./store/useTranscodeStore";
 import { useModalStore } from "./store/useModalStore";
 import { useSettingsStore } from "./store/useSettingsStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
+import { MiniPlayer } from "./components/Player/MiniPlayer";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
@@ -83,6 +84,7 @@ function App() {
   })));
   // usePlayerStore: currentVideo のみ購読 (playbackTime の毎秒更新で App が再レンダリングされるのを防ぐ)
   const currentVideo = usePlayerStore((s) => s.currentVideo);
+  const isMiniPlayer = usePlayerStore((s) => s.isMiniPlayer);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
   const playShuffleAll = usePlayerStore((s) => s.playShuffleAll);
   const tags = useTagStore((s) => s.tags);
@@ -179,6 +181,10 @@ function App() {
 
   return (
     <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      {isMiniPlayer ? (
+        <MiniPlayer />
+      ) : (
+      <>
       {/* ヘッダー / ツールバー */}
       <div className="px-4 pt-4 pb-3 flex gap-2 items-center border-b border-gray-100 dark:border-gray-800">
         <h1 className="text-lg font-bold mr-2 shrink-0">Chuck Snap Stack</h1>
@@ -686,6 +692,8 @@ function App() {
       </div>
 
       <PlayerControls />
+      </>
+      )}
 
       <AppModals
         selectedVideoIds={selectedVideoIds}
