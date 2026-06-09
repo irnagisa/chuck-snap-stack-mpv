@@ -388,73 +388,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
               </div>
             </div>
 
-            {/* メタデータ + 評価 */}
-            <div className="py-4 flex flex-col gap-3">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    メディアタイプ
-                  </label>
-                  <Select
-                    value={localMediaType}
-                    onChange={(e) => handleMediaTypeChange(e.target.value)}
-                  >
-                    <option value="video">動画</option>
-                    <option value="audio">音声</option>
-                    <option value="image">画像</option>
-                  </Select>
-                </div>
-                {video.duration != null && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      再生時間
-                    </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.duration)}</p>
-                  </div>
-                )}
-                {video.progress > 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      視聴位置
-                    </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.progress)}</p>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    ファイルサイズ
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
-                  </p>
-                </div>
-                {dimensions && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      解像度
-                    </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">
-                      {dimensions.width} × {dimensions.height}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    追加日時
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {new Date(video.created_at).toLocaleDateString('ja-JP')}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    再生回数
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {(video.watch_count ?? 0)}回
-                  </p>
-                </div>
-              </div>
+            {/* カテゴリ + タグ + 評価 */}
+            <div className="py-4 flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
                   評価
@@ -476,10 +411,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   ))}
                 </div>
               </div>
-            </div>
 
-            {/* カテゴリ + タグ */}
-            <div className="pt-4 pb-4 flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
                   カテゴリ
@@ -583,6 +515,75 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                       )}
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* メタデータ */}
+            <div className="py-4 flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    メディアタイプ
+                  </label>
+                  <Select
+                    value={localMediaType}
+                    onChange={(e) => handleMediaTypeChange(e.target.value)}
+                  >
+                    <option value="video">動画</option>
+                    <option value="audio">音声</option>
+                    <option value="image">画像</option>
+                  </Select>
+                </div>
+                {video.duration != null && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                      再生時間
+                    </label>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.duration)}</p>
+                  </div>
+                )}
+                {video.progress > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                      視聴位置
+                    </label>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.progress)}</p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    ファイルサイズ
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
+                  </p>
+                </div>
+                {dimensions && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                      解像度
+                    </label>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {dimensions.width} × {dimensions.height}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    追加日時
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {new Date(video.created_at).toLocaleDateString('ja-JP')}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    再生回数
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {(video.watch_count ?? 0)}回
+                  </p>
                 </div>
               </div>
             </div>
