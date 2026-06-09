@@ -180,6 +180,17 @@ function App() {
     [videos, selectedVideoIds]
   );
 
+  const scrollResetKey = useMemo(
+    () => [filterSearch, filterCategoryId, filterTagIds.join(','), filterTagMode,
+           filterMinRating, filterHasAudio, filterMinDuration,
+           filterWatchedStatus, filterWatchDir, filterMediaType,
+           filterSortBy, filterSortOrder, currentPage].join('|'),
+    [filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+     filterMinRating, filterHasAudio, filterMinDuration,
+     filterWatchedStatus, filterWatchDir, filterMediaType,
+     filterSortBy, filterSortOrder, currentPage],
+  );
+
   const handlePlay = useCallback(
     (v: Video) => {
       if (v.media_type === 'image') { setViewingImage(v); return; }
@@ -679,6 +690,7 @@ function App() {
                   videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
                   detailVideoId={detailVideo?.id ?? null}
+                  scrollResetKey={scrollResetKey}
                   onPlay={handlePlay}
                   onShowDetail={openDetailVideo}
                   onAddToPlaylist={openAddToPlaylist}

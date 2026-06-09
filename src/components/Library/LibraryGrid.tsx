@@ -214,6 +214,7 @@ interface Props {
   videos: Video[];
   currentVideoId: number | null;
   detailVideoId?: number | null;
+  scrollResetKey?: string | number;
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
@@ -228,6 +229,7 @@ export function LibraryGrid({
   videos,
   currentVideoId,
   detailVideoId,
+  scrollResetKey,
   onPlay,
   onShowDetail,
   onAddToPlaylist,
@@ -275,7 +277,7 @@ export function LibraryGrid({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [videos]);
+  }, [scrollResetKey]);
 
   const rows = useMemo(() => {
     const result: Video[][] = [];
