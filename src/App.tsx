@@ -677,6 +677,7 @@ function App() {
                 <LibraryGrid
                   videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
+                  detailVideoId={detailVideo?.id ?? null}
                   onPlay={handlePlay}
                   onShowDetail={openDetailVideo}
                   onAddToPlaylist={openAddToPlaylist}

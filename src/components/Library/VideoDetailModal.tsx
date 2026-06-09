@@ -55,7 +55,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
   const [moveFile, setMoveFile] = useState(true);
-  const [renameFile, setRenameFile] = useState(false);
+  const [renameFile, setRenameFile] = useState(true);
   const [tagInput, setTagInput] = useState('');
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
   const [showTranscode, setShowTranscode] = useState(false);

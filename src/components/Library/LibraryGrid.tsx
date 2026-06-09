@@ -10,6 +10,7 @@ interface VideoCardProps {
   video: Video;
   isPlaying: boolean;
   isSelected: boolean;
+  isDetailVideo: boolean;
   tags: Tag[];
   category: Category | null;
   idx: number;
@@ -24,6 +25,7 @@ const VideoCard = memo(function VideoCard({
   video: v,
   isPlaying,
   isSelected,
+  isDetailVideo,
   tags,
   category,
   idx,
@@ -78,7 +80,9 @@ const VideoCard = memo(function VideoCard({
             ? 'border-blue-400 dark:border-blue-500'
             : isPlaying
               ? 'border-blue-500'
-              : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+              : isDetailVideo
+                ? 'border-sky-400 dark:border-sky-500'
+                : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
       }`}
     >
       {fileMissing && (
@@ -209,6 +213,7 @@ const VideoCard = memo(function VideoCard({
 interface Props {
   videos: Video[];
   currentVideoId: number | null;
+  detailVideoId?: number | null;
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
@@ -222,6 +227,7 @@ const GAP = 16; // gap-4
 export function LibraryGrid({
   videos,
   currentVideoId,
+  detailVideoId,
   onPlay,
   onShowDetail,
   onAddToPlaylist,
@@ -342,6 +348,7 @@ export function LibraryGrid({
                           video={v}
                           isPlaying={v.id === currentVideoId}
                           isSelected={selectedIds.has(v.id)}
+                          isDetailVideo={v.id === (detailVideoId ?? null)}
                           tags={videoTags[v.id] ?? []}
                           category={v.category_id != null ? categoryMap[v.category_id] : null}
                           idx={idx}
