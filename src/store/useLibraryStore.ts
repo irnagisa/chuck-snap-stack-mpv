@@ -66,12 +66,12 @@ interface LibraryActions {
   pauseThumbnails: () => void;
   resumeThumbnails: () => void;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
-  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type'>>) => Promise<void>;
+  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
   assignCategoryFromPath: (videoIds: number[]) => Promise<void>;
-  addVideoFromPath: (path: string, title: string) => Promise<number | null>;
+  addVideoFromPath: (path: string, title: string, sourceUrl?: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
   moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
   renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
@@ -89,7 +89,8 @@ const CREATE_VIDEOS_TABLE = `
     progress    REAL DEFAULT 0,
     rating      INTEGER DEFAULT 0,
     created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-    media_type  TEXT DEFAULT 'video'
+    media_type  TEXT DEFAULT 'video',
+    source_url  TEXT
   )
 `;
 
@@ -300,6 +301,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       } catch { /* already exists */ }
       try {
         await db.execute("ALTER TABLE videos ADD COLUMN media_type TEXT DEFAULT 'video'");
+      } catch { /* already exists */ }
+      try {
+        await db.execute('ALTER TABLE videos ADD COLUMN source_url TEXT');
       } catch { /* already exists */ }
       // パフォーマンス最適化: よく使うフィルター/ソートカラムにインデックスを作成
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)');
@@ -876,7 +880,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }));
   },
 
-  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type'>>) => {
+  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url'>>) => {
     const { db } = get();
     if (!db) return;
     const fields = Object.keys(updates) as (keyof typeof updates)[];
@@ -965,7 +969,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await get().fetchVideos();
   },
 
-  addVideoFromPath: async (path: string, title: string) => {
+  addVideoFromPath: async (path: string, title: string, sourceUrl?: string) => {
     const { db } = get();
     if (!db) return null;
     const ext = path.split('.').pop()?.toLowerCase() ?? '';
@@ -973,8 +977,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
     const mediaType = audioExts.includes(ext) ? 'audio' : imageExts.includes(ext) ? 'image' : 'video';
     await db.execute(
-      'INSERT OR IGNORE INTO videos (path, title, media_type) VALUES (?, ?, ?)',
-      [path, title, mediaType]
+      'INSERT OR IGNORE INTO videos (path, title, media_type, source_url) VALUES (?, ?, ?, ?)',
+      [path, title, mediaType, sourceUrl ?? null]
     );
     const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [path]);
     const newId = rows[0]?.id ?? null;

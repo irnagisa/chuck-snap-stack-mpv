@@ -76,7 +76,7 @@ async function processNext() {
       title = next.useYtdlp ? '' : next.filename.replace(/\.[^.]+$/, '');
     }
 
-    await useLibraryStore.getState().addVideoFromPath(resultPath, title);
+    await useLibraryStore.getState().addVideoFromPath(resultPath, title, next.url);
 
     useDownloadStore.setState((s) => ({
       jobs: s.jobs.map((j) =>

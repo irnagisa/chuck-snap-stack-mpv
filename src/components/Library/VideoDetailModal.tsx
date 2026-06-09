@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTagStore } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
@@ -66,6 +67,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
   const [isScanningSubs, setIsScanningSubs] = useState(false);
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
+  const [localSourceUrl, setLocalSourceUrl] = useState(video.source_url ?? '');
   const titleRef = useRef<HTMLInputElement>(null);
 
   const currentTags = videoTags[video.id] ?? [];
@@ -227,6 +229,11 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     await updateVideo(video.id, { media_type: mt });
   };
 
+  const handleSourceUrlSave = async () => {
+    const trimmed = localSourceUrl.trim();
+    await updateVideo(video.id, { source_url: trimmed || null });
+  };
+
   const handleRescan = async () => {
     setIsRescanning(true);
     try {
@@ -355,6 +362,29 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   パス
                 </label>
                 <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">{video.path}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                  URL
+                </label>
+                <input
+                  className="w-full px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg outline-none transition-colors"
+                  placeholder="https://..."
+                  value={localSourceUrl}
+                  onChange={(e) => setLocalSourceUrl(e.target.value)}
+                  onBlur={handleSourceUrlSave}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                />
+                {localSourceUrl && (
+                  <button
+                    type="button"
+                    className="text-xs text-blue-500 hover:underline mt-0.5 block truncate max-w-full text-left"
+                    onClick={() => openUrl(localSourceUrl).catch(() => {})}
+                    title={localSourceUrl}
+                  >
+                    {localSourceUrl}
+                  </button>
+                )}
               </div>
             </div>
 
