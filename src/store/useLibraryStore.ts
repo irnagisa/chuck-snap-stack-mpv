@@ -84,7 +84,8 @@ const CREATE_VIDEOS_TABLE = `
     watched_at  TEXT,
     progress    REAL DEFAULT 0,
     rating      INTEGER DEFAULT 0,
-    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+    media_type  TEXT DEFAULT 'video'
   )
 `;
 
@@ -288,6 +289,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       try {
         await db.execute('ALTER TABLE videos ADD COLUMN watch_count INTEGER DEFAULT 0');
       } catch { /* already exists */ }
+      try {
+        await db.execute("ALTER TABLE videos ADD COLUMN media_type TEXT DEFAULT 'video'");
+      } catch { /* already exists */ }
       // パフォーマンス最適化: よく使うフィルター/ソートカラムにインデックスを作成
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_rating ON videos(rating)');
@@ -480,22 +484,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }
       }
 
-      // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (3列: path, title, category_id)
-      const INSERT_BATCH_3 = 333;
+      // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (4列: path, title, category_id, media_type)
+      const INSERT_BATCH_4 = 249;
       await db.execute('BEGIN');
       try {
-        for (let i = 0; i < files.length; i += INSERT_BATCH_3) {
-          const batch = files.slice(i, i + INSERT_BATCH_3);
-          const ph = batch.map(() => '(?, ?, ?)').join(', ');
+        for (let i = 0; i < files.length; i += INSERT_BATCH_4) {
+          const batch = files.slice(i, i + INSERT_BATCH_4);
+          const ph = batch.map(() => '(?, ?, ?, ?)').join(', ');
           const params: unknown[] = [];
           for (const file of batch) {
             const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
               ? (categoryIdMap[file.parent_dir_name] ?? null)
               : null;
-            params.push(file.path, file.title, categoryId);
+            params.push(file.path, file.title, categoryId, file.media_type ?? 'video');
           }
           await db.execute(
-            `INSERT OR IGNORE INTO videos (path, title, category_id) VALUES ${ph}`,
+            `INSERT OR IGNORE INTO videos (path, title, category_id, media_type) VALUES ${ph}`,
             params
           );
         }
@@ -593,7 +597,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   removeWatchDir: async (path: string) => {
-    const { db, filterWatchDir } = get();
+    const { db } = get();
     if (!db) return;
     // フォルダ配下の動画を取得して削除
     const videos = await db.select<{ id: number }[]>(
@@ -635,12 +639,24 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
     set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: null });
 
-    type VideoUpdate = { id: number; thumbnail?: string; duration?: number | null; has_audio: number };
+    type VideoUpdate = { id: number; thumbnail?: string | null; duration?: number | null; has_audio: number };
+
+    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
 
     // ffmpeg/ffprobe 呼び出しのみ行い DB 書き込みは行わない。
     // 並行実行時の DB ロック競合を防ぐため、書き込みは Promise.all 後にまとめて実施する。
     const processVideoData = async (video: { id: number; path: string; thumbnail: string | null }): Promise<VideoUpdate | null> => {
       try {
+        const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+        const isImage = imageExts.includes(ext);
+        const isAudio = audioExts.includes(ext);
+
+        if (isImage) {
+          // 画像: ファイル自体をサムネイルとして使用。ffmpeg 不要。
+          return { id: video.id, thumbnail: video.path, duration: null, has_audio: 0 };
+        }
+
         if (!video.thumbnail) {
           const hashBuffer = await crypto.subtle.digest(
             'SHA-256',
@@ -651,6 +667,20 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             .join('');
           const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
 
+          if (isAudio) {
+            // 音声: アルバムアート抽出を試みる。失敗してもエラーにしない。
+            try {
+              const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+                'generate_thumbnail',
+                { videoPath: video.path, outputPath }
+              );
+              return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, has_audio: 1 };
+            } catch {
+              // アルバムアートなし: サムネイルなし・duration は mpv 再生時に取得
+              return { id: video.id, thumbnail: null, duration: null, has_audio: 1 };
+            }
+          }
+
           const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
             'generate_thumbnail',
             { videoPath: video.path, outputPath }
@@ -659,6 +689,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, has_audio: hasAudio };
         } else {
           // サムネイルはあるが音声情報が未取得の動画
+          if (isAudio) return { id: video.id, has_audio: 1 };
           const hasAudioRaw = await invoke<boolean>('check_has_audio', { videoPath: video.path });
           const hasAudio = hasAudioRaw ? 1 : 0;
           return { id: video.id, has_audio: hasAudio };
@@ -835,9 +866,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   addVideoFromPath: async (path: string, title: string) => {
     const { db } = get();
     if (!db) return null;
+    const ext = path.split('.').pop()?.toLowerCase() ?? '';
+    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+    const mediaType = audioExts.includes(ext) ? 'audio' : imageExts.includes(ext) ? 'image' : 'video';
     await db.execute(
-      'INSERT OR IGNORE INTO videos (path, title) VALUES (?, ?)',
-      [path, title]
+      'INSERT OR IGNORE INTO videos (path, title, media_type) VALUES (?, ?, ?)',
+      [path, title, mediaType]
     );
     const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [path]);
     const newId = rows[0]?.id ?? null;

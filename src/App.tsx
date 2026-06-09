@@ -22,6 +22,7 @@ import { AppModals } from "./components/AppModals";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { Select } from "./components/common/Select";
+import { ImageViewerModal } from "./components/Library/ImageViewerModal";
 
 type SidebarTab = 'category' | 'playlist' | 'folder';
 
@@ -107,6 +108,7 @@ function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
+  const [viewingImage, setViewingImage] = useState<Video | null>(null);
 
   // Debounce search input → store
   useEffect(() => {
@@ -147,7 +149,7 @@ function App() {
     return () => mq.removeEventListener('change', apply);
   }, [theme, isSettingsLoaded]);
 
-  useKeyboardShortcuts({ onEscape: closeAll });
+  useKeyboardShortcuts({ onEscape: () => { setViewingImage(null); closeAll(); } });
   useWatcher();
   const { isDragging } = useDragDrop();
 
@@ -175,9 +177,14 @@ function App() {
   );
 
   const handlePlay = useCallback(
-    (v: Video) => playWithQueue(videos, videos.findIndex((x) => x.id === v.id)),
+    (v: Video) => {
+      if (v.media_type === 'image') { setViewingImage(v); return; }
+      playWithQueue(videos, videos.findIndex((x) => x.id === v.id));
+    },
     [videos, playWithQueue]
   );
+
+  const imageList = useMemo(() => videos.filter((v) => v.media_type === 'image'), [videos]);
 
   return (
     <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -654,6 +661,7 @@ function App() {
                   videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
                   onPlay={handlePlay}
+                  onViewImage={setViewingImage}
                   onShowDetail={openDetailVideo}
                   onAddToPlaylist={openAddToPlaylist}
                   selectedIds={selectedVideoIds}
@@ -693,6 +701,15 @@ function App() {
 
       <PlayerControls />
       </>
+      )}
+
+      {viewingImage && (
+        <ImageViewerModal
+          video={viewingImage}
+          allImages={imageList}
+          onClose={() => setViewingImage(null)}
+          onNavigate={setViewingImage}
+        />
       )}
 
       <AppModals

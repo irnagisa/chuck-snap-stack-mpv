@@ -11,6 +11,7 @@ export interface Video {
   has_audio: number | null;
   watch_count: number;
   created_at: string;
+  media_type: 'video' | 'audio' | 'image' | null;
 }
 
 export interface Chapter {
@@ -36,6 +37,7 @@ export interface ScannedFile {
   path: string;
   title: string;
   parent_dir_name: string | null;
+  media_type: string;
 }
 
 export interface Tag {

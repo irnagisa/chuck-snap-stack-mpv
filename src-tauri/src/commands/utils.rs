@@ -1,7 +1,8 @@
 use std::path::{Component, Path, PathBuf};
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "aac", "wav", "ogg", "opus", "m4a", "wma"];
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "avif"];
 
 /// 絶対パスであり `..` コンポーネントや制御文字を含まないことを検証する。
 pub fn validate_path(path: &str) -> Result<PathBuf, String> {
@@ -31,6 +32,23 @@ pub fn validate_video_path(path: &str) -> Result<PathBuf, String> {
         .unwrap_or_default();
     if !VIDEO_EXTENSIONS.contains(&ext.as_str()) {
         return Err(format!("動画ファイルのみ操作できます: {path}"));
+    }
+    Ok(p)
+}
+
+/// メディアファイルのパスを検証する (絶対パス + `..` なし + 動画/音声/画像拡張子)。
+pub fn validate_media_path(path: &str) -> Result<PathBuf, String> {
+    let p = validate_path(path)?;
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if !VIDEO_EXTENSIONS.contains(&ext.as_str())
+        && !AUDIO_EXTENSIONS.contains(&ext.as_str())
+        && !IMAGE_EXTENSIONS.contains(&ext.as_str())
+    {
+        return Err(format!("対応メディアファイルのみ操作できます: {path}"));
     }
     Ok(p)
 }

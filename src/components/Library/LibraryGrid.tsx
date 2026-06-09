@@ -14,6 +14,7 @@ interface VideoCardProps {
   category: Category | null;
   idx: number;
   onPlay: (video: Video) => void;
+  onViewImage: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
   onDelete: (video: Video) => void;
@@ -28,11 +29,15 @@ const VideoCard = memo(function VideoCard({
   category,
   idx,
   onPlay,
+  onViewImage,
   onShowDetail,
   onAddToPlaylist,
   onDelete,
   onCheckbox,
 }: VideoCardProps) {
+  const isImage = v.media_type === 'image';
+  const isAudio = v.media_type === 'audio';
+  const handlePrimaryClick = () => isImage ? onViewImage(v) : onPlay(v);
   const progressPercent =
     v.duration && v.duration > 0
       ? Math.min((v.progress / v.duration) * 100, 100)
@@ -91,18 +96,24 @@ const VideoCard = memo(function VideoCard({
 
       <div
         className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
-        onClick={() => onPlay(v)}
+        onClick={handlePrimaryClick}
       >
         {v.thumbnail ? (
           <img
             src={convertFileSrc(v.thumbnail)}
             alt={v.title ?? ''}
-            className="w-full h-full object-cover"
+            className={`w-full h-full ${isImage ? 'object-contain bg-black' : 'object-cover'}`}
             loading="lazy"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-2xl">
-            ▶
+            {isImage ? '🖼' : isAudio ? '♪' : '▶'}
+          </div>
+        )}
+        {/* メディアタイプバッジ */}
+        {(isImage || isAudio) && (
+          <div className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded pointer-events-none">
+            {isImage ? '画像' : '音声'}
           </div>
         )}
 
@@ -176,7 +187,7 @@ const VideoCard = memo(function VideoCard({
         <div className="h-1 bg-blue-500" />
       ) : null}
 
-      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={() => onPlay(v)}>
+      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={handlePrimaryClick}>
         <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
           {v.title ?? v.path.split('/').pop()}
         </p>
@@ -201,6 +212,7 @@ interface Props {
   videos: Video[];
   currentVideoId: number | null;
   onPlay: (video: Video) => void;
+  onViewImage: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
   selectedIds: Set<number>;
@@ -214,6 +226,7 @@ export function LibraryGrid({
   videos,
   currentVideoId,
   onPlay,
+  onViewImage,
   onShowDetail,
   onAddToPlaylist,
   selectedIds,
@@ -331,6 +344,7 @@ export function LibraryGrid({
                           category={v.category_id != null ? categoryMap[v.category_id] : null}
                           idx={idx}
                           onPlay={onPlay}
+                          onViewImage={onViewImage}
                           onShowDetail={onShowDetail}
                           onAddToPlaylist={onAddToPlaylist}
                           onDelete={setDeleteTarget}

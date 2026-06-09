@@ -4,7 +4,7 @@ use std::path::Path;
 use std::fs;
 
 use super::settings::SharedAppSettings;
-use super::utils::{validate_image_output_path, validate_path, validate_video_path};
+use super::utils::{validate_image_output_path, validate_media_path, validate_path, validate_video_path};
 
 #[derive(Serialize)]
 pub struct Chapter {
@@ -30,12 +30,15 @@ pub struct ThumbnailResult {
 }
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
+const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "aac", "wav", "ogg", "opus", "m4a", "wma"];
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "avif"];
 
 #[derive(Serialize)]
 pub struct ScannedFile {
     pub path: String,
     pub title: String,
     pub parent_dir_name: Option<String>,
+    pub media_type: String,
 }
 
 #[tauri::command]
@@ -72,7 +75,16 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
                 .and_then(|e| e.to_str())
                 .map(|e| e.to_lowercase())
                 .unwrap_or_default();
-            if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+            let media_type = if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+                "video"
+            } else if AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+                "audio"
+            } else if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+                "image"
+            } else {
+                continue;
+            };
+            {
                 let title = entry
                     .path()
                     .file_stem()
@@ -93,6 +105,7 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
                     path: canonical_path.to_string_lossy().to_string(),
                     title,
                     parent_dir_name,
+                    media_type: media_type.to_string(),
                 });
             }
         }
@@ -111,9 +124,17 @@ pub async fn generate_thumbnail(
     video_path: String,
     output_path: String,
 ) -> Result<ThumbnailResult, String> {
-    // パス検証
-    validate_video_path(&video_path)?;
+    // パス検証 (動画・音声を受け付ける)
+    validate_media_path(&video_path)?;
     validate_image_output_path(&output_path)?;
+
+    // 音声ファイルの場合はアルバムアートを抽出する
+    let ext = std::path::Path::new(&video_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    let is_audio = AUDIO_EXTENSIONS.contains(&ext.as_str());
 
     let (ffmpeg_path, ffprobe_path) = {
         let s = app_settings.lock().map_err(|e| e.to_string())?;
@@ -150,6 +171,27 @@ pub async fn generate_thumbnail(
             streams.iter().any(|s| s["codec_type"].as_str() == Some("audio"))
         })
         .unwrap_or(true);
+
+    if is_audio {
+        // 音声ファイル: 埋め込みアルバムアートを抽出する
+        let status = tokio::process::Command::new(&ffmpeg_path)
+            .args([
+                "-y", "-i", &video_path,
+                "-an", "-vcodec", "copy",
+                &output_path,
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if status.success() {
+            return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio: true });
+        }
+        // アルバムアートなし: エラーとして返し、呼び出し元でサムネイルなしとして扱う
+        return Err("アルバムアートが見つかりません".to_string());
+    }
 
     // 5秒地点からフレームを抽出 (高速シーク)
     let status = tokio::process::Command::new(&ffmpeg_path)
@@ -274,7 +316,7 @@ pub async fn get_video_dimensions(
 /// 動画ファイルをファイルシステムから削除する。
 #[tauri::command]
 pub async fn delete_video_file(path: String) -> Result<(), String> {
-    validate_video_path(&path)?;
+    validate_media_path(&path)?;
     fs::remove_file(&path).map_err(|e| format!("ファイル削除失敗: {e}"))
 }
 
@@ -283,7 +325,7 @@ pub async fn delete_video_file(path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<String, String> {
     // パス検証
-    validate_video_path(&source_path)?;
+    validate_media_path(&source_path)?;
     validate_path(&dest_dir)?;
 
     let source = std::path::Path::new(&source_path);
@@ -345,7 +387,7 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
 #[tauri::command]
 pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<String, String> {
     // パス検証
-    validate_video_path(&source_path)?;
+    validate_media_path(&source_path)?;
     validate_path(&dest_dir)?;
 
     let source = std::path::Path::new(&source_path);
@@ -413,7 +455,7 @@ pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(Stri
         .into_iter()
         .map(|path| {
             // 動画パス検証に失敗した場合は削除せず false を返す
-            if validate_video_path(&path).is_err() {
+            if validate_media_path(&path).is_err() {
                 return (path, false);
             }
             let ok = fs::remove_file(&path).is_ok();
@@ -554,7 +596,7 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
 /// 動画ファイルを同じディレクトリ内でリネームし、新しいパスを返す。
 #[tauri::command]
 pub async fn rename_video_file(old_path: String, new_name: String) -> Result<String, String> {
-    validate_video_path(&old_path)?;
+    validate_media_path(&old_path)?;
 
     // ファイル名のバリデーション
     let trimmed = new_name.trim();
