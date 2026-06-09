@@ -44,6 +44,10 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   const [editingTagCatId, setEditingTagCatId] = useState<number | null>(null);
   const [editTagCatName, setEditTagCatName] = useState('');
 
+  // フリーワード検索
+  const [search, setSearch] = useState('');
+  const searchLower = search.toLowerCase();
+
   const handleAdd = async () => {
     if (!db || !newName.trim()) return;
     await createCategory(db, newName.trim(), newColor);
@@ -113,6 +117,29 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     tags: tags.filter((t) => t.tag_category_id === tc.id),
   }));
   const uncategorizedTags = tags.filter((t) => t.tag_category_id === null);
+
+  // フィルター済みリスト
+  const filteredCategories = searchLower
+    ? categories.filter((c) => c.name.toLowerCase().includes(searchLower))
+    : categories;
+
+  const filteredTagsByCategory = searchLower
+    ? tagsByCategory
+        .map(({ category, tags: groupTags }) => {
+          const catMatches = category.name.toLowerCase().includes(searchLower);
+          const filteredTags = catMatches
+            ? groupTags
+            : groupTags.filter((t) => t.name.toLowerCase().includes(searchLower));
+          return { category, tags: filteredTags };
+        })
+        .filter(({ category, tags: groupTags }) =>
+          category.name.toLowerCase().includes(searchLower) || groupTags.length > 0
+        )
+    : tagsByCategory;
+
+  const filteredUncategorizedTags = searchLower
+    ? uncategorizedTags.filter((t) => t.name.toLowerCase().includes(searchLower))
+    : uncategorizedTags;
 
   const renderTagRow = (tag: typeof tags[0]) => (
     <div key={tag.id}>
@@ -197,6 +224,31 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
 
   return (
     <aside className="flex flex-col gap-0.5 w-full min-w-0">
+      {/* フリーワード検索 */}
+      <div className="relative mb-2">
+        <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          type="text"
+          className="w-full pl-6 pr-6 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="検索..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button
+            type="button"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            onClick={() => setSearch('')}
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 px-2">
         カテゴリ
       </h2>
@@ -225,7 +277,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         未設定
       </button>
 
-      {categories.map((cat) => (
+      {filteredCategories.map((cat) => (
         <div key={cat.id}>
           {editingId === cat.id ? (
             <div className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
@@ -358,7 +410,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
       )}
 
       {/* タグ管理 (カテゴリ別グループ表示) */}
-      {tags.length > 0 || tagCategories.length > 0 ? (
+      {(tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0) ? (
         <>
           <div className="mt-3 mb-1 border-t border-gray-200 dark:border-gray-700" />
           <div className="flex items-center justify-between px-2 mb-1">
@@ -408,7 +460,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
           )}
 
           {/* カテゴリ別タググループ */}
-          {tagsByCategory.map(({ category, tags: groupTags }) => (
+          {filteredTagsByCategory.map(({ category, tags: groupTags }) => (
             <div key={category.id} className="mb-1">
               <div className="group flex items-center gap-0.5 px-1">
                 {editingTagCatId === category.id ? (
@@ -463,7 +515,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
           ))}
 
           {/* カテゴリなしのタグ */}
-          {uncategorizedTags.length > 0 && (
+          {filteredUncategorizedTags.length > 0 && (
             <div className="mb-1">
               {tagCategories.length > 0 && (
                 <div className="px-1 mb-0.5">
@@ -471,7 +523,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                 </div>
               )}
               <div className={tagCategories.length > 0 ? 'pl-2' : ''}>
-                {uncategorizedTags.map(renderTagRow)}
+                {filteredUncategorizedTags.map(renderTagRow)}
               </div>
             </div>
           )}
