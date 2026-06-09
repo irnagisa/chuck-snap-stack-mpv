@@ -11,10 +11,11 @@ function basename(path: string): string {
 }
 
 export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
-  const { watchDirs, isScanning, removeWatchDir, rescanAllDirs } = useLibraryStore(
+  const { watchDirs, isScanning, isThumbnailGenerating, removeWatchDir, rescanAllDirs } = useLibraryStore(
     useShallow((s) => ({
       watchDirs: s.watchDirs,
       isScanning: s.isScanning,
+      isThumbnailGenerating: s.isThumbnailGenerating,
       removeWatchDir: s.removeWatchDir,
       rescanAllDirs: s.rescanAllDirs,
     }))
@@ -29,11 +30,11 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
         <button
           type="button"
           title="全フォルダを再スキャン"
-          disabled={isScanning || watchDirs.length === 0}
+          disabled={isScanning || isThumbnailGenerating || watchDirs.length === 0}
           onClick={() => rescanAllDirs()}
           className="text-xs text-gray-400 hover:text-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {isScanning ? '⟳' : '↺'}
+          {isScanning || isThumbnailGenerating ? '⟳' : '↺'}
         </button>
       </div>
 
@@ -73,7 +74,7 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
           <button
             type="button"
             title="再スキャン"
-            disabled={isScanning}
+            disabled={isScanning || isThumbnailGenerating}
             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 disabled:opacity-30 text-xs px-0.5 shrink-0 transition-colors"
             onClick={() => rescanAllDirs(dir)}
           >

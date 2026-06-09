@@ -6,6 +6,7 @@ import type { Video, ScannedFile } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore, getCategoryDescendantIds } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
+import { useToastStore } from './useToastStore';
 
 export type SortBy = 'created_at' | 'duration' | 'rating';
 export type SortOrder = 'desc' | 'asc';
@@ -272,9 +273,11 @@ function getRelativeDirPath(filePath: string, rootDir: string): string | null | 
  * "Movies/Action" のような相対ディレクトリパスからカテゴリ階層を再帰的に作成し、
  * 末端カテゴリのIDを返す。既存カテゴリは (name, parent_id) で照合して再利用する。
  */
+// cache: "parentId/name" → categoryId。呼び出し元で共有して同じノードのDB再クエリを防ぐ。
 async function buildCategoryHierarchy(
   db: Database,
   relDirPath: string,
+  cache: Map<string, number>,
   color = '#6366f1',
 ): Promise<number | null> {
   const segments = relDirPath.split('/').filter(Boolean);
@@ -282,19 +285,26 @@ async function buildCategoryHierarchy(
   let parentId: number | null = null;
   let leafId: number | null = null;
   for (const name of segments) {
-    const existing: { id: number }[] = parentId == null
-      ? await db.select<{ id: number }[]>(
-          'SELECT id FROM categories WHERE name = ? AND parent_id IS NULL', [name])
-      : await db.select<{ id: number }[]>(
-          'SELECT id FROM categories WHERE name = ? AND parent_id = ?', [name, parentId]);
-    if (existing[0]) {
-      leafId = existing[0].id;
+    const cacheKey = `${parentId ?? ''}/${name}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) {
+      leafId = cached;
     } else {
-      const result = await db.execute(
-        'INSERT INTO categories (name, color, icon, parent_id) VALUES (?, ?, ?, ?)',
-        [name, color, 'folder', parentId],
-      );
-      leafId = result.lastInsertId ?? null;
+      const existing: { id: number }[] = parentId == null
+        ? await db.select<{ id: number }[]>(
+            'SELECT id FROM categories WHERE name = ? AND parent_id IS NULL', [name])
+        : await db.select<{ id: number }[]>(
+            'SELECT id FROM categories WHERE name = ? AND parent_id = ?', [name, parentId]);
+      if (existing[0]) {
+        leafId = existing[0].id;
+      } else {
+        const result = await db.execute(
+          'INSERT INTO categories (name, color, icon, parent_id) VALUES (?, ?, ?, ?)',
+          [name, color, 'folder', parentId],
+        );
+        leafId = result.lastInsertId ?? null;
+      }
+      if (leafId != null) cache.set(cacheKey, leafId);
     }
     parentId = leafId;
   }
@@ -332,6 +342,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       const db = await Database.load('sqlite:videos.db');
       // WAL モードで読み書き同時進行を許可し、バックグラウンド処理中の書き込み競合を緩和する
       await db.execute('PRAGMA journal_mode=WAL');
+      // ロック競合時に即失敗せず最大5秒リトライする
+      await db.execute('PRAGMA busy_timeout=5000');
       await db.execute(CREATE_VIDEOS_TABLE);
       await db.execute(CREATE_PLAYLISTS_TABLE);
       await db.execute(CREATE_PLAYLIST_ITEMS_TABLE);
@@ -600,8 +612,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         )];
         if (relPaths.length > 0) {
           relPaths.sort((a, b) => a.split('/').length - b.split('/').length);
+          const catCache = new Map<string, number>();
           for (const relPath of relPaths) {
-            const leafId = await buildCategoryHierarchy(db, relPath);
+            const leafId = await buildCategoryHierarchy(db, relPath, catCache);
             if (leafId != null) categoryIdMap[relPath] = leafId;
           }
           await useTagStore.getState().init(db);
@@ -637,7 +650,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await get().fetchVideos();
       // スキャン完了後に必ずカテゴリ一覧を再取得（フォルダ名→カテゴリ変換を反映）
       await useTagStore.getState().fetchCategories(db);
-      await get().generateThumbnails();
+      get().generateThumbnails().catch(() => {});
     } finally {
       set({ isScanning: false });
     }
@@ -691,7 +704,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             [prevMaxId]
           );
           if (newRows.length > 0) {
-            await get().assignCategoryFromPath(newRows.map((r) => r.id));
+            // エラーが出ても後続の fetchVideos を止めないよう catch する
+            await get().assignCategoryFromPath(newRows.map((r) => r.id)).catch((e) => {
+              console.error('assignCategoryFromPath failed:', e);
+            });
           }
         }
       }
@@ -716,8 +732,33 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }
       }
 
+      // 全スキャン時: 未登録フォルダのファイルをDBから削除
+      if (!targetDir && watchDirs.length > 0) {
+        const registeredConditions = watchDirs
+          .map(() => "REPLACE(path, '\\\\', '/') LIKE ? ESCAPE '!'")
+          .join(' OR ');
+        const registeredParams = watchDirs.map((d) => `${escapeLikeDir(d)}/%`);
+        const unregisteredVideos = await db.select<{ id: number }[]>(
+          `SELECT id FROM videos WHERE NOT (${registeredConditions})`,
+          registeredParams
+        );
+        if (unregisteredVideos.length > 0) {
+          const BATCH = 400;
+          for (let i = 0; i < unregisteredVideos.length; i += BATCH) {
+            const ids = unregisteredVideos.slice(i, i + BATCH).map((v) => v.id);
+            const ph = ids.map(() => '?').join(', ');
+            await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+            await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+            await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+          }
+        }
+      }
+
       await get().fetchVideos();
-      await get().generateThumbnails();
+      // サムネイル生成はスキャン完了と切り離してバックグラウンド実行する。
+      // await すると isThumbnailGenerating が true の場合に即 return → isScanning が
+      // 誤って false になり、バックグラウンドの生成処理が DB を占有し続ける問題を防ぐ。
+      get().generateThumbnails().catch(() => {});
     } finally {
       set({ isScanning: false });
     }
@@ -848,7 +889,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
         let doneCount = 0;
         for (let i = 0; i < toProcess.length; i += THUMBNAIL_CONCURRENCY) {
-          while (get().isThumbnailPaused) {
+          while (get().isThumbnailPaused || get().isScanning) {
             await new Promise<void>((resolve) => setTimeout(resolve, 200));
           }
           const batch = toProcess.slice(i, i + THUMBNAIL_CONCURRENCY);
@@ -997,11 +1038,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const { db, watchDirs } = get();
     if (!db || videoIds.length === 0) return;
 
-    const ph = videoIds.map(() => '?').join(', ');
-    const rows = await db.select<{ id: number; path: string }[]>(
-      `SELECT id, path FROM videos WHERE id IN (${ph})`,
-      videoIds
-    );
+    // SELECT をバッチ処理してパラメータ上限 (999) を回避
+    const SELECT_BATCH = 499;
+    const rows: { id: number; path: string }[] = [];
+    for (let i = 0; i < videoIds.length; i += SELECT_BATCH) {
+      const chunk = videoIds.slice(i, i + SELECT_BATCH);
+      const ph = chunk.map(() => '?').join(', ');
+      const batch = await db.select<{ id: number; path: string }[]>(
+        `SELECT id, path FROM videos WHERE id IN (${ph})`,
+        chunk
+      );
+      rows.push(...batch);
+    }
 
     const rootDirs = watchDirs.map((d) => d.replace(/\\/g, '/').replace(/\/$/, ''));
 
@@ -1028,29 +1076,63 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }
 
     uniqueRelPaths.sort((a, b) => a.split('/').length - b.split('/').length);
+    const catCache = new Map<string, number>();
     const categoryIdMap: Record<string, number> = {};
-    for (const relPath of uniqueRelPaths) {
-      const leafId = await buildCategoryHierarchy(db, relPath);
-      if (leafId != null) categoryIdMap[relPath] = leafId;
-    }
-
-    // 動画の category_id を一括更新
-    await db.execute('BEGIN');
+    const total = uniqueRelPaths.length;
+    const { addToast, updateToast, removeToast } = useToastStore.getState();
+    const toastId = addToast(`カテゴリ割り当て中... 0 / ${total}`, 'info', 0);
     try {
+      for (let pi = 0; pi < uniqueRelPaths.length; pi++) {
+        updateToast(toastId, `カテゴリ割り当て中... ${pi + 1} / ${total}`);
+        const leafId = await buildCategoryHierarchy(db, uniqueRelPaths[pi], catCache);
+        if (leafId != null) categoryIdMap[uniqueRelPaths[pi]] = leafId;
+      }
+
+      // category_id でグループ化して IN (...) バッチ UPDATE (N 個別クエリ → M グループクエリ)
+      const categoryGroups = new Map<number, number[]>();
       for (const row of rows) {
         const relPath = getRelPath(row.path);
-        if (relPath && categoryIdMap[relPath] != null) {
-          await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryIdMap[relPath], row.id]);
+        const catId = relPath != null ? categoryIdMap[relPath] : undefined;
+        if (catId != null) {
+          if (!categoryGroups.has(catId)) categoryGroups.set(catId, []);
+          categoryGroups.get(catId)!.push(row.id);
         }
       }
-      await db.execute('COMMIT');
+
+      if (categoryGroups.size > 0) {
+        // category_id 1パラメータ + id 最大498個 = 499パラメータ ≤ SQLite 上限
+        const UPDATE_BATCH = 498;
+        await db.execute('BEGIN');
+        try {
+          for (const [catId, ids] of categoryGroups) {
+            for (let i = 0; i < ids.length; i += UPDATE_BATCH) {
+              const batch = ids.slice(i, i + UPDATE_BATCH);
+              const ph = batch.map(() => '?').join(', ');
+              await db.execute(
+                `UPDATE videos SET category_id = ? WHERE id IN (${ph})`,
+                [catId, ...batch]
+              );
+            }
+          }
+          await db.execute('COMMIT');
+        } catch (e) {
+          await db.execute('ROLLBACK');
+          throw e;
+        }
+      }
+
+      await useTagStore.getState().fetchCategories(db);
+      await get().fetchVideos();
+      removeToast(toastId);
+      const assigned = [...categoryGroups.values()].reduce((s, ids) => s + ids.length, 0);
+      addToast(
+        assigned > 0 ? `カテゴリを割り当てました（${assigned} 件）` : 'カテゴリ割り当て完了',
+        'success'
+      );
     } catch (e) {
-      await db.execute('ROLLBACK');
+      removeToast(toastId);
       throw e;
     }
-
-    await useTagStore.getState().fetchCategories(db);
-    await get().fetchVideos();
   },
 
   addVideoFromPath: async (path: string, title: string, sourceUrl?: string) => {
