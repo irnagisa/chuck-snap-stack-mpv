@@ -61,6 +61,7 @@ pub fn run() {
             commands::library::save_text_file,
             commands::library::read_text_file,
             commands::library::rename_video_file,
+            commands::library::canonicalize_path,
             commands::ytdlp::download_with_ytdlp,
             commands::ytdlp::cancel_ytdlp_download,
             commands::ytdlp::detect_ytdlp_path,

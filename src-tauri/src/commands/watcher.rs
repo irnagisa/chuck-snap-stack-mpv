@@ -17,6 +17,13 @@ pub struct FileEventPayload {
     pub title: String,
 }
 
+#[derive(Clone, serde::Serialize)]
+pub struct RenameEventPayload {
+    pub old_path: String,
+    pub new_path: String,
+    pub title: String,
+}
+
 #[tauri::command]
 pub async fn start_watching(
     state: tauri::State<'_, SharedWatcherState>,
@@ -80,6 +87,59 @@ pub async fn start_watching(
                                 "video-file-removed",
                                 p.to_string_lossy().to_string(),
                             );
+                        }
+                    }
+                    EventKind::Modify(notify::event::ModifyKind::Name(rename_mode)) => {
+                        use notify::event::RenameMode;
+                        match rename_mode {
+                            RenameMode::Both => {
+                                if event.paths.len() == 2 {
+                                    let old = &event.paths[0];
+                                    let new = &event.paths[1];
+                                    if is_video(new) {
+                                        let payload = RenameEventPayload {
+                                            old_path: old.to_string_lossy().to_string(),
+                                            new_path: new.to_string_lossy().to_string(),
+                                            title: new
+                                                .file_stem()
+                                                .and_then(|s| s.to_str())
+                                                .unwrap_or("")
+                                                .to_string(),
+                                        };
+                                        let _ = handle.emit("video-file-renamed", payload);
+                                    } else if is_video(old) {
+                                        // 動画以外の拡張子にリネームされた場合は削除扱い
+                                        let _ = handle.emit(
+                                            "video-file-removed",
+                                            old.to_string_lossy().to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                            RenameMode::From => {
+                                // 旧パスのみ判明 (ディレクトリ外へ移動など): 削除扱い
+                                for p in event.paths.iter().filter(|p| is_video(p)) {
+                                    let _ = handle.emit(
+                                        "video-file-removed",
+                                        p.to_string_lossy().to_string(),
+                                    );
+                                }
+                            }
+                            RenameMode::To => {
+                                // 新パスのみ判明 (ディレクトリ内へ移動など): 追加扱い
+                                for p in event.paths.iter().filter(|p| is_video(p)) {
+                                    let payload = FileEventPayload {
+                                        path: p.to_string_lossy().to_string(),
+                                        title: p
+                                            .file_stem()
+                                            .and_then(|s| s.to_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    };
+                                    let _ = handle.emit("video-file-created", payload);
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     _ => {}

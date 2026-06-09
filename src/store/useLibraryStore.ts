@@ -71,6 +71,7 @@ interface LibraryActions {
   removeVideoByPath: (path: string) => Promise<void>;
   moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
   renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
+  updateVideoPath: (oldPath: string, newPath: string) => Promise<void>;
 }
 
 const CREATE_VIDEOS_TABLE = `
@@ -140,8 +141,9 @@ const CREATE_TAG_CATEGORIES_TABLE = `
 
 const CREATE_WATCH_DIRS_TABLE = `
   CREATE TABLE IF NOT EXISTS watch_dirs (
-    path       TEXT PRIMARY KEY,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    path                TEXT PRIMARY KEY,
+    created_at          TEXT DEFAULT CURRENT_TIMESTAMP,
+    use_dir_as_category INTEGER DEFAULT 0
   )
 `;
 
@@ -299,10 +301,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await usePlaylistStore.getState().init(db);
       await db.execute(CREATE_WATCH_DIRS_TABLE);
       await db.execute(CREATE_SMART_PLAYLISTS_TABLE);
+      try {
+        await db.execute('ALTER TABLE watch_dirs ADD COLUMN use_dir_as_category INTEGER DEFAULT 0');
+      } catch { /* already exists */ }
       const savedDirs = await db.select<{ path: string }[]>('SELECT path FROM watch_dirs');
-      set({ watchDirs: savedDirs.map((d) => d.path) });
-      for (const dir of savedDirs) {
-        invoke('start_watching', { path: dir.path }).catch(() => {});
+      // 既存エントリを正規化パスに移行 (シンボリックリンク不一致の対処)
+      const canonicalDirs: string[] = [];
+      for (const d of savedDirs) {
+        const canonical = await invoke<string>('canonicalize_path', { path: d.path }).catch(() => d.path);
+        if (canonical !== d.path) {
+          await db.execute('UPDATE watch_dirs SET path = ? WHERE path = ?', [canonical, d.path]);
+        }
+        canonicalDirs.push(canonical);
+      }
+      set({ watchDirs: canonicalDirs });
+      for (const dir of canonicalDirs) {
+        invoke('start_watching', { path: dir }).catch(() => {});
       }
       get().generateThumbnails().catch(() => {});
     } catch (e) {
@@ -428,12 +442,19 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     if (!db) return;
     set({ isScanning: true });
     try {
-      await db.execute('INSERT OR IGNORE INTO watch_dirs (path) VALUES (?)', [path]);
+      // シンボリックリンクを解決した正規パスで保存 (LIKE マッチングの精度向上)
+      const canonicalPath = await invoke<string>('canonicalize_path', { path }).catch(() => path);
+      await db.execute(
+        'INSERT OR REPLACE INTO watch_dirs (path, use_dir_as_category) VALUES (?, ?)',
+        [canonicalPath, useDirectoryAsCategory ? 1 : 0]
+      );
       set((state) => ({
-        watchDirs: state.watchDirs.includes(path) ? state.watchDirs : [...state.watchDirs, path],
+        watchDirs: state.watchDirs.includes(canonicalPath)
+          ? state.watchDirs
+          : [...state.watchDirs, canonicalPath],
       }));
-      invoke('start_watching', { path }).catch(() => {});
-      const files = await invoke<ScannedFile[]>('scan_directory', { path });
+      invoke('start_watching', { path: canonicalPath }).catch(() => {});
+      const files = await invoke<ScannedFile[]>('scan_directory', { path: canonicalPath });
 
       const categoryIdMap: Record<string, number> = {};
       if (useDirectoryAsCategory) {
@@ -481,7 +502,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         await db.execute('ROLLBACK');
         throw e;
       }
-      set({ currentPage: 1, isScanning: false });
+      set({ currentPage: 1 });
       await get().fetchVideos();
     } finally {
       set({ isScanning: false });
@@ -501,6 +522,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       for (const dir of dirs) {
         const files = await invoke<ScannedFile[]>('scan_directory', { path: dir });
         if (files.length === 0) continue;
+
+        // 新規追加ファイルを検出するため INSERT 前の最大 ID を記録
+        const maxIdRow = await db.select<{ id: number }[]>(
+          'SELECT COALESCE(MAX(id), 0) AS id FROM videos'
+        );
+        const prevMaxId = maxIdRow[0]?.id ?? 0;
+
         await db.execute('BEGIN');
         try {
           for (let i = 0; i < files.length; i += INSERT_BATCH_2) {
@@ -518,10 +546,25 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           await db.execute('ROLLBACK');
           throw e;
         }
+
+        // use_dir_as_category が有効な場合、新規追加ファイルにカテゴリを割り当てる
+        const dirFlagRow = await db.select<{ use_dir_as_category: number }[]>(
+          'SELECT use_dir_as_category FROM watch_dirs WHERE path = ?',
+          [dir]
+        );
+        if (dirFlagRow[0]?.use_dir_as_category === 1) {
+          const newRows = await db.select<{ id: number }[]>(
+            'SELECT id FROM videos WHERE id > ?',
+            [prevMaxId]
+          );
+          if (newRows.length > 0) {
+            await get().assignCategoryFromPath(newRows.map((r) => r.id));
+          }
+        }
       }
 
       // 対象ディレクトリ内のDB登録済みファイルのうち実在しないものを削除
-      const dirConditions = dirs.map(() => "REPLACE(path, '\\', '/') LIKE ? ESCAPE '!'").join(' OR ');
+      const dirConditions = dirs.map(() => "REPLACE(path, '\\\\', '/') LIKE ? ESCAPE '!'").join(' OR ');
       const dirParams = dirs.map((d) => `${escapeLikeDir(d)}/%`);
       const dbVideos = await db.select<{ id: number; path: string }[]>(
         `SELECT id, path FROM videos WHERE ${dirConditions}`,
@@ -843,9 +886,45 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   renameVideoFile: async (videoId: number, newPath: string) => {
     const { db } = get();
     if (!db) return;
+    // ウォッチャーが先に newPath を登録済みの場合 (race condition) は先に削除してから UPDATE
+    const conflicting = await db.select<{ id: number }[]>(
+      'SELECT id FROM videos WHERE path = ? AND id != ?',
+      [newPath, videoId]
+    );
+    if (conflicting.length > 0) {
+      const ids = conflicting.map((r) => r.id);
+      const ph = ids.map(() => '?').join(', ');
+      await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+      await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+      await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+    }
     await db.execute('UPDATE videos SET path = ? WHERE id = ?', [newPath, videoId]);
     set((state) => ({
-      videos: state.videos.map((v) => v.id === videoId ? { ...v, path: newPath } : v),
+      videos: state.videos
+        .filter((v) => !conflicting.some((c) => c.id === v.id))
+        .map((v) => v.id === videoId ? { ...v, path: newPath } : v),
     }));
+  },
+
+  updateVideoPath: async (oldPath: string, newPath: string) => {
+    const { db } = get();
+    if (!db) return;
+    const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [oldPath]);
+    if (rows.length === 0) return;
+    const videoId = rows[0].id;
+    // 競合エントリがある場合は先に削除 (Create イベントが先行した場合など)
+    const conflicting = await db.select<{ id: number }[]>(
+      'SELECT id FROM videos WHERE path = ? AND id != ?',
+      [newPath, videoId]
+    );
+    if (conflicting.length > 0) {
+      const ids = conflicting.map((r) => r.id);
+      const ph = ids.map(() => '?').join(', ');
+      await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+      await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+      await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+    }
+    await db.execute('UPDATE videos SET path = ? WHERE id = ?', [newPath, videoId]);
+    await get().fetchVideos();
   },
 }));

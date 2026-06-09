@@ -624,3 +624,12 @@ pub async fn capture_frame_at(
         Err("フレームキャプチャに失敗しました".to_string())
     }
 }
+
+/// パスを正規化 (シンボリックリンク解決) して返す。解決できない場合は元パスをそのまま返す。
+#[tauri::command]
+pub async fn canonicalize_path(path: String) -> String {
+    tokio::fs::canonicalize(&path)
+        .await
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or(path)
+}
