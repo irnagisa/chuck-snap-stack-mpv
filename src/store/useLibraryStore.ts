@@ -726,17 +726,20 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   removeWatchDir: async (path: string) => {
     const { db } = get();
     if (!db) return;
-    // フォルダ配下の動画を取得して削除
+    const escaped = escapeLikeDir(path);
     const videos = await db.select<{ id: number }[]>(
-      'SELECT id FROM videos WHERE path LIKE ?',
-      [path + '/%']
+      "SELECT id FROM videos WHERE path LIKE ? ESCAPE '!'",
+      [escaped + '/%']
     );
     if (videos.length > 0) {
-      const ids = videos.map((v) => v.id);
-      const ph = ids.map(() => '?').join(',');
-      await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
-      await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
-      await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+      const BATCH = 400;
+      for (let i = 0; i < videos.length; i += BATCH) {
+        const ids = videos.slice(i, i + BATCH).map((v) => v.id);
+        const ph = ids.map(() => '?').join(',');
+        await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+        await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+        await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+      }
     }
     await db.execute('DELETE FROM watch_dirs WHERE path = ?', [path]);
     await invoke('stop_watching', { path }).catch(() => {});
