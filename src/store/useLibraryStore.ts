@@ -74,6 +74,7 @@ interface LibraryActions {
   assignCategoryFromPath: (videoIds: number[]) => Promise<void>;
   addVideoFromPath: (path: string, title: string, sourceUrl?: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
+  batchWatcherUpdate: (batch: { creates: { path: string; title: string }[]; removes: string[]; renames: { old_path: string; new_path: string; title: string }[] }) => Promise<void>;
   moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
   renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
   updateVideoPath: (oldPath: string, newPath: string) => Promise<void>;
@@ -1159,6 +1160,98 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [path]);
     if (rows.length === 0) return;
     await get().removeVideo(rows[0].id);
+  },
+
+  batchWatcherUpdate: async ({ creates, removes, renames }) => {
+    const { db } = get();
+    if (!db) return;
+
+    // 削除: パスを一括 SELECT して IN (...) バッチ DELETE
+    if (removes.length > 0) {
+      const SELECT_BATCH = 499;
+      const removeIds: number[] = [];
+      for (let i = 0; i < removes.length; i += SELECT_BATCH) {
+        const chunk = removes.slice(i, i + SELECT_BATCH);
+        const ph = chunk.map(() => '?').join(', ');
+        const rows = await db.select<{ id: number }[]>(
+          `SELECT id FROM videos WHERE path IN (${ph})`, chunk
+        );
+        removeIds.push(...rows.map((r) => r.id));
+      }
+      if (removeIds.length > 0) {
+        const BATCH = 400;
+        for (let i = 0; i < removeIds.length; i += BATCH) {
+          const ids = removeIds.slice(i, i + BATCH);
+          const ph = ids.map(() => '?').join(', ');
+          await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+          await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+          await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+        }
+      }
+    }
+
+    // リネーム: 旧パス未登録の場合は新規追加として creates へ追加
+    for (const r of renames) {
+      const rows = await db.select<{ id: number }[]>(
+        'SELECT id FROM videos WHERE path = ?', [r.old_path]
+      );
+      if (!rows[0]) {
+        creates.push({ path: r.new_path, title: r.title });
+        continue;
+      }
+      const videoId = rows[0].id;
+      const conflicting = await db.select<{ id: number }[]>(
+        'SELECT id FROM videos WHERE path = ? AND id != ?', [r.new_path, videoId]
+      );
+      if (conflicting.length > 0) {
+        const ids = conflicting.map((c) => c.id);
+        const ph = ids.map(() => '?').join(', ');
+        await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+        await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+        await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+      }
+      await db.execute('UPDATE videos SET path = ?, title = ? WHERE id = ?', [r.new_path, r.title, videoId]);
+    }
+
+    // 追加: バッチ INSERT → use_dir_as_category 有効フォルダならカテゴリ割り当て
+    if (creates.length > 0) {
+      const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+
+      const maxIdRow = await db.select<{ id: number }[]>('SELECT COALESCE(MAX(id), 0) AS id FROM videos');
+      const prevMaxId = maxIdRow[0]?.id ?? 0;
+
+      // 3列 (path, title, media_type): 332 × 3 = 996 ≤ 999
+      const INSERT_BATCH = 332;
+      for (let i = 0; i < creates.length; i += INSERT_BATCH) {
+        const batch = creates.slice(i, i + INSERT_BATCH);
+        const ph = batch.map(() => '(?, ?, ?)').join(', ');
+        const params: unknown[] = [];
+        for (const f of batch) {
+          const ext = f.path.split('.').pop()?.toLowerCase() ?? '';
+          const mediaType = audioExts.includes(ext) ? 'audio' : imageExts.includes(ext) ? 'image' : 'video';
+          params.push(f.path, f.title, mediaType);
+        }
+        await db.execute(`INSERT OR IGNORE INTO videos (path, title, media_type) VALUES ${ph}`, params);
+      }
+
+      const catEnabled = await db.select<{ use_dir_as_category: number }[]>(
+        'SELECT use_dir_as_category FROM watch_dirs WHERE use_dir_as_category = 1 LIMIT 1'
+      );
+      if (catEnabled.length > 0) {
+        const newRows = await db.select<{ id: number }[]>(
+          'SELECT id FROM videos WHERE id > ?', [prevMaxId]
+        );
+        if (newRows.length > 0) {
+          await get().assignCategoryFromPath(newRows.map((r) => r.id)).catch((e) => {
+            console.error('assignCategoryFromPath failed in batchWatcherUpdate:', e);
+          });
+        }
+      }
+    }
+
+    await get().fetchVideos();
+    get().generateThumbnails().catch(() => {});
   },
 
   removeVideo: async (videoId: number) => {
