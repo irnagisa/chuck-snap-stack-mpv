@@ -341,24 +341,25 @@ pub async fn play(
 ) -> Result<(), String> {
     let mpv_path = settings.lock().map_err(|e| e.to_string())?.mpv_path.clone();
 
-    // ソケットが存在する（mpv 起動済み）なら loadfile で切り替え
-    // send_ipc (新規コネクション + レスポンス確認) を使い、mpv が実際にコマンドを
-    // 受理したことを確認する。fire-and-forget の send_cmd だとカーネルバッファへの
-    // 書き込み成功だけで「成功」と見なされ、mpv が死んでいても検知できない。
+    // ソケットが存在する（mpv 起動済み）なら永続 writer で loadfile を送信する。
+    // send_ipc (新規コネクション) を使うと 2 秒タイムアウト時に正常動作中の mpv を
+    // 誤って再起動してしまう。send_cmd はカーネルバッファへの書き込み成功を確認するため、
+    // ソケットが切断済みなら EPIPE/ECONNRESET を返し再起動フローに進む。
     let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
-    if writer_opt.is_some() && std::path::Path::new(&mpv_socket_path()).exists() {
-        eprintln!("[play] mpv 起動中 → loadfile replace (send_ipc): {path}");
-        match send_ipc(json!({"command": ["loadfile", path, "replace"]})) {
-            Ok(val) if val.get("error").and_then(|e| e.as_str()) == Some("success") => {
-                eprintln!("[play] loadfile 成功");
-                return Ok(());
+    if let Some(ref writer) = writer_opt {
+        if std::path::Path::new(&mpv_socket_path()).exists() {
+            eprintln!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
+            match send_cmd(writer, json!({"command": ["loadfile", path, "replace"]})) {
+                Ok(()) => {
+                    eprintln!("[play] loadfile 送信成功");
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("[play] loadfile send_cmd 失敗 ({e}) → 再起動");
+                }
             }
-            Ok(val) => {
-                eprintln!("[play] loadfile mpv エラー応答: {val} → 再起動");
-            }
-            Err(e) => {
-                eprintln!("[play] loadfile IPC 失敗 ({e}) → 再起動");
-            }
+        } else {
+            eprintln!("[play] ソケット消失 → 再起動");
         }
     } else {
         eprintln!("[play] mpv 未起動 → 新規起動");
