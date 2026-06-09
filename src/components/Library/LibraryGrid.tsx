@@ -37,7 +37,7 @@ const VideoCard = memo(function VideoCard({
 }: VideoCardProps) {
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
-  const handlePrimaryClick = () => isImage ? onViewImage(v) : onPlay(v);
+  const handlePrimaryClick = () => isImage ? onViewImage(v) : onShowDetail(v);
   const progressPercent =
     v.duration && v.duration > 0
       ? Math.min((v.progress / v.duration) * 100, 100)
@@ -162,11 +162,11 @@ const VideoCard = memo(function VideoCard({
           )}
           <button
             type="button"
-            className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
-            onClick={(e) => { e.stopPropagation(); onShowDetail(v); }}
-            title="動画の詳細を表示"
+            className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
+            onClick={(e) => { e.stopPropagation(); onPlay(v); }}
+            title="再生"
           >
-            詳細
+            ▶
           </button>
           <button
             type="button"

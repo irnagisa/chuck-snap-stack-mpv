@@ -19,6 +19,7 @@ import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
 import { WatchDirSidebar } from "./components/Library/WatchDirSidebar";
 import { AppModals } from "./components/AppModals";
+import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { Select } from "./components/common/Select";
@@ -63,7 +64,7 @@ function App() {
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration,
     setWatchedStatus, setWatchDirFilter, setSort, setPage,
-    pauseThumbnails, resumeThumbnails,
+    pauseThumbnails, resumeThumbnails, fetchVideos,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
     scanAndImport: s.scanAndImport,
@@ -82,6 +83,7 @@ function App() {
     setPage: s.setPage,
     pauseThumbnails: s.pauseThumbnails,
     resumeThumbnails: s.resumeThumbnails,
+    fetchVideos: s.fetchVideos,
   })));
   // usePlayerStore: currentVideo のみ購読 (playbackTime の毎秒更新で App が再レンダリングされるのを防ぐ)
   const currentVideo = usePlayerStore((s) => s.currentVideo);
@@ -98,8 +100,8 @@ function App() {
   const {
     openSettings, openDownload, openDetailVideo, openAddToPlaylist,
     openPlaylist, openBulkModal, openDuplicates, openStats, openExport, openSmartPlaylist, closeAll,
+    detailVideo, closeDetailVideo,
   } = useModalStore();
-
   const theme = useSettingsStore((s) => s.theme);
   const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
 
@@ -391,7 +393,8 @@ function App() {
         </div>
       )}
 
-      {/* ボディ: サイドバー + メインコンテンツ */}
+      {/* ボディ: サイドバー + メインコンテンツ + 詳細パネル */}
+      <div className="flex flex-1 min-h-0">
       <div className="flex flex-1 px-4 pt-4 pb-20 gap-4 min-h-0">
         {/* サイドバー */}
         {isDbReady && (
@@ -697,6 +700,22 @@ function App() {
             </div>
           )}
         </div>
+
+      </div>
+
+      {/* 詳細パネル */}
+      {detailVideo && (
+        <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
+          <VideoDetailModal
+            key={detailVideo.id}
+            video={detailVideo}
+            onClose={() => {
+              closeDetailVideo();
+              fetchVideos();
+            }}
+          />
+        </div>
+      )}
       </div>
 
       <PlayerControls />

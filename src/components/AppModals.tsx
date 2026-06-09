@@ -2,7 +2,6 @@ import { useModalStore } from '../store/useModalStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { SettingsPanel } from './Settings/SettingsPanel';
 import { DownloadModal } from './Library/DownloadModal';
-import { VideoDetailModal } from './Library/VideoDetailModal';
 import { PlaylistModal } from './Library/PlaylistModal';
 import { AddToPlaylistModal } from './Library/AddToPlaylistModal';
 import { BulkDeleteModal } from './Library/BulkDeleteModal';
@@ -30,7 +29,6 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
     showStats, closeStats,
     showExport, closeExport,
     showSmartPlaylist, closeSmartPlaylist,
-    detailVideo, closeDetailVideo,
     activePlaylist, closePlaylist,
     addToPlaylistVideo, closeAddToPlaylist,
     bulkModal, closeBulkModal,
@@ -52,17 +50,6 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {showSmartPlaylist && <SmartPlaylistModal onClose={closeSmartPlaylist} />}
 
       <QueuePanel />
-
-      {detailVideo && (
-        <VideoDetailModal
-          key={detailVideo.id}
-          video={detailVideo}
-          onClose={() => {
-            closeDetailVideo();
-            fetchVideos();
-          }}
-        />
-      )}
 
       {activePlaylist && (
         <PlaylistModal

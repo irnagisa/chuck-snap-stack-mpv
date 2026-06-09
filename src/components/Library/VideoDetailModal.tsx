@@ -116,15 +116,12 @@ export function VideoDetailModal({ video, onClose }: Props) {
       const ext = dotIdx > 0 ? filename.slice(dotIdx) : '';
       const newFilename = trimmed + ext;
       const oldPath = video.path;
-      // dir は末尾スラッシュ込みで計算
       const newPath = oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + newFilename;
 
-      // DB を先行更新してウォッチャーの Remove イベントとの競合を防ぐ
       await updateVideo(video.id, { title: trimmed, path: newPath });
       try {
         await invoke<void>('rename_video_file', { oldPath, newName: newFilename });
       } catch (e) {
-        // リネーム失敗時は DB を元の状態へ戻す
         await updateVideo(video.id, { title: video.title ?? '', path: oldPath });
         alert(`ファイルのリネームに失敗しました: ${e}`);
       }
@@ -221,28 +218,25 @@ export function VideoDetailModal({ video, onClose }: Props) {
     }
   };
 
+  const mediaTypeLabel =
+    video.media_type === 'image' ? '画像' :
+    video.media_type === 'audio' ? '音声' : '動画';
+
   return (
     <>
-    {showTranscode && (
-      <TranscodeModal
-        video={video}
-        onClose={() => {
-          setShowTranscode(false);
-          onClose();
-        }}
-      />
-    )}
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {showTranscode && (
+        <TranscodeModal
+          video={video}
+          onClose={() => {
+            setShowTranscode(false);
+            onClose();
+          }}
+        />
+      )}
+      <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">動画詳細</h2>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">詳細</h2>
           <button
             type="button"
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
@@ -253,19 +247,19 @@ export function VideoDetailModal({ video, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex gap-6 px-6 py-5 overflow-y-auto">
-          {/* Left: thumbnail + play */}
-          <div className="flex flex-col gap-2.5 shrink-0 w-44">
+        <div className="flex-1 overflow-y-auto pb-20">
+          {/* サムネイル + 再生 */}
+          <div className="px-4 pt-4 pb-3 flex flex-col gap-2">
             <div className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
               {video.thumbnail ? (
                 <img
                   src={convertFileSrc(video.thumbnail)}
                   alt={localTitle}
-                  className="w-full h-full object-cover"
+                  className={`w-full h-full ${video.media_type === 'image' ? 'object-contain bg-black' : 'object-cover'}`}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-3xl">
-                  ▶
+                  {video.media_type === 'image' ? '🖼' : video.media_type === 'audio' ? '♪' : '▶'}
                 </div>
               )}
             </div>
@@ -274,24 +268,27 @@ export function VideoDetailModal({ video, onClose }: Props) {
                 <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progressPercent}%` }} />
               </div>
             )}
-            <button
-              type="button"
-              className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-              onClick={handlePlay}
-            >
-              ▶ 再生
-            </button>
-            <button
-              type="button"
-              className="w-full py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
-              onClick={() => setShowTranscode(true)}
-            >
-              AV1 変換
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                onClick={handlePlay}
+              >
+                ▶ 再生
+              </button>
+              {video.media_type !== 'image' && (
+                <button
+                  type="button"
+                  className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
+                  onClick={() => setShowTranscode(true)}
+                >
+                  AV1
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Right: info */}
-          <div className="flex-1 min-w-0 flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+          <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800 px-4">
             {/* タイトル + パス */}
             <div className="pb-4 flex flex-col gap-3">
               <div>
@@ -326,7 +323,13 @@ export function VideoDetailModal({ video, onClose }: Props) {
 
             {/* メタデータ + 評価 */}
             <div className="py-4 flex flex-col gap-3">
-              <div className="flex gap-6 flex-wrap">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    メディアタイプ
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">{mediaTypeLabel}</p>
+                </div>
                 {video.duration != null && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
@@ -351,14 +354,16 @@ export function VideoDetailModal({ video, onClose }: Props) {
                     {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
                   </p>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    解像度
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {dimensions ? `${dimensions.width} × ${dimensions.height}` : '—'}
-                  </p>
-                </div>
+                {dimensions && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                      解像度
+                    </label>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {dimensions.width} × {dimensions.height}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
                     追加日時
@@ -400,7 +405,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
             </div>
 
             {/* カテゴリ + タグ */}
-            <div className="pt-4 flex flex-col gap-4">
+            <div className="pt-4 pb-4 flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
                   カテゴリ
@@ -442,88 +447,88 @@ export function VideoDetailModal({ video, onClose }: Props) {
                   )}
                 </div>
                 <div className="relative">
-                <input
-                  className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                  placeholder="タグを検索 / 新規作成..."
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onFocus={() => setTagInputFocused(true)}
-                  onBlur={() => setTimeout(() => setTagInputFocused(false), 150)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && tagInput && !exactMatch) handleCreateAndAdd();
-                    if (e.key === 'Escape') { setTagInput(''); setTagInputFocused(false); }
-                  }}
-                />
-                {showSuggestions && (
-                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto">
-                    {filteredSuggestions.length === 0 && !tagInput && (
-                      <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">タグがありません</p>
-                    )}
-                    {filteredSuggestions.map((tag) => (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
-                        onClick={() => handleAddTag(tag)}
-                      >
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
-                        <span className="flex-1">{tag.name}</span>
-                        {(tagUsageCounts[tag.id] ?? 0) > 0 && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-                            {tagUsageCounts[tag.id]}件
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                    {tagInput && !exactMatch && (
-                      <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">色:</span>
-                          {COLORS.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              className={`w-4 h-4 rounded-full transition-transform ${
-                                newTagColor === c
-                                  ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800'
-                                  : ''
-                              }`}
-                              style={{ backgroundColor: c }}
-                              onClick={() => setNewTagColor(c)}
-                            />
-                          ))}
-                        </div>
+                  <input
+                    className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                    placeholder="タグを検索 / 新規作成..."
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onFocus={() => setTagInputFocused(true)}
+                    onBlur={() => setTimeout(() => setTagInputFocused(false), 150)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && tagInput && !exactMatch) handleCreateAndAdd();
+                      if (e.key === 'Escape') { setTagInput(''); setTagInputFocused(false); }
+                    }}
+                  />
+                  {showSuggestions && (
+                    <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto">
+                      {filteredSuggestions.length === 0 && !tagInput && (
+                        <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">タグがありません</p>
+                      )}
+                      {filteredSuggestions.map((tag) => (
                         <button
+                          key={tag.id}
                           type="button"
-                          className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                          onClick={handleCreateAndAdd}
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                          onClick={() => handleAddTag(tag)}
                         >
-                          「{tagInput}」を新規作成して追加
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                          <span className="flex-1">{tag.name}</span>
+                          {(tagUsageCounts[tag.id] ?? 0) > 0 && (
+                            <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+                              {tagUsageCounts[tag.id]}件
+                            </span>
+                          )}
                         </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      ))}
+                      {tagInput && !exactMatch && (
+                        <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700">
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">色:</span>
+                            {COLORS.map((c) => (
+                              <button
+                                key={c}
+                                type="button"
+                                className={`w-4 h-4 rounded-full transition-transform ${
+                                  newTagColor === c
+                                    ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800'
+                                    : ''
+                                }`}
+                                style={{ backgroundColor: c }}
+                                onClick={() => setNewTagColor(c)}
+                              />
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                            onClick={handleCreateAndAdd}
+                          >
+                            「{tagInput}」を新規作成して追加
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
             {/* カスタムサムネイル */}
-            <div className="pt-4 flex flex-col gap-2">
+            <div className="pt-4 pb-4 flex flex-col gap-2">
               <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
                 サムネイルを変更
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <input
                   type="number"
                   min={0}
                   step={1}
-                  className="w-24 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   value={thumbTimestamp}
                   onChange={(e) => setThumbTimestamp(e.target.value)}
                   placeholder="秒"
                 />
-                <span className="text-xs text-gray-500 dark:text-gray-400">秒のフレームを設定</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">秒のフレーム</span>
                 <button
                   type="button"
                   onClick={handleCaptureThumb}
@@ -536,7 +541,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
             </div>
 
             {/* 字幕ファイル管理 */}
-            <div className="pt-4 flex flex-col gap-2">
+            <div className="pt-4 pb-4 flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
                   字幕ファイル
@@ -580,7 +585,6 @@ export function VideoDetailModal({ video, onClose }: Props) {
           </div>
         </div>
       </div>
-    </div>
     </>
   );
 }
