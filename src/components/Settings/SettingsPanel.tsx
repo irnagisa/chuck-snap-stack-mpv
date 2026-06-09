@@ -35,6 +35,47 @@ export function SettingsPanel({ onClose }: Props) {
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
 
+  // ウェブサーバー
+  const [wsPort, setWsPort] = useState(7777);
+  const [wsRunning, setWsRunning] = useState(false);
+  const [wsLoading, setWsLoading] = useState(false);
+  const [localIp, setLocalIp] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<number | null>('get_web_server_port').then((port) => {
+      if (port != null) {
+        setWsRunning(true);
+        setWsPort(port);
+      }
+    });
+    invoke<string | null>('get_local_ip').then(setLocalIp);
+  }, []);
+
+  const handleStartWs = async () => {
+    setWsLoading(true);
+    try {
+      const actualPort = await invoke<number>('start_web_server', { port: wsPort });
+      setWsPort(actualPort);
+      setWsRunning(true);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWsLoading(false);
+    }
+  };
+
+  const handleStopWs = async () => {
+    setWsLoading(true);
+    try {
+      await invoke('stop_web_server');
+      setWsRunning(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!capturingAction) return;
     const handler = (e: KeyboardEvent) => {
@@ -367,6 +408,63 @@ export function SettingsPanel({ onClose }: Props) {
           >
             {isScanning ? "スキャン中..." : "+ フォルダを追加"}
           </button>
+
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          {/* ウェブサーバー */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            ウェブサーバー
+          </p>
+
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              LAN 内の他デバイス（スマホ・PC）からブラウザでライブラリを閲覧・再生できます。
+            </p>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700 dark:text-gray-300 shrink-0">ポート</label>
+              <input
+                type="number"
+                min={1024}
+                max={65535}
+                value={wsPort}
+                disabled={wsRunning}
+                onChange={(e) => setWsPort(Number(e.target.value))}
+                className="w-24 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+              {wsRunning ? (
+                <button
+                  type="button"
+                  disabled={wsLoading}
+                  onClick={handleStopWs}
+                  className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
+                >
+                  {wsLoading ? '停止中...' : '停止'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={wsLoading}
+                  onClick={handleStartWs}
+                  className="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
+                >
+                  {wsLoading ? '起動中...' : '起動'}
+                </button>
+              )}
+            </div>
+
+            {wsRunning && (
+              <div className="rounded bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 px-3 py-2 text-xs space-y-1">
+                <p className="font-medium text-green-700 dark:text-green-400">サーバー稼働中</p>
+                <p className="font-mono text-green-600 dark:text-green-500">
+                  http://{localIp ?? '???'}:{wsPort}
+                </p>
+                <p className="text-green-600 dark:text-green-600">
+                  エンドポイント: /api/videos &nbsp;|&nbsp; /api/stream/:id &nbsp;|&nbsp; /api/thumbnails/:filename
+                </p>
+              </div>
+            )}
+          </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />
 

@@ -20,6 +20,7 @@ pub fn run() {
         .manage(TranscodeState::new())
         .manage(commands::ytdlp::YtdlpState::new())
         .manage(MiniPlayerWindowState::new())
+        .manage(commands::webserver::WebServerState::new())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
@@ -67,6 +68,10 @@ pub fn run() {
             commands::ytdlp::detect_ytdlp_path,
             commands::window::enter_mini_player,
             commands::window::exit_mini_player,
+            commands::webserver::start_web_server,
+            commands::webserver::stop_web_server,
+            commands::webserver::get_web_server_port,
+            commands::webserver::get_local_ip,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
