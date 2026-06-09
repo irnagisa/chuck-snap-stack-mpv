@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Video, Chapter } from '../types';
 import { useLibraryStore } from './useLibraryStore';
+import { useSettingsStore } from './useSettingsStore';
 
 interface PlayerState {
   currentVideo: Video | null;
@@ -68,12 +69,13 @@ function initListeners(
     set({ duration: e.payload });
   }));
 
-  // ファイルが自然終了した場合 → ループ中はスキップ、キューがあれば次へ進む
+  // ファイルが自然終了した場合 → ループ中はスキップ、自動再生ON かつキューがあれば次へ進む
   unlistenFns.push(listen<string>('mpv://end-file', async (e) => {
     if (e.payload !== 'eof') return;
     const { queue, queueIndex, isLooping } = get();
     if (isLooping) return;
-    if (queue.length > 0 && queueIndex < queue.length - 1) {
+    const { autoPlayNext } = useSettingsStore.getState();
+    if (autoPlayNext && queue.length > 0 && queueIndex < queue.length - 1) {
       await get().playNext();
     }
   }));

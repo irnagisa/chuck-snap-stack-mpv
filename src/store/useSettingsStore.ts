@@ -50,6 +50,7 @@ export interface AppSettings {
   screenshotDir: string;
   keybindings: KeyBindings;
   theme: Theme;
+  autoPlayNext: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -61,6 +62,7 @@ const DEFAULTS: AppSettings = {
   screenshotDir: "",
   keybindings: DEFAULT_KEYBINDINGS,
   theme: "auto",
+  autoPlayNext: false,
 };
 
 interface SettingsStore extends AppSettings {
@@ -104,7 +106,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     `);
 
     const rows = await db.select<{ key: string; value: string }[]>(
-      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'ytdlp_path', 'download_dir', 'screenshot_dir', 'keybindings', 'theme')"
+      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'ytdlp_path', 'download_dir', 'screenshot_dir', 'keybindings', 'theme', 'auto_play_next')"
     );
 
     const map: Record<string, string> = {};
@@ -132,6 +134,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       screenshotDir: map["screenshot_dir"] ?? DEFAULTS.screenshotDir,
       keybindings,
       theme: (map["theme"] as Theme | undefined) ?? DEFAULTS.theme,
+      autoPlayNext: map["auto_play_next"] === "true",
     };
 
     set({ ...settings, isLoaded: true });
@@ -166,6 +169,10 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     await db.execute(
       "INSERT OR REPLACE INTO settings (key, value) VALUES ('theme', ?)",
       [settings.theme]
+    );
+    await db.execute(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_play_next', ?)",
+      [String(settings.autoPlayNext)]
     );
 
     set({ ...settings });

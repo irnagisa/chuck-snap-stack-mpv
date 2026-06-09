@@ -27,10 +27,10 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 ];
 
 export function SettingsPanel({ onClose }: Props) {
-  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, saveSettings, saveKeybindings } = useSettingsStore();
+  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, saveSettings, saveKeybindings } = useSettingsStore();
   const { db, watchDirs, scanAndImport, removeWatchDir, isScanning } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
@@ -199,6 +199,36 @@ export function SettingsPanel({ onClose }: Props) {
                 </button>
               ))}
             </div>
+          </div>
+
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          {/* 再生 */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            再生
+          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">自動再生</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                キュー内の動画が終了したとき、次の動画を自動的に再生する
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={local.autoPlayNext}
+              onClick={() => setLocal((prev) => ({ ...prev, autoPlayNext: !prev.autoPlayNext }))}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                local.autoPlayNext ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                  local.autoPlayNext ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />
