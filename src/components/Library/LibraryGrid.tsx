@@ -265,6 +265,12 @@ export function LibraryGrid({
     };
   }, []);
 
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [videos]);
+
   const rows = useMemo(() => {
     const result: Video[][] = [];
     for (let i = 0; i < videos.length; i += columns) {
