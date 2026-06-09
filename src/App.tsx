@@ -3,7 +3,7 @@ import type { Video } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { useShallow } from "zustand/shallow";
-import type { WatchedStatus } from "./store/useLibraryStore";
+import type { WatchedStatus, MediaTypeFilter } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
@@ -33,7 +33,7 @@ function App() {
     videos, totalCount, currentPage, pageSize,
     filterSearch, filterCategoryId, filterTagIds, filterTagMode,
     filterMinRating, filterHasAudio, filterMinDuration,
-    filterWatchedStatus, filterWatchDir, filterSortBy, filterSortOrder,
+    filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused,
     thumbnailProgress, isDbReady, dbError,
   } = useLibraryStore(useShallow((s) => ({
@@ -50,6 +50,7 @@ function App() {
     filterMinDuration: s.filterMinDuration,
     filterWatchedStatus: s.filterWatchedStatus,
     filterWatchDir: s.filterWatchDir,
+    filterMediaType: s.filterMediaType,
     filterSortBy: s.filterSortBy,
     filterSortOrder: s.filterSortOrder,
     isScanning: s.isScanning,
@@ -63,7 +64,7 @@ function App() {
     initDb, scanAndImport, assignCategoryFromPath,
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration,
-    setWatchedStatus, setWatchDirFilter, setSort, setPage,
+    setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
     pauseThumbnails, resumeThumbnails, fetchVideos,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
@@ -79,6 +80,7 @@ function App() {
     setMinDuration: s.setMinDuration,
     setWatchedStatus: s.setWatchedStatus,
     setWatchDirFilter: s.setWatchDirFilter,
+    setMediaType: s.setMediaType,
     setSort: s.setSort,
     setPage: s.setPage,
     pauseThumbnails: s.pauseThumbnails,
@@ -588,6 +590,18 @@ function App() {
                     <option value="all">視聴: すべて</option>
                     <option value="unwatched">未視聴</option>
                     <option value="watched">視聴済み</option>
+                  </Select>
+
+                  <Select
+                    variant="sm"
+                    value={filterMediaType}
+                    onChange={(e) => setMediaType(e.target.value as MediaTypeFilter)}
+                    title="メディアタイプフィルタ"
+                  >
+                    <option value="all">種別: すべて</option>
+                    <option value="video">動画</option>
+                    <option value="audio">音声</option>
+                    <option value="image">画像</option>
                   </Select>
 
                   <div className="flex items-center gap-1">

@@ -11,6 +11,7 @@ export type SortBy = 'created_at' | 'duration' | 'rating';
 export type SortOrder = 'desc' | 'asc';
 export type WatchedStatus = 'all' | 'watched' | 'unwatched';
 export type TagFilterMode = 'and' | 'or';
+export type MediaTypeFilter = 'all' | 'video' | 'audio' | 'image';
 
 interface LibraryState {
   videos: Video[];
@@ -26,6 +27,7 @@ interface LibraryState {
   filterMinDuration: number;
   filterWatchedStatus: WatchedStatus;
   filterWatchDir: string | null;
+  filterMediaType: MediaTypeFilter;
   filterSortBy: SortBy;
   filterSortOrder: SortOrder;
   watchDirs: string[];
@@ -53,6 +55,7 @@ interface LibraryActions {
   setMinDuration: (seconds: number) => Promise<void>;
   setWatchedStatus: (status: WatchedStatus) => Promise<void>;
   setWatchDirFilter: (dir: string | null) => Promise<void>;
+  setMediaType: (mediaType: MediaTypeFilter) => Promise<void>;
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
@@ -160,7 +163,7 @@ const CREATE_SMART_PLAYLISTS_TABLE = `
 
 type FilterState = Pick<LibraryState,
   'filterSearch' | 'filterCategoryId' | 'filterTagIds' | 'filterTagMode' |
-  'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus' | 'filterWatchDir'
+  'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus' | 'filterWatchDir' | 'filterMediaType'
 >;
 
 // SQLite LIKE パターン内の特殊文字 (%, _, !) をエスケープする。
@@ -229,6 +232,10 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
     conditions.push("REPLACE(v.path, '\\', '/') LIKE ? ESCAPE '!'");
     params.push(`${escapeLikeDir(f.filterWatchDir)}/%`);
   }
+  if (f.filterMediaType !== 'all') {
+    conditions.push('v.media_type = ?');
+    params.push(f.filterMediaType);
+  }
 
   return {
     where: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
@@ -255,6 +262,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterMinDuration: 0,
   filterWatchedStatus: 'all',
   filterWatchDir: null,
+  filterMediaType: 'all',
   filterSortBy: 'created_at',
   filterSortOrder: 'desc',
   watchDirs: [],
@@ -452,6 +460,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setWatchDirFilter: async (dir: string | null) => {
     set({ filterWatchDir: dir, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setMediaType: async (mediaType: MediaTypeFilter) => {
+    set({ filterMediaType: mediaType, currentPage: 1 });
     await get().fetchVideos();
   },
 
