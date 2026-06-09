@@ -59,6 +59,7 @@ export interface Category {
   id: number;
   name: string;
   color: string;
+  parent_id: number | null;
   created_at: string;
 }
 

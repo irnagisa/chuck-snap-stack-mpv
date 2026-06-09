@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useTagStore } from '../../store/useTagStore';
+import { useState, useMemo } from 'react';
+import React from 'react';
+import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryDescendantIds } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { Select } from '../common/Select';
 
@@ -22,13 +23,17 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   } = useTagStore();
   const { db, fetchVideos } = useLibraryStore();
 
-  const [isAdding, setIsAdding] = useState(false);
+  // カテゴリ追加フォーム状態
+  const [addingParentId, setAddingParentId] = useState<number | null | undefined>(undefined); // undefined=非表示
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(COLORS[5]);
+  const [newParentId, setNewParentId] = useState<number | null>(null);
 
+  // カテゴリ編集状態
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState(COLORS[5]);
+  const [editParentId, setEditParentId] = useState<number | null>(null);
 
   // タグ編集状態
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
@@ -48,11 +53,41 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   const [search, setSearch] = useState('');
   const searchLower = search.toLowerCase();
 
+  // ツリー構築
+  const categoryTree = useMemo(() => buildCategoryTree(categories), [categories]);
+  const flatCategories = useMemo(() => flattenCategoryTree(categoryTree), [categoryTree]);
+
+  // 編集フォームの親選択肢（自身と子孫を除外）
+  const editParentOptions = useMemo(() => {
+    if (editingId === null) return flatCategories;
+    const excluded = new Set(getCategoryDescendantIds(editingId, categories));
+    return flatCategories.filter(({ category }) => !excluded.has(category.id));
+  }, [editingId, flatCategories, categories]);
+
+  // 検索フィルター（名前一致 + 親も表示）
+  const visibleCategoryIds = useMemo(() => {
+    if (!searchLower) return null; // null = 全表示
+    const matched = new Set<number>();
+    for (const cat of categories) {
+      if (cat.name.toLowerCase().includes(searchLower)) {
+        matched.add(cat.id);
+        // 祖先を追加
+        let pid = cat.parent_id;
+        while (pid !== null) {
+          matched.add(pid);
+          pid = categories.find((c) => c.id === pid)?.parent_id ?? null;
+        }
+      }
+    }
+    return matched;
+  }, [searchLower, categories]);
+
   const handleAdd = async () => {
     if (!db || !newName.trim()) return;
-    await createCategory(db, newName.trim(), newColor);
+    await createCategory(db, newName.trim(), newColor, newParentId);
     setNewName('');
-    setIsAdding(false);
+    setAddingParentId(undefined);
+    setNewParentId(null);
   };
 
   const handleDelete = async (id: number) => {
@@ -62,15 +97,16 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     await fetchVideos();
   };
 
-  const startEdit = (id: number, name: string, color: string) => {
+  const startEdit = (id: number, name: string, color: string, parentId: number | null) => {
     setEditingId(id);
     setEditName(name);
     setEditColor(color);
+    setEditParentId(parentId);
   };
 
   const handleEditSave = async () => {
     if (!db || !editingId || !editName.trim()) return;
-    await updateCategory(db, editingId, editName.trim(), editColor);
+    await updateCategory(db, editingId, editName.trim(), editColor, editParentId);
     await fetchVideos();
     setEditingId(null);
   };
@@ -117,11 +153,6 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     tags: tags.filter((t) => t.tag_category_id === tc.id),
   }));
   const uncategorizedTags = tags.filter((t) => t.tag_category_id === null);
-
-  // フィルター済みリスト
-  const filteredCategories = searchLower
-    ? categories.filter((c) => c.name.toLowerCase().includes(searchLower))
-    : categories;
 
   const filteredTagsByCategory = searchLower
     ? tagsByCategory
@@ -222,6 +253,172 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     </div>
   );
 
+  // カテゴリツリーの各行をレンダリング
+  const renderCategoryRows = () => {
+    const rows: React.ReactNode[] = [];
+    for (const { category: cat, depth } of flatCategories) {
+      if (visibleCategoryIds !== null && !visibleCategoryIds.has(cat.id)) continue;
+      const indent = depth * 12;
+
+      if (editingId === cat.id) {
+        rows.push(
+          <div key={`edit-${cat.id}`} style={{ paddingLeft: indent }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
+            <input
+              autoFocus
+              className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleEditSave();
+                if (e.key === 'Escape') setEditingId(null);
+              }}
+            />
+            <div className="flex gap-1 flex-wrap">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`w-4 h-4 rounded-full transition-transform ${
+                    editColor === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800' : ''
+                  }`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setEditColor(c)}
+                />
+              ))}
+            </div>
+            <Select
+              variant="sm"
+              value={editParentId ?? ''}
+              onChange={(e) => setEditParentId(e.target.value === '' ? null : Number(e.target.value))}
+            >
+              <option value="">親なし（ルート）</option>
+              {editParentOptions.map(({ category: opt, depth: d }) => (
+                <option key={opt.id} value={opt.id}>
+                  {'　'.repeat(d)}{opt.name}
+                </option>
+              ))}
+            </Select>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+                onClick={handleEditSave}
+              >
+                保存
+              </button>
+              <button
+                type="button"
+                className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                onClick={() => setEditingId(null)}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        );
+      } else {
+        rows.push(
+          <div key={cat.id} style={{ paddingLeft: indent }} className="group flex items-center gap-0.5">
+            {/* 子階層インジケーター */}
+            {depth > 0 && (
+              <span className="text-gray-300 dark:text-gray-600 text-xs mr-0.5 shrink-0">└</span>
+            )}
+            <button
+              type="button"
+              className={`flex-1 text-left px-2 py-1.5 rounded text-xs flex items-center gap-1.5 transition-colors min-w-0 ${
+                selectedCategoryId === cat.id
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+              onClick={() => onSelectCategory(cat.id)}
+            >
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+              <span className="truncate">{cat.name}</span>
+            </button>
+            <button
+              type="button"
+              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-green-500 text-xs px-0.5 shrink-0"
+              onClick={() => {
+                setAddingParentId(cat.id);
+                setNewParentId(cat.id);
+                setNewName('');
+                setNewColor(COLORS[5]);
+              }}
+              title="子カテゴリを追加"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
+              onClick={() => startEdit(cat.id, cat.name, cat.color, cat.parent_id)}
+              title="編集"
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
+              onClick={() => handleDelete(cat.id)}
+              title="削除"
+            >
+              ×
+            </button>
+          </div>
+        );
+      }
+
+      // 子カテゴリとして追加フォームをここに挿入
+      if (addingParentId === cat.id) {
+        rows.push(
+          <div key={`add-child-${cat.id}`} style={{ paddingLeft: indent + 12 }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
+            <input
+              autoFocus
+              className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+              placeholder="サブカテゴリ名"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAdd();
+                if (e.key === 'Escape') { setAddingParentId(undefined); setNewName(''); }
+              }}
+            />
+            <div className="flex gap-1 flex-wrap">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`w-4 h-4 rounded-full transition-transform ${
+                    newColor === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-900' : ''
+                  }`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setNewColor(c)}
+                />
+              ))}
+            </div>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+                onClick={handleAdd}
+              >
+                追加
+              </button>
+              <button
+                type="button"
+                className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                onClick={() => { setAddingParentId(undefined); setNewName(''); }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        );
+      }
+    }
+    return rows;
+  };
+
   return (
     <aside className="flex flex-col gap-0.5 w-full min-w-0">
       {/* フリーワード検索 */}
@@ -277,86 +474,10 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         未設定
       </button>
 
-      {filteredCategories.map((cat) => (
-        <div key={cat.id}>
-          {editingId === cat.id ? (
-            <div className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
-              <input
-                autoFocus
-                className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleEditSave();
-                  if (e.key === 'Escape') setEditingId(null);
-                }}
-              />
-              <div className="flex gap-1 flex-wrap">
-                {COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`w-4 h-4 rounded-full transition-transform ${
-                      editColor === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800' : ''
-                    }`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => setEditColor(c)}
-                  />
-                ))}
-              </div>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
-                  onClick={handleEditSave}
-                >
-                  保存
-                </button>
-                <button
-                  type="button"
-                  className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  onClick={() => setEditingId(null)}
-                >
-                  キャンセル
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="group flex items-center gap-0.5">
-              <button
-                type="button"
-                className={`flex-1 text-left px-2 py-1.5 rounded text-xs flex items-center gap-1.5 transition-colors ${
-                  selectedCategoryId === cat.id
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-                onClick={() => onSelectCategory(cat.id)}
-              >
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                <span className="truncate">{cat.name}</span>
-              </button>
-              <button
-                type="button"
-                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
-                onClick={() => startEdit(cat.id, cat.name, cat.color)}
-                title="編集"
-              >
-                ✎
-              </button>
-              <button
-                type="button"
-                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
-                onClick={() => handleDelete(cat.id)}
-                title="削除"
-              >
-                ×
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+      {renderCategoryRows()}
 
-      {isAdding ? (
+      {/* ルートカテゴリ追加フォーム */}
+      {addingParentId === null ? (
         <div className="mt-1 flex flex-col gap-1.5 px-1">
           <input
             autoFocus
@@ -366,7 +487,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleAdd();
-              if (e.key === 'Escape') setIsAdding(false);
+              if (e.key === 'Escape') { setAddingParentId(undefined); setNewName(''); }
             }}
           />
           <div className="flex gap-1 flex-wrap">
@@ -393,21 +514,21 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             <button
               type="button"
               className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              onClick={() => { setIsAdding(false); setNewName(''); }}
+              onClick={() => { setAddingParentId(undefined); setNewName(''); }}
             >
               キャンセル
             </button>
           </div>
         </div>
-      ) : (
+      ) : addingParentId === undefined ? (
         <button
           type="button"
           className="text-left px-2 py-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          onClick={() => setIsAdding(true)}
+          onClick={() => { setAddingParentId(null); setNewParentId(null); setNewName(''); setNewColor(COLORS[5]); }}
         >
           + 追加
         </button>
-      )}
+      ) : null}
 
       {/* タグ管理 (カテゴリ別グループ表示) */}
       {(tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0) ? (

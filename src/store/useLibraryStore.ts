@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
 import type { Video, ScannedFile } from '../types';
 import { useSettingsStore } from './useSettingsStore';
-import { useTagStore } from './useTagStore';
+import { useTagStore, getCategoryDescendantIds } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
 
 export type SortBy = 'created_at' | 'duration' | 'rating';
@@ -133,6 +133,7 @@ const CREATE_CATEGORIES_TABLE = `
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL UNIQUE,
     color      TEXT NOT NULL DEFAULT '#6366f1',
+    parent_id  INTEGER REFERENCES categories(id),
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `;
@@ -178,7 +179,7 @@ function escapeLikeDir(dir: string): string {
     .replace(/_/g, '!_');
 }
 
-function buildWhereClause(f: FilterState): { where: string; params: unknown[] } {
+function buildWhereClause(f: FilterState, categories: import('../types').Category[]): { where: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -191,8 +192,10 @@ function buildWhereClause(f: FilterState): { where: string; params: unknown[] } 
     if (f.filterCategoryId === -1) {
       conditions.push('v.category_id IS NULL');
     } else {
-      conditions.push('v.category_id = ?');
-      params.push(f.filterCategoryId);
+      const ids = getCategoryDescendantIds(f.filterCategoryId, categories);
+      const ph = ids.map(() => '?').join(', ');
+      conditions.push(`v.category_id IN (${ph})`);
+      params.push(...ids);
     }
   }
   if (f.filterTagIds.length > 0) {
@@ -305,6 +308,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       try {
         await db.execute('ALTER TABLE videos ADD COLUMN source_url TEXT');
       } catch { /* already exists */ }
+      try {
+        await db.execute('ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)');
+      } catch { /* already exists */ }
       // パフォーマンス最適化: よく使うフィルター/ソートカラムにインデックスを作成
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_rating ON videos(rating)');
@@ -370,7 +376,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const { db, currentPage, pageSize, filterSortBy, filterSortOrder } = get();
     if (!db) return;
 
-    const { where, params: baseParams } = buildWhereClause(get());
+    const { where, params: baseParams } = buildWhereClause(get(), useTagStore.getState().categories);
     const sortCol =
       filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
       filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';
@@ -400,7 +406,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const { db, filterSortBy, filterSortOrder } = get();
     if (!db) return [];
 
-    const { where, params: baseParams } = buildWhereClause(get());
+    const { where, params: baseParams } = buildWhereClause(get(), useTagStore.getState().categories);
     const sortCol =
       filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
       filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';

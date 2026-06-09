@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
-import { useTagStore } from '../../store/useTagStore';
+import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { TagBadge } from './TagBadge';
@@ -168,8 +168,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     if (moveFile) {
       const watchDir = findWatchDir(video.path, watchDirs);
       if (watchDir) {
-        const catName = catId !== null ? categories.find((c) => c.id === catId)?.name : null;
-        const destDir = catName ? `${watchDir}/${catName}` : watchDir;
+        const catPath = catId !== null ? getCategoryPath(catId, categories) : null;
+        const destDir = catPath ? `${watchDir}/${catPath}` : watchDir;
         await moveVideoFile(video.id, destDir);
       }
     }
@@ -435,9 +435,9 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   onChange={(e) => handleCategoryChange(e.target.value)}
                 >
                   <option value="">なし</option>
-                  {categories.map((cat) => (
+                  {flattenCategoryTree(buildCategoryTree(categories)).map(({ category: cat, depth }) => (
                     <option key={cat.id} value={cat.id}>
-                      {cat.name}
+                      {'　'.repeat(depth)}{cat.name}
                     </option>
                   ))}
                 </Select>

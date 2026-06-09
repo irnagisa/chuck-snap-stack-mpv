@@ -2,6 +2,60 @@ import { create } from 'zustand';
 import type Database from '@tauri-apps/plugin-sql';
 import type { Tag, Category, TagCategory } from '../types';
 
+export interface CategoryNode extends Category {
+  children: CategoryNode[];
+}
+
+export function buildCategoryTree(categories: Category[]): CategoryNode[] {
+  const map = new Map<number, CategoryNode>();
+  const roots: CategoryNode[] = [];
+  for (const cat of categories) {
+    map.set(cat.id, { ...cat, children: [] });
+  }
+  for (const cat of categories) {
+    const node = map.get(cat.id)!;
+    if (cat.parent_id === null) {
+      roots.push(node);
+    } else {
+      const parent = map.get(cat.parent_id);
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        roots.push(node); // 孤立ノード → ルート扱い
+      }
+    }
+  }
+  return roots;
+}
+
+export function flattenCategoryTree(nodes: CategoryNode[], depth = 0): { category: Category; depth: number }[] {
+  const result: { category: Category; depth: number }[] = [];
+  for (const node of nodes) {
+    result.push({ category: node, depth });
+    result.push(...flattenCategoryTree(node.children, depth + 1));
+  }
+  return result;
+}
+
+export function getCategoryDescendantIds(categoryId: number, categories: Category[]): number[] {
+  const result: number[] = [categoryId];
+  for (const cat of categories) {
+    if (cat.parent_id === categoryId) {
+      result.push(...getCategoryDescendantIds(cat.id, categories));
+    }
+  }
+  return result;
+}
+
+export function getCategoryPath(categoryId: number | null, categories: Category[]): string | null {
+  if (categoryId === null) return null;
+  const cat = categories.find((c) => c.id === categoryId);
+  if (!cat) return null;
+  if (cat.parent_id === null) return cat.name;
+  const parentPath = getCategoryPath(cat.parent_id, categories);
+  return parentPath ? `${parentPath}/${cat.name}` : cat.name;
+}
+
 interface TagState {
   tags: Tag[];
   categories: Category[];
@@ -23,8 +77,8 @@ interface TagActions {
   createTagCategory: (db: Database, name: string) => Promise<TagCategory>;
   updateTagCategory: (db: Database, id: number, name: string) => Promise<void>;
   deleteTagCategory: (db: Database, id: number) => Promise<void>;
-  createCategory: (db: Database, name: string, color: string) => Promise<Category>;
-  updateCategory: (db: Database, categoryId: number, name: string, color: string) => Promise<void>;
+  createCategory: (db: Database, name: string, color: string, parentId?: number | null) => Promise<Category>;
+  updateCategory: (db: Database, categoryId: number, name: string, color: string, parentId?: number | null) => Promise<void>;
   deleteCategory: (db: Database, categoryId: number) => Promise<void>;
   addTagToVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
   removeTagFromVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
@@ -180,10 +234,14 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     await get().fetchTags(db);
   },
 
-  createCategory: async (db, name, color) => {
-    const result = await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, color]);
+  createCategory: async (db, name, color, parentId) => {
+    const pid = parentId ?? null;
+    const result = await db.execute(
+      'INSERT OR IGNORE INTO categories (name, color, parent_id) VALUES (?, ?, ?)',
+      [name, color, pid]
+    );
     if (result.rowsAffected > 0 && result.lastInsertId != null) {
-      const category: Category = { id: result.lastInsertId, name, color, created_at: new Date().toISOString() };
+      const category: Category = { id: result.lastInsertId, name, color, parent_id: pid, created_at: new Date().toISOString() };
       set((state) => {
         if (state.categories.some((c) => c.id === category.id)) return state;
         const categories = [...state.categories];
@@ -198,12 +256,21 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     }
   },
 
-  updateCategory: async (db, categoryId, name, color) => {
-    await db.execute('UPDATE categories SET name = ?, color = ? WHERE id = ?', [name, color, categoryId]);
+  updateCategory: async (db, categoryId, name, color, parentId) => {
+    if (parentId !== undefined) {
+      await db.execute(
+        'UPDATE categories SET name = ?, color = ?, parent_id = ? WHERE id = ?',
+        [name, color, parentId, categoryId]
+      );
+    } else {
+      await db.execute('UPDATE categories SET name = ?, color = ? WHERE id = ?', [name, color, categoryId]);
+    }
     await get().fetchCategories(db);
   },
 
   deleteCategory: async (db, categoryId) => {
+    // 子カテゴリをルートに昇格（parent_id = NULL）
+    await db.execute('UPDATE categories SET parent_id = NULL WHERE parent_id = ?', [categoryId]);
     await db.execute('UPDATE videos SET category_id = NULL WHERE category_id = ?', [categoryId]);
     await db.execute('DELETE FROM categories WHERE id = ?', [categoryId]);
     await get().fetchCategories(db);

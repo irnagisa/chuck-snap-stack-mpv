@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useTagStore } from '../../store/useTagStore';
+import { useState, useMemo } from 'react';
+import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 
 interface Props {
@@ -20,6 +20,7 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
 export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
   const { categories, setCategoryMultiple } = useTagStore();
   const { db, fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
+  const flatCategories = useMemo(() => flattenCategoryTree(buildCategoryTree(categories)), [categories]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null | 'unset'>('unset');
   const [moveFiles, setMoveFiles] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -31,15 +32,15 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
       await setCategoryMultiple(db, videoIds, selectedCategoryId);
 
       if (moveFiles) {
-        const catName = typeof selectedCategoryId === 'number'
-          ? categories.find((c) => c.id === selectedCategoryId)?.name
+        const catPath = typeof selectedCategoryId === 'number'
+          ? getCategoryPath(selectedCategoryId, categories)
           : null;
         for (const videoId of videoIds) {
           const video = videos.find((v) => v.id === videoId);
           if (!video) continue;
           const watchDir = findWatchDir(video.path, watchDirs);
           if (!watchDir) continue;
-          const destDir = catName ? `${watchDir}/${catName}` : watchDir;
+          const destDir = catPath ? `${watchDir}/${catPath}` : watchDir;
           await moveVideoFile(videoId, destDir);
         }
       }
@@ -75,10 +76,11 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
             <span className="text-sm text-gray-500 dark:text-gray-400">カテゴリなし</span>
           </label>
 
-          {categories.map((cat) => (
+          {flatCategories.map(({ category: cat, depth }) => (
             <label
               key={cat.id}
               className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 rounded"
+              style={{ paddingLeft: `${8 + depth * 12}px` }}
             >
               <input
                 type="radio"
