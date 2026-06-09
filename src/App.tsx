@@ -664,7 +664,6 @@ function App() {
                   videos={videos}
                   currentVideoId={currentVideo?.id ?? null}
                   onPlay={handlePlay}
-                  onViewImage={setViewingImage}
                   onShowDetail={openDetailVideo}
                   onAddToPlaylist={openAddToPlaylist}
                   selectedIds={selectedVideoIds}
@@ -713,6 +712,7 @@ function App() {
               closeDetailVideo();
               fetchVideos();
             }}
+            onViewImage={setViewingImage}
           />
         </div>
       )}

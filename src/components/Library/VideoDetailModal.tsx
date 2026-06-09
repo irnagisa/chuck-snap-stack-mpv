@@ -16,6 +16,7 @@ const COLORS = [
 interface Props {
   video: Video;
   onClose: () => void;
+  onViewImage?: (video: Video) => void;
 }
 
 function formatFileSize(bytes: number): string {
@@ -41,10 +42,10 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
   return null;
 }
 
-export function VideoDetailModal({ video, onClose }: Props) {
+export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
     useTagStore();
-  const { db, fetchVideos, updateVideo, watchDirs, moveVideoFile } = useLibraryStore();
+  const { db, fetchVideos, updateVideo, watchDirs, moveVideoFile, rescanVideo } = useLibraryStore();
   const { play } = usePlayerStore();
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
@@ -60,6 +61,8 @@ export function VideoDetailModal({ video, onClose }: Props) {
   const [tagInputFocused, setTagInputFocused] = useState(false);
   const [thumbTimestamp, setThumbTimestamp] = useState('5');
   const [isCapturingThumb, setIsCapturingThumb] = useState(false);
+  const [isRescanning, setIsRescanning] = useState(false);
+  const [localMediaType, setLocalMediaType] = useState<'video' | 'audio' | 'image'>(video.media_type ?? 'video');
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
   const [isScanningSubs, setIsScanningSubs] = useState(false);
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
@@ -218,9 +221,25 @@ export function VideoDetailModal({ video, onClose }: Props) {
     }
   };
 
-  const mediaTypeLabel =
-    video.media_type === 'image' ? '画像' :
-    video.media_type === 'audio' ? '音声' : '動画';
+  const handleMediaTypeChange = async (value: string) => {
+    const mt = value as 'video' | 'audio' | 'image';
+    setLocalMediaType(mt);
+    await updateVideo(video.id, { media_type: mt });
+  };
+
+  const handleRescan = async () => {
+    setIsRescanning(true);
+    try {
+      await rescanVideo(video.id);
+      const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+      const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+      const mt: 'video' | 'audio' | 'image' = imageExts.includes(ext) ? 'image' : audioExts.includes(ext) ? 'audio' : 'video';
+      setLocalMediaType(mt);
+    } finally {
+      setIsRescanning(false);
+    }
+  };
 
   return (
     <>
@@ -274,7 +293,25 @@ export function VideoDetailModal({ video, onClose }: Props) {
                 className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
                 onClick={handlePlay}
               >
-                ▶ 再生
+                {video.media_type === 'image' ? '🔍 拡大表示' : '▶ 再生'}
+              </button>
+              {video.media_type === 'image' && onViewImage && (
+                <button
+                  type="button"
+                  className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
+                  onClick={() => onViewImage(video)}
+                >
+                  ビューア
+                </button>
+              )}
+              <button
+                type="button"
+                className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium disabled:opacity-50"
+                onClick={handleRescan}
+                disabled={isRescanning}
+                title="メディアタイプ・サムネイル・再生時間を再取得"
+              >
+                {isRescanning ? '再スキャン中...' : '再スキャン'}
               </button>
               {video.media_type !== 'image' && (
                 <button
@@ -328,7 +365,14 @@ export function VideoDetailModal({ video, onClose }: Props) {
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
                     メディアタイプ
                   </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">{mediaTypeLabel}</p>
+                  <Select
+                    value={localMediaType}
+                    onChange={(e) => handleMediaTypeChange(e.target.value)}
+                  >
+                    <option value="video">動画</option>
+                    <option value="audio">音声</option>
+                    <option value="image">画像</option>
+                  </Select>
                 </div>
                 {video.duration != null && (
                   <div>

@@ -59,10 +59,11 @@ interface LibraryActions {
   rescanAllDirs: (targetDir?: string) => Promise<void>;
   removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
+  rescanVideo: (videoId: number) => Promise<void>;
   pauseThumbnails: () => void;
   resumeThumbnails: () => void;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
-  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path'>>) => Promise<void>;
+  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
@@ -302,6 +303,27 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await db.execute('CREATE INDEX IF NOT EXISTS idx_video_tags_video_id ON video_tags(video_id)');
       set({ db, isDbReady: true });
       await useSettingsStore.getState().loadSettings(db);
+      // 既存行の media_type を拡張子から修正 (settings テーブル作成後に一度だけ実行)
+      const migrated = await db.select<{ value: string }[]>(
+        "SELECT value FROM settings WHERE key = 'migration_media_type_fix'"
+      );
+      if (!migrated[0] || migrated[0].value !== '1') {
+        await db.execute(
+          `UPDATE videos SET media_type = 'image' WHERE media_type = 'video' AND (` +
+          `LOWER(path) LIKE '%.jpg' OR LOWER(path) LIKE '%.jpeg' OR LOWER(path) LIKE '%.png' OR ` +
+          `LOWER(path) LIKE '%.gif' OR LOWER(path) LIKE '%.webp' OR LOWER(path) LIKE '%.bmp' OR ` +
+          `LOWER(path) LIKE '%.tiff' OR LOWER(path) LIKE '%.heic' OR LOWER(path) LIKE '%.avif')`
+        );
+        await db.execute(
+          `UPDATE videos SET media_type = 'audio' WHERE media_type = 'video' AND (` +
+          `LOWER(path) LIKE '%.mp3' OR LOWER(path) LIKE '%.flac' OR LOWER(path) LIKE '%.aac' OR ` +
+          `LOWER(path) LIKE '%.wav' OR LOWER(path) LIKE '%.ogg' OR LOWER(path) LIKE '%.opus' OR ` +
+          `LOWER(path) LIKE '%.m4a' OR LOWER(path) LIKE '%.wma')`
+        );
+        await db.execute(
+          "INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_media_type_fix', '1')"
+        );
+      }
       await get().fetchVideos();
       await useTagStore.getState().init(db);
       await usePlaylistStore.getState().init(db);
@@ -760,6 +782,73 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }
   },
 
+  rescanVideo: async (videoId: number) => {
+    const { db } = get();
+    if (!db) return;
+
+    const rows = await db.select<{ id: number; path: string }[]>(
+      'SELECT id, path FROM videos WHERE id = ?',
+      [videoId]
+    );
+    if (!rows[0]) return;
+    const video = rows[0];
+
+    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+    const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+    const isImage = imageExts.includes(ext);
+    const isAudio = audioExts.includes(ext);
+    const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
+
+    if (isImage) {
+      await db.execute(
+        'UPDATE videos SET media_type = ?, thumbnail = ?, duration = NULL, has_audio = 0 WHERE id = ?',
+        [mediaType, video.path, videoId]
+      );
+      await get().fetchVideos();
+      return;
+    }
+
+    const cacheDir = await appCacheDir();
+    const thumbDir = await join(cacheDir, 'thumbnails');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+    const hash = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+
+    try {
+      if (isAudio) {
+        try {
+          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+            'generate_thumbnail', { videoPath: video.path, outputPath }
+          );
+          await db.execute(
+            'UPDATE videos SET media_type = ?, thumbnail = ?, duration = ?, has_audio = 1 WHERE id = ?',
+            [mediaType, result.thumbnail_path, result.duration ?? null, videoId]
+          );
+        } catch {
+          await db.execute(
+            'UPDATE videos SET media_type = ?, thumbnail = NULL, duration = NULL, has_audio = 1 WHERE id = ?',
+            [mediaType, videoId]
+          );
+        }
+      } else {
+        const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+          'generate_thumbnail', { videoPath: video.path, outputPath }
+        );
+        await db.execute(
+          'UPDATE videos SET media_type = ?, thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
+          [mediaType, result.thumbnail_path, result.duration ?? null, result.has_audio ? 1 : 0, videoId]
+        );
+      }
+    } catch (e) {
+      console.warn('rescanVideo failed:', e);
+    }
+
+    await get().fetchVideos();
+  },
+
   updateProgress: async (videoId: number, progress: number) => {
     const { db } = get();
     if (!db) return;
@@ -774,7 +863,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }));
   },
 
-  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path'>>) => {
+  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type'>>) => {
     const { db } = get();
     if (!db) return;
     const fields = Object.keys(updates) as (keyof typeof updates)[];

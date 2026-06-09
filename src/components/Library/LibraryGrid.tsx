@@ -14,7 +14,6 @@ interface VideoCardProps {
   category: Category | null;
   idx: number;
   onPlay: (video: Video) => void;
-  onViewImage: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
   onDelete: (video: Video) => void;
@@ -29,7 +28,6 @@ const VideoCard = memo(function VideoCard({
   category,
   idx,
   onPlay,
-  onViewImage,
   onShowDetail,
   onAddToPlaylist,
   onDelete,
@@ -37,7 +35,7 @@ const VideoCard = memo(function VideoCard({
 }: VideoCardProps) {
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
-  const handlePrimaryClick = () => isImage ? onViewImage(v) : onShowDetail(v);
+  const handlePrimaryClick = () => onShowDetail(v);
   const progressPercent =
     v.duration && v.duration > 0
       ? Math.min((v.progress / v.duration) * 100, 100)
@@ -212,7 +210,6 @@ interface Props {
   videos: Video[];
   currentVideoId: number | null;
   onPlay: (video: Video) => void;
-  onViewImage: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
   selectedIds: Set<number>;
@@ -226,7 +223,6 @@ export function LibraryGrid({
   videos,
   currentVideoId,
   onPlay,
-  onViewImage,
   onShowDetail,
   onAddToPlaylist,
   selectedIds,
@@ -344,7 +340,6 @@ export function LibraryGrid({
                           category={v.category_id != null ? categoryMap[v.category_id] : null}
                           idx={idx}
                           onPlay={onPlay}
-                          onViewImage={onViewImage}
                           onShowDetail={onShowDetail}
                           onAddToPlaylist={onAddToPlaylist}
                           onDelete={setDeleteTarget}
