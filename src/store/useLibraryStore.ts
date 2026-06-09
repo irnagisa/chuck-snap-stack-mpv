@@ -131,9 +131,10 @@ const CREATE_VIDEO_TAGS_TABLE = `
 const CREATE_CATEGORIES_TABLE = `
   CREATE TABLE IF NOT EXISTS categories (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL UNIQUE,
+    name       TEXT NOT NULL,
     color      TEXT NOT NULL DEFAULT '#6366f1',
     parent_id  INTEGER REFERENCES categories(id),
+    icon       TEXT DEFAULT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `;
@@ -252,6 +253,54 @@ function buildWhereClause(f: FilterState, categories: import('../types').Categor
 
 const THUMBNAIL_CONCURRENCY = 3;
 
+/**
+ * ファイルパスの親ディレクトリがrootDir配下にある場合、相対ディレクトリパスを返す。
+ * - ルート直下: null
+ * - サブディレクトリ配下: "Movies/Action" 形式の文字列
+ * - rootDir配下でない: undefined
+ */
+function getRelativeDirPath(filePath: string, rootDir: string): string | null | undefined {
+  const normFile = filePath.replace(/\\/g, '/');
+  const normRoot = rootDir.replace(/\\/g, '/').replace(/\/$/, '');
+  const dir = normFile.substring(0, normFile.lastIndexOf('/'));
+  if (dir === normRoot) return null;
+  if (dir.startsWith(normRoot + '/')) return dir.slice(normRoot.length + 1);
+  return undefined;
+}
+
+/**
+ * "Movies/Action" のような相対ディレクトリパスからカテゴリ階層を再帰的に作成し、
+ * 末端カテゴリのIDを返す。既存カテゴリは (name, parent_id) で照合して再利用する。
+ */
+async function buildCategoryHierarchy(
+  db: Database,
+  relDirPath: string,
+  color = '#6366f1',
+): Promise<number | null> {
+  const segments = relDirPath.split('/').filter(Boolean);
+  if (segments.length === 0) return null;
+  let parentId: number | null = null;
+  let leafId: number | null = null;
+  for (const name of segments) {
+    const existing: { id: number }[] = parentId == null
+      ? await db.select<{ id: number }[]>(
+          'SELECT id FROM categories WHERE name = ? AND parent_id IS NULL', [name])
+      : await db.select<{ id: number }[]>(
+          'SELECT id FROM categories WHERE name = ? AND parent_id = ?', [name, parentId]);
+    if (existing[0]) {
+      leafId = existing[0].id;
+    } else {
+      const result = await db.execute(
+        'INSERT INTO categories (name, color, icon, parent_id) VALUES (?, ?, ?, ?)',
+        [name, color, 'folder', parentId],
+      );
+      leafId = result.lastInsertId ?? null;
+    }
+    parentId = leafId;
+  }
+  return leafId;
+}
+
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
   totalCount: 0,
@@ -348,6 +397,34 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           "INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_media_type_fix', '1')"
         );
       }
+      // Migration: categories.name の UNIQUE 制約を (name, parent_id) のペア単位に変更し、
+      // 同じ名前でも異なる親を持つカテゴリを作成できるようにする
+      const catMigrated = await db.select<{ value: string }[]>(
+        "SELECT value FROM settings WHERE key = 'migration_categories_perparent_unique'"
+      );
+      if (!catMigrated[0] || catMigrated[0].value !== '1') {
+        try {
+          await db.execute('BEGIN');
+          await db.execute(`CREATE TABLE categories_new (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL,
+            color      TEXT NOT NULL DEFAULT '#6366f1',
+            parent_id  INTEGER REFERENCES categories_new(id),
+            icon       TEXT DEFAULT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`);
+          await db.execute('INSERT INTO categories_new SELECT id, name, color, parent_id, icon, created_at FROM categories');
+          await db.execute('DROP TABLE categories');
+          await db.execute('ALTER TABLE categories_new RENAME TO categories');
+          await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_categories_perparent_unique', '1')");
+          await db.execute('COMMIT');
+        } catch {
+          await db.execute('ROLLBACK');
+        }
+      }
+      // ルート直下: name の一意性、子カテゴリ: (name, parent_id) の一意性を保証する
+      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique_root ON categories(name) WHERE parent_id IS NULL');
+      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique_child ON categories(name, parent_id) WHERE parent_id IS NOT NULL');
       await get().fetchVideos();
       await useTagStore.getState().init(db);
       await usePlaylistStore.getState().init(db);
@@ -515,22 +592,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
       const categoryIdMap: Record<string, number> = {};
       if (useDirectoryAsCategory) {
-        const uniqueDirNames = [...new Set(files.map((f) => f.parent_dir_name).filter((n): n is string => n != null))];
-        await db.execute('BEGIN');
-        try {
-          for (const name of uniqueDirNames) {
-            await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, '#6366f1']);
+        // ユニークな相対ディレクトリパスを収集し、深さ昇順で親→子の順に作成
+        const relPaths = [...new Set(
+          files
+            .map((f) => getRelativeDirPath(f.path, canonicalPath))
+            .filter((p): p is string => p != null && p !== undefined),
+        )];
+        if (relPaths.length > 0) {
+          relPaths.sort((a, b) => a.split('/').length - b.split('/').length);
+          for (const relPath of relPaths) {
+            const leafId = await buildCategoryHierarchy(db, relPath);
+            if (leafId != null) categoryIdMap[relPath] = leafId;
           }
-          await db.execute('COMMIT');
-        } catch (e) {
-          await db.execute('ROLLBACK');
-          throw e;
-        }
-        for (const name of uniqueDirNames) {
-          const rows = await db.select<{ id: number }[]>('SELECT id FROM categories WHERE name = ?', [name]);
-          if (rows[0]) categoryIdMap[name] = rows[0].id;
-        }
-        if (uniqueDirNames.length > 0) {
           await useTagStore.getState().init(db);
         }
       }
@@ -544,9 +617,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           const ph = batch.map(() => '(?, ?, ?, ?)').join(', ');
           const params: unknown[] = [];
           for (const file of batch) {
-            const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
-              ? (categoryIdMap[file.parent_dir_name] ?? null)
-              : null;
+            const relPath = useDirectoryAsCategory
+              ? getRelativeDirPath(file.path, canonicalPath)
+              : undefined;
+            const categoryId = relPath ? (categoryIdMap[relPath] ?? null) : null;
             params.push(file.path, file.title, categoryId, file.media_type ?? 'video');
           }
           await db.execute(
@@ -561,6 +635,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
       set({ currentPage: 1 });
       await get().fetchVideos();
+      // スキャン完了後に必ずカテゴリ一覧を再取得（フォルダ名→カテゴリ変換を反映）
+      await useTagStore.getState().fetchCategories(db);
       await get().generateThumbnails();
     } finally {
       set({ isScanning: false });
@@ -924,51 +1000,44 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       videoIds
     );
 
-    const normalizeDir = (p: string) => p.replace(/\\/g, '/').replace(/\/$/, '');
-    const rootDirs = new Set(watchDirs.map(normalizeDir));
+    const rootDirs = watchDirs.map((d) => d.replace(/\\/g, '/').replace(/\/$/, ''));
 
-    const getParentDirName = (filePath: string): string | null => {
+    // ファイルパスからwatchDirsを基準にした相対ディレクトリパスを取得
+    const getRelPath = (filePath: string): string | null => {
+      for (const root of rootDirs) {
+        const rel = getRelativeDirPath(filePath, root);
+        if (rel !== undefined) return rel; // null: ルート直下, string: サブディレクトリ
+      }
+      // watchDirs に含まれない場合は immediate parent 名をフォールバックとして使用
       const parts = filePath.replace(/\\/g, '/').split('/');
       parts.pop();
-      const parentPath = parts.join('/');
-      if (rootDirs.has(parentPath)) return null;
       return parts[parts.length - 1] || null;
     };
 
-    const uniqueDirNames = [...new Set(
-      rows.map((r) => getParentDirName(r.path)).filter((n): n is string => n != null)
+    // ユニークな相対パスを収集し、深さ昇順で親→子の順に作成
+    const uniqueRelPaths = [...new Set(
+      rows.map((r) => getRelPath(r.path)).filter((p): p is string => p != null),
     )];
 
-    if (uniqueDirNames.length === 0) {
+    if (uniqueRelPaths.length === 0) {
       await get().fetchVideos();
       return;
     }
 
-    // バッチ INSERT: N 回の個別 INSERT を 1 回にまとめる
-    const insertPh = uniqueDirNames.map(() => '(?, ?)').join(', ');
-    const insertParams: unknown[] = [];
-    for (const name of uniqueDirNames) insertParams.push(name, '#6366f1');
-    await db.execute(
-      `INSERT OR IGNORE INTO categories (name, color) VALUES ${insertPh}`,
-      insertParams
-    );
-
-    // バッチ SELECT: N 回の個別 SELECT を 1 回にまとめる
-    const selectPh = uniqueDirNames.map(() => '?').join(', ');
-    const catRows = await db.select<{ id: number; name: string }[]>(
-      `SELECT id, name FROM categories WHERE name IN (${selectPh})`,
-      uniqueDirNames
-    );
+    uniqueRelPaths.sort((a, b) => a.split('/').length - b.split('/').length);
     const categoryIdMap: Record<string, number> = {};
-    for (const row of catRows) categoryIdMap[row.name] = row.id;
+    for (const relPath of uniqueRelPaths) {
+      const leafId = await buildCategoryHierarchy(db, relPath);
+      if (leafId != null) categoryIdMap[relPath] = leafId;
+    }
 
-    // 動画の category_id を一括更新 (トランザクションでバッチ化)
+    // 動画の category_id を一括更新
     await db.execute('BEGIN');
     try {
       for (const row of rows) {
-        const dirName = getParentDirName(row.path);
-        if (dirName && categoryIdMap[dirName] != null) {
-          await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryIdMap[dirName], row.id]);
+        const relPath = getRelPath(row.path);
+        if (relPath && categoryIdMap[relPath] != null) {
+          await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryIdMap[relPath], row.id]);
         }
       }
       await db.execute('COMMIT');
@@ -977,7 +1046,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       throw e;
     }
 
-    await useTagStore.getState().init(db);
+    await useTagStore.getState().fetchCategories(db);
     await get().fetchVideos();
   },
 

@@ -254,7 +254,9 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
       });
       return category;
     } else {
-      const rows = await db.select<Category[]>('SELECT * FROM categories WHERE name = ?', [name]);
+      const rows = pid != null
+        ? await db.select<Category[]>('SELECT * FROM categories WHERE name = ? AND parent_id = ?', [name, pid])
+        : await db.select<Category[]>('SELECT * FROM categories WHERE name = ? AND parent_id IS NULL', [name]);
       return rows[0];
     }
   },

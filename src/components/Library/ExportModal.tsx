@@ -94,8 +94,8 @@ export function ExportModal({ onClose }: Props) {
 
         for (const row of backup.categories ?? []) {
           await db.execute(
-            'INSERT OR IGNORE INTO categories (id, name, color, created_at) VALUES (?, ?, ?, ?)',
-            [row.id, row.name, row.color, row.created_at]
+            'INSERT OR IGNORE INTO categories (id, name, color, parent_id, icon, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [row.id, row.name, row.color, row.parent_id ?? null, row.icon ?? null, row.created_at]
           );
         }
         for (const row of backup.tags ?? []) {
