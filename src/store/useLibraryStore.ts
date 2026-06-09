@@ -593,15 +593,25 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   removeWatchDir: async (path: string) => {
     const { db, filterWatchDir } = get();
     if (!db) return;
+    // フォルダ配下の動画を取得して削除
+    const videos = await db.select<{ id: number }[]>(
+      'SELECT id FROM videos WHERE path LIKE ?',
+      [path + '/%']
+    );
+    if (videos.length > 0) {
+      const ids = videos.map((v) => v.id);
+      const ph = ids.map(() => '?').join(',');
+      await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+      await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+      await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+    }
     await db.execute('DELETE FROM watch_dirs WHERE path = ?', [path]);
     await invoke('stop_watching', { path }).catch(() => {});
     set((state) => ({
       watchDirs: state.watchDirs.filter((d) => d !== path),
       filterWatchDir: state.filterWatchDir === path ? null : state.filterWatchDir,
     }));
-    if (filterWatchDir === path) {
-      await get().fetchVideos();
-    }
+    await get().fetchVideos();
   },
 
   pauseThumbnails: () => {
