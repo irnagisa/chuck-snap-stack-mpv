@@ -154,11 +154,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     },
 
     playWithQueue: async (videos: Video[], startIndex = 0) => {
-      if (videos.length === 0) return;
+      // 画像は mpv 非対応のためキューから除外する
+      const playable = videos.filter((v) => v.media_type !== 'image');
+      if (playable.length === 0) return;
       const { isShuffle, isLooping } = get();
 
-      let queue = [...videos];
-      let idx = Math.max(0, Math.min(startIndex, videos.length - 1));
+      // startIndex が指す動画を playable 内で再探索する
+      const targetId = videos[Math.max(0, Math.min(startIndex, videos.length - 1))]?.id;
+      const playableIdx = targetId != null ? playable.findIndex((v) => v.id === targetId) : -1;
+
+      let queue = [...playable];
+      let idx = Math.max(0, playableIdx >= 0 ? playableIdx : 0);
       let originalQueue: Video[] = [];
 
       if (isShuffle && videos.length > 1) {
@@ -332,7 +338,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
     playShuffleAll: async () => {
       const { isLooping } = get();
-      const allVideos = await useLibraryStore.getState().fetchAllForShuffle();
+      const allVideos = (await useLibraryStore.getState().fetchAllForShuffle())
+        .filter((v) => v.media_type !== 'image');
       if (allVideos.length === 0) return;
 
       const shuffled = [...allVideos];
