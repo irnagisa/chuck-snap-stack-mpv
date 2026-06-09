@@ -311,6 +311,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       try {
         await db.execute('ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)');
       } catch { /* already exists */ }
+      try {
+        await db.execute('ALTER TABLE categories ADD COLUMN icon TEXT DEFAULT NULL');
+      } catch { /* already exists */ }
+      try {
+        await db.execute('ALTER TABLE tags ADD COLUMN icon TEXT DEFAULT NULL');
+      } catch { /* already exists */ }
       // パフォーマンス最適化: よく使うフィルター/ソートカラムにインデックスを作成
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_rating ON videos(rating)');

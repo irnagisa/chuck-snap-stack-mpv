@@ -70,15 +70,15 @@ interface TagActions {
   fetchTagCategories: (db: Database) => Promise<void>;
   fetchVideoTagsForIds: (db: Database, videoIds: number[]) => Promise<void>;
   fetchVideoTags: (db: Database, videoId: number) => Promise<void>;
-  createTag: (db: Database, name: string, color: string) => Promise<Tag>;
-  updateTag: (db: Database, tagId: number, name: string, color: string, tagCategoryId?: number | null) => Promise<void>;
+  createTag: (db: Database, name: string, color: string, icon?: string | null) => Promise<Tag>;
+  updateTag: (db: Database, tagId: number, name: string, color: string, tagCategoryId?: number | null, icon?: string | null) => Promise<void>;
   deleteTag: (db: Database, tagId: number) => Promise<void>;
   setTagCategory: (db: Database, tagId: number, tagCategoryId: number | null) => Promise<void>;
   createTagCategory: (db: Database, name: string) => Promise<TagCategory>;
   updateTagCategory: (db: Database, id: number, name: string) => Promise<void>;
   deleteTagCategory: (db: Database, id: number) => Promise<void>;
-  createCategory: (db: Database, name: string, color: string, parentId?: number | null) => Promise<Category>;
-  updateCategory: (db: Database, categoryId: number, name: string, color: string, parentId?: number | null) => Promise<void>;
+  createCategory: (db: Database, name: string, color: string, parentId?: number | null, icon?: string | null) => Promise<Category>;
+  updateCategory: (db: Database, categoryId: number, name: string, color: string, parentId?: number | null, icon?: string | null) => Promise<void>;
   deleteCategory: (db: Database, categoryId: number) => Promise<void>;
   addTagToVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
   removeTagFromVideo: (db: Database, videoId: number, tagId: number) => Promise<void>;
@@ -121,8 +121,8 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
       return;
     }
     const ph = videoIds.map(() => '?').join(', ');
-    const rows = await db.select<{ video_id: number; id: number; name: string; color: string; tag_category_id: number | null; created_at: string }[]>(
-      `SELECT vt.video_id, t.id, t.name, t.color, t.tag_category_id, t.created_at
+    const rows = await db.select<{ video_id: number; id: number; name: string; color: string; icon: string | null; tag_category_id: number | null; created_at: string }[]>(
+      `SELECT vt.video_id, t.id, t.name, t.color, t.icon, t.tag_category_id, t.created_at
        FROM video_tags vt JOIN tags t ON vt.tag_id = t.id
        WHERE vt.video_id IN (${ph})`,
       videoIds
@@ -134,6 +134,7 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
         id: row.id,
         name: row.name,
         color: row.color,
+        icon: row.icon,
         tag_category_id: row.tag_category_id,
         created_at: row.created_at,
       });
@@ -152,11 +153,12 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     set((state) => ({ videoTags: { ...state.videoTags, [videoId]: tags } }));
   },
 
-  createTag: async (db, name, color) => {
-    const result = await db.execute('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)', [name, color]);
+  createTag: async (db, name, color, icon) => {
+    const iconVal = icon ?? null;
+    const result = await db.execute('INSERT OR IGNORE INTO tags (name, color, icon) VALUES (?, ?, ?)', [name, color, iconVal]);
     if (result.rowsAffected > 0 && result.lastInsertId != null) {
       // 新規挿入: lastInsertId で SELECT を省略
-      const tag: Tag = { id: result.lastInsertId, name, color, tag_category_id: null, created_at: new Date().toISOString() };
+      const tag: Tag = { id: result.lastInsertId, name, color, icon: iconVal, tag_category_id: null, created_at: new Date().toISOString() };
       set((state) => {
         if (state.tags.some((t) => t.id === tag.id)) return state;
         // ソート済み位置に挿入 (append + sort より効率的)
@@ -173,11 +175,11 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     }
   },
 
-  updateTag: async (db, tagId, name, color, tagCategoryId) => {
+  updateTag: async (db, tagId, name, color, tagCategoryId, icon) => {
     if (tagCategoryId !== undefined) {
-      await db.execute('UPDATE tags SET name = ?, color = ?, tag_category_id = ? WHERE id = ?', [name, color, tagCategoryId, tagId]);
+      await db.execute('UPDATE tags SET name = ?, color = ?, tag_category_id = ?, icon = ? WHERE id = ?', [name, color, tagCategoryId, icon ?? null, tagId]);
     } else {
-      await db.execute('UPDATE tags SET name = ?, color = ? WHERE id = ?', [name, color, tagId]);
+      await db.execute('UPDATE tags SET name = ?, color = ?, icon = ? WHERE id = ?', [name, color, icon ?? null, tagId]);
     }
     await get().fetchTags(db);
     // Refresh tags for current page videos
@@ -234,14 +236,15 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     await get().fetchTags(db);
   },
 
-  createCategory: async (db, name, color, parentId) => {
+  createCategory: async (db, name, color, parentId, icon) => {
     const pid = parentId ?? null;
+    const iconVal = icon ?? null;
     const result = await db.execute(
-      'INSERT OR IGNORE INTO categories (name, color, parent_id) VALUES (?, ?, ?)',
-      [name, color, pid]
+      'INSERT OR IGNORE INTO categories (name, color, parent_id, icon) VALUES (?, ?, ?, ?)',
+      [name, color, pid, iconVal]
     );
     if (result.rowsAffected > 0 && result.lastInsertId != null) {
-      const category: Category = { id: result.lastInsertId, name, color, parent_id: pid, created_at: new Date().toISOString() };
+      const category: Category = { id: result.lastInsertId, name, color, icon: iconVal, parent_id: pid, created_at: new Date().toISOString() };
       set((state) => {
         if (state.categories.some((c) => c.id === category.id)) return state;
         const categories = [...state.categories];
@@ -256,14 +259,14 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     }
   },
 
-  updateCategory: async (db, categoryId, name, color, parentId) => {
+  updateCategory: async (db, categoryId, name, color, parentId, icon) => {
     if (parentId !== undefined) {
       await db.execute(
-        'UPDATE categories SET name = ?, color = ?, parent_id = ? WHERE id = ?',
-        [name, color, parentId, categoryId]
+        'UPDATE categories SET name = ?, color = ?, parent_id = ?, icon = ? WHERE id = ?',
+        [name, color, parentId, icon ?? null, categoryId]
       );
     } else {
-      await db.execute('UPDATE categories SET name = ?, color = ? WHERE id = ?', [name, color, categoryId]);
+      await db.execute('UPDATE categories SET name = ?, color = ?, icon = ? WHERE id = ?', [name, color, icon ?? null, categoryId]);
     }
     await get().fetchCategories(db);
   },

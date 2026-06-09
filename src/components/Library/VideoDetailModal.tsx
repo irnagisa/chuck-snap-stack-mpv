@@ -7,6 +7,7 @@ import { usePlayerStore } from '../../store/usePlayerStore';
 import { TagBadge } from './TagBadge';
 import { TranscodeModal } from './TranscodeModal';
 import { Select } from '../common/Select';
+import { IconPicker, MediaIcon } from '../../lib/mediaIcons';
 import type { Video, Tag, SubtitleFile } from '../../types';
 
 const COLORS = [
@@ -58,6 +59,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [renameFile, setRenameFile] = useState(true);
   const [tagInput, setTagInput] = useState('');
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
+  const [newTagIcon, setNewTagIcon] = useState<string | null>('tag');
   const [showTranscode, setShowTranscode] = useState(false);
   const [tagInputFocused, setTagInputFocused] = useState(false);
   const [thumbTimestamp, setThumbTimestamp] = useState('5');
@@ -149,7 +151,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
 
   const handleCreateAndAdd = async () => {
     if (!db || !tagInput.trim()) return;
-    const tag = await createTag(db, tagInput.trim(), newTagColor);
+    const tag = await createTag(db, tagInput.trim(), newTagColor, newTagIcon);
     await addTagToVideo(db, video.id, tag.id);
     setTagInput('');
   };
@@ -490,7 +492,9 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                           className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
                           onClick={() => handleAddTag(tag)}
                         >
-                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                          <span className="shrink-0" style={{ color: tag.color }}>
+                            <MediaIcon icon={tag.icon ?? 'tag'} className="w-3.5 h-3.5" />
+                          </span>
                           <span className="flex-1">{tag.name}</span>
                           {(tagUsageCounts[tag.id] ?? 0) > 0 && (
                             <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
@@ -516,6 +520,10 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                                 onClick={() => setNewTagColor(c)}
                               />
                             ))}
+                          </div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">アイコン:</span>
+                            <IconPicker value={newTagIcon} onChange={setNewTagIcon} />
                           </div>
                           <button
                             type="button"

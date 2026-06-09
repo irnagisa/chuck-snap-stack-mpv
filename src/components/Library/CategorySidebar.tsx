@@ -3,6 +3,7 @@ import React from 'react';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryDescendantIds } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { Select } from '../common/Select';
+import { MediaIcon, IconPicker } from '../../lib/mediaIcons';
 
 const COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -28,18 +29,21 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(COLORS[5]);
   const [newParentId, setNewParentId] = useState<number | null>(null);
+  const [newIcon, setNewIcon] = useState<string | null>('folder');
 
   // カテゴリ編集状態
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState(COLORS[5]);
   const [editParentId, setEditParentId] = useState<number | null>(null);
+  const [editIcon, setEditIcon] = useState<string | null>('folder');
 
   // タグ編集状態
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [editTagName, setEditTagName] = useState('');
   const [editTagColor, setEditTagColor] = useState(COLORS[5]);
   const [editTagCategoryId, setEditTagCategoryId] = useState<number | null>(null);
+  const [editTagIcon, setEditTagIcon] = useState<string | null>('tag');
 
   // タグカテゴリ追加状態
   const [isAddingTagCat, setIsAddingTagCat] = useState(false);
@@ -84,10 +88,11 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
 
   const handleAdd = async () => {
     if (!db || !newName.trim()) return;
-    await createCategory(db, newName.trim(), newColor, newParentId);
+    await createCategory(db, newName.trim(), newColor, newParentId, newIcon);
     setNewName('');
     setAddingParentId(undefined);
     setNewParentId(null);
+    setNewIcon('folder');
   };
 
   const handleDelete = async (id: number) => {
@@ -97,30 +102,32 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     await fetchVideos();
   };
 
-  const startEdit = (id: number, name: string, color: string, parentId: number | null) => {
+  const startEdit = (id: number, name: string, color: string, parentId: number | null, icon: string | null) => {
     setEditingId(id);
     setEditName(name);
     setEditColor(color);
     setEditParentId(parentId);
+    setEditIcon(icon);
   };
 
   const handleEditSave = async () => {
     if (!db || !editingId || !editName.trim()) return;
-    await updateCategory(db, editingId, editName.trim(), editColor, editParentId);
+    await updateCategory(db, editingId, editName.trim(), editColor, editParentId, editIcon);
     await fetchVideos();
     setEditingId(null);
   };
 
-  const startEditTag = (id: number, name: string, color: string, tagCategoryId: number | null) => {
+  const startEditTag = (id: number, name: string, color: string, tagCategoryId: number | null, icon: string | null) => {
     setEditingTagId(id);
     setEditTagName(name);
     setEditTagColor(color);
     setEditTagCategoryId(tagCategoryId);
+    setEditTagIcon(icon);
   };
 
   const handleEditTagSave = async () => {
     if (!db || !editingTagId || !editTagName.trim()) return;
-    await updateTag(db, editingTagId, editTagName.trim(), editTagColor, editTagCategoryId);
+    await updateTag(db, editingTagId, editTagName.trim(), editTagColor, editTagCategoryId, editTagIcon);
     setEditingTagId(null);
   };
 
@@ -199,6 +206,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               />
             ))}
           </div>
+          <IconPicker value={editTagIcon} onChange={setEditTagIcon} />
           <Select
             variant="sm"
             value={editTagCategoryId ?? ''}
@@ -229,13 +237,15 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
       ) : (
         <div className="group flex items-center gap-0.5">
           <span className="flex-1 px-2 py-1 text-xs flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+            <span className="shrink-0" style={{ color: tag.color }}>
+              <MediaIcon icon={tag.icon ?? 'tag'} className="w-3 h-3" />
+            </span>
             <span className="truncate">{tag.name}</span>
           </span>
           <button
             type="button"
             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
-            onClick={() => startEditTag(tag.id, tag.name, tag.color, tag.tag_category_id)}
+            onClick={() => startEditTag(tag.id, tag.name, tag.color, tag.tag_category_id, tag.icon)}
             title="編集"
           >
             ✎
@@ -286,6 +296,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                 />
               ))}
             </div>
+            <IconPicker value={editIcon} onChange={setEditIcon} />
             <Select
               variant="sm"
               value={editParentId ?? ''}
@@ -332,7 +343,9 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               }`}
               onClick={() => onSelectCategory(cat.id)}
             >
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+              <span className="shrink-0" style={{ color: cat.color }}>
+                <MediaIcon icon={cat.icon ?? 'folder'} className="w-3.5 h-3.5" />
+              </span>
               <span className="truncate">{cat.name}</span>
             </button>
             <button
@@ -343,6 +356,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                 setNewParentId(cat.id);
                 setNewName('');
                 setNewColor(COLORS[5]);
+                setNewIcon('folder');
               }}
               title="子カテゴリを追加"
             >
@@ -351,7 +365,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             <button
               type="button"
               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
-              onClick={() => startEdit(cat.id, cat.name, cat.color, cat.parent_id)}
+              onClick={() => startEdit(cat.id, cat.name, cat.color, cat.parent_id, cat.icon)}
               title="編集"
             >
               ✎
@@ -396,6 +410,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                 />
               ))}
             </div>
+            <IconPicker value={newIcon} onChange={setNewIcon} />
             <div className="flex gap-1">
               <button
                 type="button"
@@ -503,6 +518,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               />
             ))}
           </div>
+          <IconPicker value={newIcon} onChange={setNewIcon} />
           <div className="flex gap-1">
             <button
               type="button"
@@ -524,7 +540,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         <button
           type="button"
           className="text-left px-2 py-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          onClick={() => { setAddingParentId(null); setNewParentId(null); setNewName(''); setNewColor(COLORS[5]); }}
+          onClick={() => { setAddingParentId(null); setNewParentId(null); setNewName(''); setNewColor(COLORS[5]); setNewIcon('folder'); }}
         >
           + 追加
         </button>

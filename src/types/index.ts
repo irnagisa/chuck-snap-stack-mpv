@@ -45,6 +45,7 @@ export interface Tag {
   id: number;
   name: string;
   color: string;
+  icon: string | null;
   tag_category_id: number | null;
   created_at: string;
 }
@@ -59,6 +60,7 @@ export interface Category {
   id: number;
   name: string;
   color: string;
+  icon: string | null;
   parent_id: number | null;
   created_at: string;
 }
