@@ -181,7 +181,6 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
 
   const handlePlay = () => {
     play(video);
-    onClose();
   };
 
   const handleCaptureThumb = async () => {
