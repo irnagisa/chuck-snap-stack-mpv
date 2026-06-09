@@ -504,10 +504,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
       set({ currentPage: 1 });
       await get().fetchVideos();
+      await get().generateThumbnails();
     } finally {
       set({ isScanning: false });
     }
-    get().generateThumbnails().catch(() => {});
   },
 
   rescanAllDirs: async (targetDir?: string) => {
@@ -584,7 +584,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
 
       await get().fetchVideos();
-      get().generateThumbnails().catch(() => {});
+      await get().generateThumbnails();
     } finally {
       set({ isScanning: false });
     }
