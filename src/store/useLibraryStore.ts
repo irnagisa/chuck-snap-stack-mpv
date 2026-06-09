@@ -267,6 +267,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   initDb: async () => {
     try {
       const db = await Database.load('sqlite:videos.db');
+      // WAL モードで読み書き同時進行を許可し、バックグラウンド処理中の書き込み競合を緩和する
+      await db.execute('PRAGMA journal_mode=WAL');
       await db.execute(CREATE_VIDEOS_TABLE);
       await db.execute(CREATE_PLAYLISTS_TABLE);
       await db.execute(CREATE_PLAYLIST_ITEMS_TABLE);
@@ -635,6 +637,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
     type VideoUpdate = { id: number; thumbnail?: string; duration?: number | null; has_audio: number };
 
+    // ffmpeg/ffprobe 呼び出しのみ行い DB 書き込みは行わない。
+    // 並行実行時の DB ロック競合を防ぐため、書き込みは Promise.all 後にまとめて実施する。
     const processVideoData = async (video: { id: number; path: string; thumbnail: string | null }): Promise<VideoUpdate | null> => {
       try {
         if (!video.thumbnail) {
@@ -652,16 +656,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             { videoPath: video.path, outputPath }
           );
           const hasAudio = result.has_audio ? 1 : 0;
-          await db.execute(
-            'UPDATE videos SET thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
-            [result.thumbnail_path, result.duration, hasAudio, video.id]
-          );
           return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, has_audio: hasAudio };
         } else {
           // サムネイルはあるが音声情報が未取得の動画
           const hasAudioRaw = await invoke<boolean>('check_has_audio', { videoPath: video.path });
           const hasAudio = hasAudioRaw ? 1 : 0;
-          await db.execute('UPDATE videos SET has_audio = ? WHERE id = ?', [hasAudio, video.id]);
           return { id: video.id, has_audio: hasAudio };
         }
       } catch (e) {
@@ -695,6 +694,19 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           const results = await Promise.all(batch.map(processVideoData));
           doneCount += batch.length;
           for (const v of batch) processedIds.add(v.id);
+
+          // ffmpeg 完了後に DB 書き込みをシリアルで実行（並行書き込みによるロック競合を回避）
+          for (const r of results) {
+            if (r === null) continue;
+            if (r.thumbnail !== undefined) {
+              await db.execute(
+                'UPDATE videos SET thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
+                [r.thumbnail, r.duration ?? null, r.has_audio, r.id]
+              );
+            } else {
+              await db.execute('UPDATE videos SET has_audio = ? WHERE id = ?', [r.has_audio, r.id]);
+            }
+          }
 
           // バッチ完了後に一括 set（動画更新 + 進捗を1回の state 更新で処理）
           const updateMap = new Map(
