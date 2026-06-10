@@ -99,6 +99,7 @@ const VideoCard = memo(function VideoCard({
       <div
         className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
         onClick={handlePrimaryClick}
+        onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}
       >
         {v.thumbnail ? (
           <img
@@ -189,7 +190,7 @@ const VideoCard = memo(function VideoCard({
         <div className="h-1 bg-blue-500" />
       ) : null}
 
-      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={handlePrimaryClick}>
+      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={handlePrimaryClick} onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}>
         <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
           {v.title ?? v.path.split('/').pop()}
         </p>
