@@ -277,7 +277,10 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
         <div className="flex-1 overflow-y-auto pb-20">
           {/* サムネイル + 再生 */}
           <div className="px-4 pt-4 pb-3 flex flex-col gap-2">
-            <div className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+            <div
+              className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer"
+              onDoubleClick={handlePlay}
+            >
               {video.thumbnail ? (
                 <img
                   src={convertFileSrc(video.thumbnail)}
