@@ -438,6 +438,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       // ルート直下: name の一意性、子カテゴリ: (name, parent_id) の一意性を保証する
       await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique_root ON categories(name) WHERE parent_id IS NULL');
       await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique_child ON categories(name, parent_id) WHERE parent_id IS NOT NULL');
+      // Migration: 画像のサムネイルをフルサイズパスからリサイズ済みキャッシュに切り替えるためリセット
+      const imgThumbMigrated = await db.select<{ value: string }[]>(
+        "SELECT value FROM settings WHERE key = 'migration_image_thumbnail_reset'"
+      );
+      if (!imgThumbMigrated[0] || imgThumbMigrated[0].value !== '1') {
+        await db.execute(
+          "UPDATE videos SET thumbnail = NULL WHERE media_type = 'image' AND thumbnail = path"
+        );
+        await db.execute(
+          "INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_image_thumbnail_reset', '1')"
+        );
+      }
       await get().fetchVideos();
       await useTagStore.getState().init(db);
       await usePlaylistStore.getState().init(db);
@@ -825,8 +837,21 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         const isAudio = audioExts.includes(ext);
 
         if (isImage) {
-          // 画像: ファイル自体をサムネイルとして使用。ffmpeg 不要。
-          return { id: video.id, thumbnail: video.path, duration: null, has_audio: 0 };
+          if (video.thumbnail) {
+            return { id: video.id, has_audio: 0 };
+          }
+          const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+          const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+          try {
+            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+              'generate_thumbnail',
+              { videoPath: video.path, outputPath }
+            );
+            return { id: video.id, thumbnail: result.thumbnail_path, duration: null, has_audio: 0 };
+          } catch {
+            return { id: video.id, thumbnail: null, duration: null, has_audio: 0 };
+          }
         }
 
         if (!video.thumbnail) {
@@ -950,15 +975,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const isAudio = audioExts.includes(ext);
     const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
 
-    if (isImage) {
-      await db.execute(
-        'UPDATE videos SET media_type = ?, thumbnail = ?, duration = NULL, has_audio = 0 WHERE id = ?',
-        [mediaType, video.path, videoId]
-      );
-      await get().fetchVideos();
-      return;
-    }
-
     const cacheDir = await appCacheDir();
     const thumbDir = await join(cacheDir, 'thumbnails');
     const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
@@ -968,7 +984,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
 
     try {
-      if (isAudio) {
+      if (isImage) {
+        try {
+          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+            'generate_thumbnail', { videoPath: video.path, outputPath }
+          );
+          await db.execute(
+            'UPDATE videos SET media_type = ?, thumbnail = ?, duration = NULL, has_audio = 0 WHERE id = ?',
+            [mediaType, result.thumbnail_path, videoId]
+          );
+        } catch {
+          await db.execute(
+            'UPDATE videos SET media_type = ?, thumbnail = NULL, duration = NULL, has_audio = 0 WHERE id = ?',
+            [mediaType, videoId]
+          );
+        }
+      } else if (isAudio) {
         try {
           const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
             'generate_thumbnail', { videoPath: video.path, outputPath }
