@@ -676,8 +676,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     if (dirs.length === 0) return;
     set({ isScanning: true });
     try {
-      // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (2列: path, title)
-      const INSERT_BATCH_2 = 499;
+      // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (3列: path, title, media_type)
+      const INSERT_BATCH_3 = 333;
       for (const dir of dirs) {
         const files = await invoke<ScannedFile[]>('scan_directory', { path: dir });
         if (files.length === 0) continue;
@@ -690,13 +690,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
         await db.execute('BEGIN');
         try {
-          for (let i = 0; i < files.length; i += INSERT_BATCH_2) {
-            const batch = files.slice(i, i + INSERT_BATCH_2);
-            const ph = batch.map(() => '(?, ?)').join(', ');
+          for (let i = 0; i < files.length; i += INSERT_BATCH_3) {
+            const batch = files.slice(i, i + INSERT_BATCH_3);
+            const ph = batch.map(() => '(?, ?, ?)').join(', ');
             const params: unknown[] = [];
-            for (const file of batch) params.push(file.path, file.title);
+            for (const file of batch) params.push(file.path, file.title, file.media_type ?? 'video');
             await db.execute(
-              `INSERT OR IGNORE INTO videos (path, title) VALUES ${ph}`,
+              `INSERT OR IGNORE INTO videos (path, title, media_type) VALUES ${ph}`,
               params
             );
           }

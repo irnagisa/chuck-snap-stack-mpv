@@ -147,6 +147,29 @@ pub async fn generate_thumbnail(
             .map_err(|e| e.to_string())?;
     }
 
+    let is_image = IMAGE_EXTENSIONS.contains(&ext.as_str());
+
+    // 画像ファイルはffprobeスキップ・シークなしでリサイズのみ
+    if is_image {
+        let status = tokio::process::Command::new(&ffmpeg_path)
+            .args([
+                "-y", "-i", &video_path,
+                "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",
+                &output_path,
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        return if status.success() {
+            Ok(ThumbnailResult { thumbnail_path: output_path, duration: None, has_audio: false })
+        } else {
+            Err("ffmpeg failed".to_string())
+        };
+    }
+
     // ffprobe で duration と音声ストリーム有無を一括取得 (1プロセス)
     let probe = tokio::process::Command::new(&ffprobe_path)
         .args([
