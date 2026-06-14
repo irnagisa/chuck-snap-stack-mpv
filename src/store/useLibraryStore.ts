@@ -64,6 +64,7 @@ interface LibraryActions {
   removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
   rescanVideo: (videoId: number) => Promise<void>;
+  rescanMultiple: (videoIds: number[]) => Promise<void>;
   pauseThumbnails: () => void;
   resumeThumbnails: () => void;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
@@ -1028,6 +1029,91 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }
 
     await get().fetchVideos();
+  },
+
+  rescanMultiple: async (videoIds: number[]) => {
+    const { db } = get();
+    if (!db || videoIds.length === 0) return;
+
+    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+
+    const SELECT_BATCH = 499;
+    const rows: { id: number; path: string }[] = [];
+    for (let i = 0; i < videoIds.length; i += SELECT_BATCH) {
+      const chunk = videoIds.slice(i, i + SELECT_BATCH);
+      const ph = chunk.map(() => '?').join(', ');
+      const batch = await db.select<{ id: number; path: string }[]>(
+        `SELECT id, path FROM videos WHERE id IN (${ph})`, chunk
+      );
+      rows.push(...batch);
+    }
+
+    const cacheDir = await appCacheDir();
+    const thumbDir = await join(cacheDir, 'thumbnails');
+
+    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: rows.length } });
+
+    type RescanUpdate = { id: number; mediaType: string; thumbnail: string | null; duration: number | null; hasAudio: number };
+
+    const processOne = async (video: { id: number; path: string }): Promise<RescanUpdate | null> => {
+      const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+      const isImage = imageExts.includes(ext);
+      const isAudio = audioExts.includes(ext);
+      const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+      const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+      try {
+        if (isImage) {
+          try {
+            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+              'generate_thumbnail', { videoPath: video.path, outputPath }
+            );
+            return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: null, hasAudio: 0 };
+          } catch {
+            return { id: video.id, mediaType, thumbnail: null, duration: null, hasAudio: 0 };
+          }
+        } else if (isAudio) {
+          try {
+            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+              'generate_thumbnail', { videoPath: video.path, outputPath }
+            );
+            return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: 1 };
+          } catch {
+            return { id: video.id, mediaType, thumbnail: null, duration: null, hasAudio: 1 };
+          }
+        } else {
+          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+            'generate_thumbnail', { videoPath: video.path, outputPath }
+          );
+          return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: result.has_audio ? 1 : 0 };
+        }
+      } catch (e) {
+        console.warn('rescanMultiple failed for:', video.path, e);
+        return null;
+      }
+    };
+
+    let done = 0;
+    try {
+      for (let i = 0; i < rows.length; i += THUMBNAIL_CONCURRENCY) {
+        const batch = rows.slice(i, i + THUMBNAIL_CONCURRENCY);
+        const results = await Promise.all(batch.map(processOne));
+        done += batch.length;
+        for (const r of results) {
+          if (!r) continue;
+          await db.execute(
+            'UPDATE videos SET media_type = ?, thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
+            [r.mediaType, r.thumbnail, r.duration, r.hasAudio, r.id]
+          );
+        }
+        set({ thumbnailProgress: { done, total: rows.length } });
+      }
+    } finally {
+      set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
+      await get().fetchVideos();
+    }
   },
 
   updateProgress: async (videoId: number, progress: number) => {

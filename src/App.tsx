@@ -67,7 +67,7 @@ function App() {
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration,
     setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
-    pauseThumbnails, resumeThumbnails, fetchVideos,
+    pauseThumbnails, resumeThumbnails, fetchVideos, rescanMultiple,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
     scanAndImport: s.scanAndImport,
@@ -88,6 +88,7 @@ function App() {
     pauseThumbnails: s.pauseThumbnails,
     resumeThumbnails: s.resumeThumbnails,
     fetchVideos: s.fetchVideos,
+    rescanMultiple: s.rescanMultiple,
   })));
   // usePlayerStore: currentVideo のみ購読 (playbackTime の毎秒更新で App が再レンダリングされるのを防ぐ)
   const currentVideo = usePlayerStore((s) => s.currentVideo);
@@ -687,6 +688,17 @@ function App() {
                     onClick={() => openBulkModal('delete')}
                   >
                     削除
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-gray-600 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400 text-white rounded disabled:opacity-50"
+                    disabled={isThumbnailGenerating}
+                    onClick={async () => {
+                      await rescanMultiple(Array.from(selectedVideoIds));
+                      setSelectedVideoIds(new Set());
+                    }}
+                  >
+                    再スキャン
                   </button>
                   <button
                     type="button"
