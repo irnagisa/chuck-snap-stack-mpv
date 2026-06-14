@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import type { Video } from "./types";
+import type { Video, ScannedFile } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { useShallow } from "zustand/shallow";
 import type { WatchedStatus, MediaTypeFilter } from "./store/useLibraryStore";
@@ -24,6 +25,7 @@ import { ToastContainer } from "./components/common/ToastContainer";
 import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { Select } from "./components/common/Select";
 import { ImageViewerModal } from "./components/Library/ImageViewerModal";
+import { ConfirmModal } from "./components/common/ConfirmModal";
 
 type SidebarTab = 'category' | 'playlist' | 'folder';
 
@@ -113,6 +115,7 @@ function App() {
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
   const [viewingImage, setViewingImage] = useState<Video | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ path: string; fileCount: number; useDirAsCategory: boolean } | null>(null);
 
   // Debounce search input → store
   useEffect(() => {
@@ -161,11 +164,21 @@ function App() {
     initDb();
   }, []);
 
+  const IMPORT_CONFIRM_THRESHOLD = 300;
+
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false });
-    if (typeof selected === "string") {
+    if (typeof selected !== "string") return;
+    const files = await invoke<ScannedFile[]>('scan_directory', { path: selected }).catch(() => null);
+    if (!files) {
       scanAndImport(selected, useDirAsCategory);
+      return;
     }
+    if (files.length >= IMPORT_CONFIRM_THRESHOLD) {
+      setPendingImport({ path: selected, fileCount: files.length, useDirAsCategory });
+      return;
+    }
+    scanAndImport(selected, useDirAsCategory);
   };
 
   const handleSetPage = (page: number) => {
@@ -768,6 +781,19 @@ function App() {
       <DownloadQueuePanel />
 
       <ToastContainer />
+
+      {pendingImport && (
+        <ConfirmModal
+          message={`${pendingImport.fileCount.toLocaleString()} 件のファイルが見つかりました。\nすべて追加しますか？`}
+          confirmLabel="追加"
+          onConfirm={() => {
+            const { path, useDirAsCategory: udc } = pendingImport;
+            setPendingImport(null);
+            scanAndImport(path, udc);
+          }}
+          onCancel={() => setPendingImport(null)}
+        />
+      )}
 
       {/* D&D インポートオーバーレイ */}
       {isDragging && (
