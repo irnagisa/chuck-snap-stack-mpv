@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '../store/useLibraryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useToastStore } from '../store/useToastStore';
 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv', 'media']);
@@ -25,14 +26,17 @@ export function useDragDrop() {
 
   // watchDirs / actions を ref で保持して effect 再登録なしに最新値を参照
   const watchDirsRef = useRef<string[]>([]);
+  const downloadDirRef = useRef<string>('');
   const addVideoFromPathRef = useRef<(path: string, title: string) => Promise<number | null>>(async () => null);
   const addToastRef = useRef<(message: string, type?: 'success' | 'error' | 'info') => void>(() => {});
 
   const watchDirs = useLibraryStore((s) => s.watchDirs);
   const addVideoFromPath = useLibraryStore((s) => s.addVideoFromPath);
+  const downloadDir = useSettingsStore((s) => s.downloadDir);
   const addToast = useToastStore((s) => s.addToast);
 
   useEffect(() => { watchDirsRef.current = watchDirs; }, [watchDirs]);
+  useEffect(() => { downloadDirRef.current = downloadDir; }, [downloadDir]);
   useEffect(() => { addVideoFromPathRef.current = addVideoFromPath; }, [addVideoFromPath]);
   useEffect(() => { addToastRef.current = addToast; }, [addToast]);
 
@@ -64,7 +68,7 @@ export function useDragDrop() {
             return;
           }
 
-          const destDir = dirs[0];
+          const destDir = downloadDirRef.current || dirs[0];
           let imported = 0;
           const errors: string[] = [];
 
