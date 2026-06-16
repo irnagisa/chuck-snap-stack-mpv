@@ -747,11 +747,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
 
       // 全スキャン時: 未登録フォルダのファイルをDBから削除
+      // downloadDir は watch 対象外でもダウンロード済みファイルが置かれるため削除対象から除外する
       if (!targetDir && watchDirs.length > 0) {
-        const registeredConditions = watchDirs
+        const { downloadDir } = useSettingsStore.getState();
+        const trustedDirs = downloadDir ? [...watchDirs, downloadDir] : watchDirs;
+        const registeredConditions = trustedDirs
           .map(() => "REPLACE(path, '\\\\', '/') LIKE ? ESCAPE '!'")
           .join(' OR ');
-        const registeredParams = watchDirs.map((d) => `${escapeLikeDir(d)}/%`);
+        const registeredParams = trustedDirs.map((d) => `${escapeLikeDir(d)}/%`);
         const unregisteredVideos = await db.select<{ id: number }[]>(
           `SELECT id FROM videos WHERE NOT (${registeredConditions})`,
           registeredParams
