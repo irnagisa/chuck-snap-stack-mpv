@@ -877,8 +877,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
               );
               return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, has_audio: 1 };
             } catch {
-              // アルバムアートなし: サムネイルなし・duration は mpv 再生時に取得
-              return { id: video.id, thumbnail: null, duration: null, has_audio: 1 };
+              // アルバムアートなし: 空文字列センチネルで「試行済み」を記録し、自動再試行を防ぐ
+              // (明示的な rescan 時は rescanVideo/rescanMultiple が DB クエリを経由しないため再試行できる)
+              return { id: video.id, thumbnail: '', duration: null, has_audio: 1 };
             }
           }
 
