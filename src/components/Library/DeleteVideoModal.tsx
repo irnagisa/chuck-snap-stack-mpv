@@ -32,8 +32,11 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
       onRemoved();
     } catch (e) {
       console.error('ファイル削除失敗:', e);
-      // ファイル削除に失敗してもDBからは除外
-      await removeVideo(video.id);
+      try {
+        await removeVideo(video.id);
+      } catch (dbErr) {
+        console.error('DB削除失敗:', dbErr);
+      }
       onRemoved();
     } finally {
       setLoading(false);

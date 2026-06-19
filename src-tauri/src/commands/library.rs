@@ -354,11 +354,15 @@ pub async fn get_video_dimensions(
     Ok(VideoDimensions { width, height })
 }
 
-/// 動画ファイルをファイルシステムから削除する。
+/// 動画ファイルをファイルシステムから削除する。ファイルが既に存在しない場合は成功として扱う。
 #[tauri::command]
 pub async fn delete_video_file(path: String) -> Result<(), String> {
     validate_media_path(&path)?;
-    fs::remove_file(&path).map_err(|e| format!("ファイル削除失敗: {e}"))
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("ファイル削除失敗: {e}")),
+    }
 }
 
 /// 動画ファイルを指定ディレクトリへ移動し、新しいパスを返す。
