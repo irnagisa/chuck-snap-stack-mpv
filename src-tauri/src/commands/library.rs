@@ -41,10 +41,18 @@ pub struct ScannedFile {
     pub media_type: String,
 }
 
+#[derive(Serialize)]
+pub struct ScanResult {
+    pub files: Vec<ScannedFile>,
+    pub errors: Vec<String>,
+    pub truncated: bool,
+}
+
 #[tauri::command]
-pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
-    let files = tokio::task::spawn_blocking(move || -> Result<Vec<ScannedFile>, String> {
+pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
+    let result = tokio::task::spawn_blocking(move || -> Result<ScanResult, String> {
         let mut files = Vec::new();
+        let mut errors = Vec::new();
         // シンボリックリンクを解決して parent_dir_name の比較を正確にする
         let root = std::path::PathBuf::from(&path)
             .canonicalize()
@@ -54,17 +62,22 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
         const MAX_DEPTH: usize = 10;
         const MAX_FILES: usize = 50_000;
 
+        let mut truncated = false;
         for entry in WalkDir::new(&path)
             .follow_links(false)
             .max_depth(MAX_DEPTH)
         {
             if files.len() >= MAX_FILES {
+                truncated = true;
                 break;
             }
             // アクセス権エラー等は個別エントリをスキップし、スキャン全体は継続する
             let entry = match entry {
                 Ok(e) => e,
-                Err(_) => continue,
+                Err(e) => {
+                    errors.push(format!("walk error: {e}"));
+                    continue;
+                }
             };
             if !entry.file_type().is_file() {
                 continue;
@@ -91,8 +104,13 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
-                let canonical_path = entry.path().canonicalize()
-                    .unwrap_or_else(|_| entry.path().to_path_buf());
+                let canonical_path = match entry.path().canonicalize() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        errors.push(format!("canonicalize error: {} — {e}", entry.path().display()));
+                        entry.path().to_path_buf()
+                    }
+                };
                 // canonicalize 済みのパスで親ディレクトリを比較する
                 let parent_dir_name = canonical_path.parent().and_then(|p| {
                     if p == root {
@@ -110,12 +128,12 @@ pub async fn scan_directory(path: String) -> Result<Vec<ScannedFile>, String> {
             }
         }
 
-        Ok(files)
+        Ok(ScanResult { files, errors, truncated })
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    Ok(files)
+    Ok(result)
 }
 
 #[tauri::command]

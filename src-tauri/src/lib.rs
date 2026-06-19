@@ -1,5 +1,6 @@
 pub mod commands;
 
+use tauri::Manager;
 use commands::download::DownloadState;
 use commands::window::MiniPlayerWindowState;
 use commands::mpv::MpvState;
@@ -73,6 +74,12 @@ pub fn run() {
             commands::webserver::get_web_server_port,
             commands::webserver::get_local_ip,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                let state = app.state::<commands::mpv::SharedMpvState>();
+                commands::mpv::kill_on_exit(&state);
+            }
+        });
 }

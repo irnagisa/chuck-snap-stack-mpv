@@ -41,6 +41,12 @@ export interface ScannedFile {
   media_type: string;
 }
 
+export interface ScanResult {
+  files: ScannedFile[];
+  errors: string[];
+  truncated: boolean;
+}
+
 export interface Tag {
   id: number;
   name: string;

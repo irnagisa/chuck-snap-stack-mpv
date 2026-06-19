@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import Database from '@tauri-apps/plugin-sql';
 import { invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
-import type { Video, ScannedFile } from '../types';
+import type { Video, ScanResult } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore, getCategoryDescendantIds } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
@@ -433,7 +433,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_categories_perparent_unique', '1')");
           await db.execute('COMMIT');
         } catch {
-          await db.execute('ROLLBACK');
+          try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
         }
       }
       // ルート直下: name の一意性、子カテゴリ: (name, parent_id) の一意性を保証する
@@ -614,7 +614,15 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           : [...state.watchDirs, canonicalPath],
       }));
       invoke('start_watching', { path: canonicalPath }).catch(() => {});
-      const files = await invoke<ScannedFile[]>('scan_directory', { path: canonicalPath });
+      const scanResult = await invoke<ScanResult>('scan_directory', { path: canonicalPath });
+      if (scanResult.errors.length > 0) {
+        console.warn(`[scan_directory] ${scanResult.errors.length} error(s) in "${canonicalPath}":`);
+        scanResult.errors.forEach((e) => console.warn(' ', e));
+      }
+      if (scanResult.truncated) {
+        console.warn(`[scan_directory] 50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。`);
+      }
+      const files = scanResult.files;
 
       const categoryIdMap: Record<string, number> = {};
       if (useDirectoryAsCategory) {
@@ -657,7 +665,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }
         await db.execute('COMMIT');
       } catch (e) {
-        await db.execute('ROLLBACK');
+        try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
         throw e;
       }
       set({ currentPage: 1 });
@@ -680,7 +688,15 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (3列: path, title, media_type)
       const INSERT_BATCH_3 = 333;
       for (const dir of dirs) {
-        const files = await invoke<ScannedFile[]>('scan_directory', { path: dir });
+        const scanResult = await invoke<ScanResult>('scan_directory', { path: dir });
+        if (scanResult.errors.length > 0) {
+          console.warn(`[scan_directory] ${scanResult.errors.length} error(s) in "${dir}":`);
+          scanResult.errors.forEach((e) => console.warn(' ', e));
+        }
+        if (scanResult.truncated) {
+          console.warn(`[scan_directory] 50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。`);
+        }
+        const files = scanResult.files;
         if (files.length === 0) continue;
 
         // 新規追加ファイルを検出するため INSERT 前の最大 ID を記録
@@ -703,7 +719,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           }
           await db.execute('COMMIT');
         } catch (e) {
-          await db.execute('ROLLBACK');
+          try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
           throw e;
         }
 
@@ -1238,7 +1254,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           }
           await db.execute('COMMIT');
         } catch (e) {
-          await db.execute('ROLLBACK');
+          try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
           throw e;
         }
       }

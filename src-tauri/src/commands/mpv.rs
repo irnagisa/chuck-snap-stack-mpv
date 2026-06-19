@@ -686,3 +686,40 @@ pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), Str
 
     Ok(())
 }
+
+/// アプリ終了時に mpv プロセスを同期的に強制終了する。
+/// IPC quit を試みた後、3 秒以内に終了しなければ SIGKILL を送る。
+pub fn kill_on_exit(state: &SharedMpvState) {
+    let (writer_opt, child_opt) = {
+        let Ok(mut s) = state.lock() else { return };
+        s.generation.fetch_add(1, Ordering::SeqCst);
+        (s.writer.take(), s.process.take())
+    };
+
+    if let Some(writer) = writer_opt {
+        let _ = send_cmd(&writer, json!({"command": ["quit"]}));
+    }
+    let _ = std::fs::remove_file(mpv_socket_path());
+
+    if let Some(mut child) = child_opt {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+            }
+        }
+    }
+}
