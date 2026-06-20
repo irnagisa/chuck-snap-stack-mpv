@@ -6,7 +6,7 @@ import type { Video, ScanResult } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore, getCategoryDescendantIds } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
-import { useToastStore } from './useToastStore';
+import { useToastStore, toast } from './useToastStore';
 
 export type SortBy = 'created_at' | 'duration' | 'rating';
 export type SortOrder = 'desc' | 'asc';
@@ -616,11 +616,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       invoke('start_watching', { path: canonicalPath }).catch(() => {});
       const scanResult = await invoke<ScanResult>('scan_directory', { path: canonicalPath });
       if (scanResult.errors.length > 0) {
-        console.warn(`[scan_directory] ${scanResult.errors.length} error(s) in "${canonicalPath}":`);
-        scanResult.errors.forEach((e) => console.warn(' ', e));
+        const count = scanResult.errors.length;
+        toast.error(
+          `スキャンエラー ${count}件: ${scanResult.errors[0]}${count > 1 ? ` 他${count - 1}件` : ''}`,
+          8000
+        );
       }
       if (scanResult.truncated) {
-        console.warn(`[scan_directory] 50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。`);
+        toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
       }
       const files = scanResult.files;
 
@@ -690,11 +693,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       for (const dir of dirs) {
         const scanResult = await invoke<ScanResult>('scan_directory', { path: dir });
         if (scanResult.errors.length > 0) {
-          console.warn(`[scan_directory] ${scanResult.errors.length} error(s) in "${dir}":`);
-          scanResult.errors.forEach((e) => console.warn(' ', e));
+          const count = scanResult.errors.length;
+          toast.error(
+            `スキャンエラー ${count}件: ${scanResult.errors[0]}${count > 1 ? ` 他${count - 1}件` : ''}`,
+            8000
+          );
         }
         if (scanResult.truncated) {
-          console.warn(`[scan_directory] 50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。`);
+          toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
         }
         const files = scanResult.files;
         if (files.length === 0) continue;

@@ -28,7 +28,7 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 
 export function SettingsPanel({ onClose }: Props) {
   const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, saveSettings, saveKeybindings } = useSettingsStore();
-  const { db, watchDirs, scanAndImport, removeWatchDir, isScanning } = useLibraryStore();
+  const { db, watchDirs, scanAndImport, removeWatchDir, isScanning, isThumbnailGenerating } = useLibraryStore();
 
   const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext });
   const [isSaving, setIsSaving] = useState(false);
@@ -432,11 +432,11 @@ export function SettingsPanel({ onClose }: Props) {
 
           <button
             type="button"
-            disabled={isScanning}
+            disabled={isScanning || isThumbnailGenerating}
             onClick={handleAddScanPath}
             className="w-full py-1.5 text-sm border border-dashed border-gray-300 dark:border-gray-600 rounded text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 disabled:opacity-40 transition-colors"
           >
-            {isScanning ? "スキャン中..." : "+ フォルダを追加"}
+            {isScanning || isThumbnailGenerating ? "スキャン中..." : "+ フォルダを追加"}
           </button>
 
           <hr className="border-gray-200 dark:border-gray-700" />

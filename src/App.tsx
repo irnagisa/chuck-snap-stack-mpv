@@ -227,10 +227,10 @@ function App() {
         <button
           type="button"
           className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 text-sm dark:bg-blue-500 dark:hover:bg-blue-600 shrink-0"
-          disabled={!isDbReady || isScanning}
+          disabled={!isDbReady || isScanning || isThumbnailGenerating}
           onClick={handlePickDir}
         >
-          {isScanning ? "スキャン中..." : "+ フォルダ追加"}
+          {isScanning || isThumbnailGenerating ? "スキャン中..." : "+ フォルダ追加"}
         </button>
         <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0 cursor-pointer select-none">
           <input
