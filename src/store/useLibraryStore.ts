@@ -778,10 +778,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         });
         const missingIds = dbVideos.filter((_, i) => sizes[i] === null).map((v) => v.id);
         if (missingIds.length > 0) {
-          const ph = missingIds.map(() => '?').join(', ');
-          await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, missingIds);
-          await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, missingIds);
-          await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, missingIds);
+          await db.execute('BEGIN');
+          try {
+            const ph = missingIds.map(() => '?').join(', ');
+            await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, missingIds);
+            await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, missingIds);
+            await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, missingIds);
+            await db.execute('COMMIT');
+          } catch (e) {
+            try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
+            throw e;
+          }
         }
       }
 
@@ -800,12 +807,19 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         );
         if (unregisteredVideos.length > 0) {
           const BATCH = 400;
-          for (let i = 0; i < unregisteredVideos.length; i += BATCH) {
-            const ids = unregisteredVideos.slice(i, i + BATCH).map((v) => v.id);
-            const ph = ids.map(() => '?').join(', ');
-            await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
-            await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
-            await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+          await db.execute('BEGIN');
+          try {
+            for (let i = 0; i < unregisteredVideos.length; i += BATCH) {
+              const ids = unregisteredVideos.slice(i, i + BATCH).map((v) => v.id);
+              const ph = ids.map(() => '?').join(', ');
+              await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+              await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+              await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+            }
+            await db.execute('COMMIT');
+          } catch (e) {
+            try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
+            throw e;
           }
         }
       }
@@ -834,12 +848,19 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     );
     if (videos.length > 0) {
       const BATCH = 400;
-      for (let i = 0; i < videos.length; i += BATCH) {
-        const ids = videos.slice(i, i + BATCH).map((v) => v.id);
-        const ph = ids.map(() => '?').join(',');
-        await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
-        await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
-        await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+      await db.execute('BEGIN');
+      try {
+        for (let i = 0; i < videos.length; i += BATCH) {
+          const ids = videos.slice(i, i + BATCH).map((v) => v.id);
+          const ph = ids.map(() => '?').join(',');
+          await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, ids);
+          await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, ids);
+          await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, ids);
+        }
+        await db.execute('COMMIT');
+      } catch (e) {
+        try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
+        throw e;
       }
     }
     await db.execute('DELETE FROM watch_dirs WHERE path = ?', [path]);
@@ -1421,20 +1442,33 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   removeVideo: async (videoId: number) => {
     const { db } = get();
     if (!db) return;
-    await db.execute('DELETE FROM playlist_items WHERE video_id = ?', [videoId]);
-    await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
-    await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+    await db.execute('BEGIN');
+    try {
+      await db.execute('DELETE FROM playlist_items WHERE video_id = ?', [videoId]);
+      await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
+      await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+      await db.execute('COMMIT');
+    } catch (e) {
+      try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
+      throw e;
+    }
     await get().fetchVideos();
   },
 
   removeMultiple: async (videoIds: number[]) => {
     const { db } = get();
     if (!db || videoIds.length === 0) return;
-    // N+1 クエリを避けるため IN (...) でバッチ削除
     const ph = videoIds.map(() => '?').join(', ');
-    await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, videoIds);
-    await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, videoIds);
-    await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, videoIds);
+    await db.execute('BEGIN');
+    try {
+      await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, videoIds);
+      await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, videoIds);
+      await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, videoIds);
+      await db.execute('COMMIT');
+    } catch (e) {
+      try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
+      throw e;
+    }
     await get().fetchVideos();
   },
 
