@@ -651,6 +651,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
       // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (4列: path, title, category_id, media_type)
       const INSERT_BATCH_4 = 249;
+      let newCount = 0;
       await db.execute('BEGIN');
       try {
         for (let i = 0; i < files.length; i += INSERT_BATCH_4) {
@@ -664,15 +665,21 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             const categoryId = relPath ? (categoryIdMap[relPath] ?? null) : null;
             params.push(file.path, file.title, categoryId, file.media_type ?? 'video');
           }
-          await db.execute(
+          const result = await db.execute(
             `INSERT OR IGNORE INTO videos (path, title, category_id, media_type) VALUES ${ph}`,
             params
           );
+          newCount += result.rowsAffected;
         }
         await db.execute('COMMIT');
       } catch (e) {
         try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
         throw e;
+      }
+      if (newCount > 0) {
+        toast.success(`${newCount}件の新しいファイルを追加しました (スキャン: ${files.length}件)`, 5000);
+      } else if (files.length > 0) {
+        toast.info(`スキャン完了 (${files.length}件はすでにライブラリに登録済み)`, 5000);
       }
       set({ currentPage: 1 });
       await get().fetchVideos();
@@ -693,6 +700,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     try {
       // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (3列: path, title, media_type)
       const INSERT_BATCH_3 = 333;
+      let totalNewCount = 0;
       for (const dir of dirs) {
         const scanResult = await invoke<ScanResult>('scan_directory', { path: dir });
         if (scanResult.errors.length > 0) {
@@ -717,6 +725,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         );
         const prevMaxId = maxIdRow[0]?.id ?? 0;
 
+        let dirNewCount = 0;
         await db.execute('BEGIN');
         try {
           for (let i = 0; i < files.length; i += INSERT_BATCH_3) {
@@ -724,16 +733,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             const ph = batch.map(() => '(?, ?, ?)').join(', ');
             const params: unknown[] = [];
             for (const file of batch) params.push(file.path, file.title, file.media_type ?? 'video');
-            await db.execute(
+            const result = await db.execute(
               `INSERT OR IGNORE INTO videos (path, title, media_type) VALUES ${ph}`,
               params
             );
+            dirNewCount += result.rowsAffected;
           }
           await db.execute('COMMIT');
         } catch (e) {
           try { await db.execute('ROLLBACK'); } catch { /* no active transaction */ }
           throw e;
         }
+        totalNewCount += dirNewCount;
 
         // use_dir_as_category が有効な場合、新規追加ファイルにカテゴリを割り当てる
         const dirFlagRow = await db.select<{ use_dir_as_category: number }[]>(
@@ -799,6 +810,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }
       }
 
+      if (totalNewCount > 0) {
+        toast.success(`${totalNewCount}件の新しいファイルを追加しました`, 5000);
+      }
+      set({ currentPage: 1 });
       await get().fetchVideos();
       // サムネイル生成はスキャン完了と切り離してバックグラウンド実行する。
       // await すると isThumbnailGenerating が true の場合に即 return → isScanning が

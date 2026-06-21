@@ -55,10 +55,9 @@ pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
         let mut files = Vec::new();
         let mut errors = Vec::new();
         let mut skipped_count: u32 = 0;
-        // シンボリックリンクを解決して parent_dir_name の比較を正確にする
-        let root = std::path::PathBuf::from(&path)
-            .canonicalize()
-            .unwrap_or_else(|_| std::path::PathBuf::from(&path));
+        // ウォッチディレクトリのパス (論理パス、正規化しない)
+        // シンボリックリンク経由で見つかったファイルのパスが必ずここから始まることを保証する
+        let root = std::path::PathBuf::from(&path);
 
         // 深さ・件数の上限を設けて DoS を防ぐ
         const MAX_DEPTH: usize = 10;
@@ -66,14 +65,14 @@ pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
 
         let mut truncated = false;
         for entry in WalkDir::new(&path)
-            .follow_links(false)
+            .follow_links(true)   // シンボリックリンク先のディレクトリ・ファイルも走査する
             .max_depth(MAX_DEPTH)
         {
             if files.len() >= MAX_FILES {
                 truncated = true;
                 break;
             }
-            // アクセス権エラー等は個別エントリをスキップし、スキャン全体は継続する
+            // アクセス権エラー・循環シンボリックリンク等は個別エントリをスキップし、スキャン全体は継続する
             let entry = match entry {
                 Ok(e) => e,
                 Err(e) => {
@@ -107,15 +106,11 @@ pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
-                let canonical_path = match entry.path().canonicalize() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        errors.push(format!("canonicalize error: {} — {e}", entry.path().display()));
-                        entry.path().to_path_buf()
-                    }
-                };
-                // canonicalize 済みのパスで親ディレクトリを比較する
-                let parent_dir_name = canonical_path.parent().and_then(|p| {
+                // ウォッチディレクトリ内の論理パスを保存する (canonical にしない)
+                // こうすることでパスが必ずウォッチディレクトリから始まり、
+                // LIKE パターンマッチが正しく機能する
+                let file_path = entry.path().to_path_buf();
+                let parent_dir_name = file_path.parent().and_then(|p| {
                     if p == root {
                         None
                     } else {
@@ -123,7 +118,7 @@ pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
                     }
                 });
                 files.push(ScannedFile {
-                    path: canonical_path.to_string_lossy().to_string(),
+                    path: file_path.to_string_lossy().to_string(),
                     title,
                     parent_dir_name,
                     media_type: media_type.to_string(),
