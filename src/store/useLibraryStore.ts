@@ -701,6 +701,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       // SQLite パラメータ上限 (999) に収まる最大バッチサイズ (3列: path, title, media_type)
       const INSERT_BATCH_3 = 333;
       let totalNewCount = 0;
+      let totalScannedCount = 0;
       for (const dir of dirs) {
         const scanResult = await invoke<ScanResult>('scan_directory', { path: dir });
         if (scanResult.errors.length > 0) {
@@ -717,6 +718,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           toast.info(`対応するメディアファイルが見つかりませんでした（${scanResult.skipped_count}件は非対応形式）`, 8000);
         }
         const files = scanResult.files;
+        totalScannedCount += files.length;
         if (files.length === 0) continue;
 
         // 新規追加ファイルを検出するため INSERT 前の最大 ID を記録
@@ -825,7 +827,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
 
       if (totalNewCount > 0) {
-        toast.success(`${totalNewCount}件の新しいファイルを追加しました`, 5000);
+        toast.success(`${totalNewCount}件の新しいファイルを追加しました (スキャン: ${totalScannedCount}件)`, 5000);
+      } else if (totalScannedCount > 0) {
+        toast.info(`スキャン完了 (${totalScannedCount}件はすでにライブラリに登録済み)`, 5000);
       }
       set({ currentPage: 1 });
       await get().fetchVideos();
