@@ -837,6 +837,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       // await すると isThumbnailGenerating が true の場合に即 return → isScanning が
       // 誤って false になり、バックグラウンドの生成処理が DB を占有し続ける問題を防ぐ。
       get().generateThumbnails().catch(() => {});
+    } catch (e) {
+      console.error('rescanAllDirs failed:', e);
+      toast.error(`スキャン中にエラーが発生しました: ${String(e)}`, 8000);
     } finally {
       set({ isScanning: false });
     }
@@ -995,6 +998,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           const results = await Promise.all(batch.map(processVideoData));
           doneCount += batch.length;
           for (const v of batch) processedIds.add(v.id);
+
+          // ffmpeg 完了後も rescan が走っていれば DB 書き込みを待機（ロック競合を防ぐ）
+          while (get().isThumbnailPaused || get().isScanning) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+          }
 
           // ffmpeg 完了後に DB 書き込みをシリアルで実行（並行書き込みによるロック競合を回避）
           for (const r of results) {
