@@ -625,6 +625,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       if (scanResult.truncated) {
         toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
       }
+      if (scanResult.files.length === 0 && scanResult.skipped_count > 0) {
+        toast.info(`対応するメディアファイルが見つかりませんでした（${scanResult.skipped_count}件は非対応形式）`, 8000);
+      }
       const files = scanResult.files;
 
       const categoryIdMap: Record<string, number> = {};
@@ -701,6 +704,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         }
         if (scanResult.truncated) {
           toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
+        }
+        if (scanResult.files.length === 0 && scanResult.skipped_count > 0) {
+          toast.info(`対応するメディアファイルが見つかりませんでした（${scanResult.skipped_count}件は非対応形式）`, 8000);
         }
         const files = scanResult.files;
         if (files.length === 0) continue;

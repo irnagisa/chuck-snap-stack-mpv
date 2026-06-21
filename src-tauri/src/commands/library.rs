@@ -46,6 +46,7 @@ pub struct ScanResult {
     pub files: Vec<ScannedFile>,
     pub errors: Vec<String>,
     pub truncated: bool,
+    pub skipped_count: u32,
 }
 
 #[tauri::command]
@@ -53,6 +54,7 @@ pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
     let result = tokio::task::spawn_blocking(move || -> Result<ScanResult, String> {
         let mut files = Vec::new();
         let mut errors = Vec::new();
+        let mut skipped_count: u32 = 0;
         // シンボリックリンクを解決して parent_dir_name の比較を正確にする
         let root = std::path::PathBuf::from(&path)
             .canonicalize()
@@ -95,6 +97,7 @@ pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
             } else if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
                 "image"
             } else {
+                skipped_count += 1;
                 continue;
             };
             {
@@ -128,7 +131,7 @@ pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
             }
         }
 
-        Ok(ScanResult { files, errors, truncated })
+        Ok(ScanResult { files, errors, truncated, skipped_count })
     })
     .await
     .map_err(|e| e.to_string())??;

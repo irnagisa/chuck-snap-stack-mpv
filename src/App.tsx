@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import type { Video, ScannedFile } from "./types";
+import type { Video, ScanResult } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useLibraryStore } from "./store/useLibraryStore";
@@ -170,13 +170,13 @@ function App() {
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected !== "string") return;
-    const files = await invoke<ScannedFile[]>('scan_directory', { path: selected }).catch(() => null);
-    if (!files) {
+    const previewResult = await invoke<ScanResult>('scan_directory', { path: selected }).catch(() => null);
+    if (!previewResult) {
       scanAndImport(selected, useDirAsCategory);
       return;
     }
-    if (files.length >= IMPORT_CONFIRM_THRESHOLD) {
-      setPendingImport({ path: selected, fileCount: files.length, useDirAsCategory });
+    if (previewResult.files.length >= IMPORT_CONFIRM_THRESHOLD) {
+      setPendingImport({ path: selected, fileCount: previewResult.files.length, useDirAsCategory });
       return;
     }
     scanAndImport(selected, useDirAsCategory);

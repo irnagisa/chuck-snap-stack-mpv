@@ -45,6 +45,7 @@ export interface ScanResult {
   files: ScannedFile[];
   errors: string[];
   truncated: boolean;
+  skipped_count: number;
 }
 
 export interface Tag {
