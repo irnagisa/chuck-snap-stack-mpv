@@ -24,6 +24,25 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
     }
   };
 
+  const handleTrashFile = async () => {
+    setLoading(true);
+    try {
+      await invoke('trash_video_file', { path: video.path });
+      await removeVideo(video.id);
+      onRemoved();
+    } catch (e) {
+      console.error('ゴミ箱移動失敗:', e);
+      try {
+        await removeVideo(video.id);
+      } catch (dbErr) {
+        console.error('DB削除失敗:', dbErr);
+      }
+      onRemoved();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteFile = async () => {
     setLoading(true);
     try {
@@ -64,6 +83,15 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
           >
             ライブラリから除外
             <span className="block text-[10px] text-gray-400 dark:text-gray-500">ファイルは残します</span>
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            className="w-full px-3 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded disabled:opacity-50"
+            onClick={handleTrashFile}
+          >
+            ゴミ箱へ移動
+            <span className="block text-[10px] text-amber-100">OS のゴミ箱に移動します（復元可能）</span>
           </button>
           <button
             type="button"

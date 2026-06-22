@@ -51,6 +51,8 @@ pub fn run() {
             commands::library::get_video_dimensions,
             commands::library::delete_video_file,
             commands::library::delete_multiple_video_files,
+            commands::library::trash_video_file,
+            commands::library::trash_multiple_video_files,
             commands::library::move_video_file,
             commands::library::copy_video_file,
             commands::settings::update_settings,

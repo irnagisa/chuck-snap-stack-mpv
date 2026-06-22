@@ -531,6 +531,42 @@ pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(Stri
     Ok(results)
 }
 
+/// 動画ファイルを OS のゴミ箱に移動する。
+/// macOS では NSFileManager.trashItemAtURL を使用し、外部ストレージでは
+/// ボリューム直下の /.Trashes/<uid>/ に移動するため、クロスデバイスでも安全。
+#[tauri::command]
+pub async fn trash_video_file(path: String) -> Result<(), String> {
+    validate_media_path(&path)?;
+    tokio::task::spawn_blocking(move || {
+        trash::delete(&path).map_err(|e| format!("ゴミ箱への移動に失敗しました: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 複数の動画ファイルを OS のゴミ箱に移動する。
+/// 各ファイルの成否を (path, success) の配列で返す。
+#[tauri::command]
+pub async fn trash_multiple_video_files(
+    paths: Vec<String>,
+) -> Result<Vec<(String, bool)>, String> {
+    tokio::task::spawn_blocking(move || {
+        paths
+            .into_iter()
+            .map(|path| {
+                if validate_media_path(&path).is_err() {
+                    return (path, false);
+                }
+                let ok = trash::delete(&path).is_ok();
+                (path, ok)
+            })
+            .collect::<Vec<_>>()
+    })
+    .await
+    .map(Ok)
+    .map_err(|e| e.to_string())?
+}
+
 /// ffprobe で動画のチャプター情報を取得する。
 #[tauri::command]
 pub async fn get_chapters(

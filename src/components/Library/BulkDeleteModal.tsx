@@ -24,6 +24,17 @@ export function BulkDeleteModal({ videos, onClose, onDone }: Props) {
     }
   };
 
+  const handleTrashFiles = async () => {
+    setLoading(true);
+    try {
+      await invoke('trash_multiple_video_files', { paths: videos.map((v) => v.path) });
+      await removeMultiple(videos.map((v) => v.id));
+      onDone();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteFiles = async () => {
     setLoading(true);
     try {
@@ -57,6 +68,15 @@ export function BulkDeleteModal({ videos, onClose, onDone }: Props) {
           >
             ライブラリから除外
             <span className="block text-[10px] text-gray-400 dark:text-gray-500">ファイルは残します</span>
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            className="w-full px-3 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded disabled:opacity-50"
+            onClick={handleTrashFiles}
+          >
+            ゴミ箱へ移動
+            <span className="block text-[10px] text-amber-100">OS のゴミ箱に移動します（復元可能）</span>
           </button>
           <button
             type="button"
