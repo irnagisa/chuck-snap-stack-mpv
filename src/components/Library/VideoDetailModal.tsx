@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { appCacheDir, join } from '@tauri-apps/api/path';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
@@ -64,6 +65,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [tagInputFocused, setTagInputFocused] = useState(false);
   const [thumbTimestamp, setThumbTimestamp] = useState('5');
   const [isCapturingThumb, setIsCapturingThumb] = useState(false);
+  const [localThumbnail, setLocalThumbnail] = useState(video.thumbnail ?? null);
+  const [thumbCacheBust, setThumbCacheBust] = useState(0);
   const [isRescanning, setIsRescanning] = useState(false);
   const [localMediaType, setLocalMediaType] = useState<'video' | 'audio' | 'image'>(video.media_type ?? 'video');
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
@@ -185,12 +188,21 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     if (isNaN(ts) || ts < 0) return;
     setIsCapturingThumb(true);
     try {
+      let outputPath = localThumbnail;
+      if (!outputPath) {
+        const cacheDir = await appCacheDir();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+        const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+        outputPath = await join(cacheDir, 'thumbnails', hash.slice(0, 2), `${hash}.webp`);
+      }
       await invoke('capture_frame_at', {
         videoPath: video.path,
         timestamp: ts,
-        outputPath: video.thumbnail ?? '',
+        outputPath,
       });
-      await invoke('db_update_video_thumbnail', { videoId: video.id, thumbnail: video.thumbnail });
+      await invoke('db_update_video_thumbnail', { videoId: video.id, thumbnail: outputPath });
+      setLocalThumbnail(outputPath);
+      setThumbCacheBust(Date.now());
       await fetchVideos();
     } catch (e) {
       console.error('Capture failed:', e);
@@ -277,9 +289,9 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
               className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer"
               onDoubleClick={handlePlay}
             >
-              {video.thumbnail ? (
+              {localThumbnail ? (
                 <img
-                  src={convertFileSrc(video.thumbnail)}
+                  src={`${convertFileSrc(localThumbnail)}${thumbCacheBust ? `?t=${thumbCacheBust}` : ''}`}
                   alt={localTitle}
                   className={`w-full h-full ${video.media_type === 'image' ? 'object-contain bg-black' : 'object-cover'}`}
                 />
@@ -626,7 +638,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 <button
                   type="button"
                   onClick={handleCaptureThumb}
-                  disabled={isCapturingThumb || !video.thumbnail}
+                  disabled={isCapturingThumb}
                   className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
                 >
                   {isCapturingThumb ? '処理中...' : 'キャプチャ'}

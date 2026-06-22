@@ -761,7 +761,7 @@ pub async fn capture_frame_at(
     let status = tokio::process::Command::new(&ffmpeg_path)
         .args([
             "-y", "-ss", &ts, "-i", &video_path,
-            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
+            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "90",
             &output_path,
         ])
         .stdout(std::process::Stdio::null())
