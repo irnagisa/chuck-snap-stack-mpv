@@ -384,7 +384,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             );
             return { id: video.id, thumbnail: result.thumbnail_path, duration: null, hasAudio: 0 };
           } catch {
-            return { id: video.id, thumbnail: null, duration: null, hasAudio: 0 };
+            return { id: video.id, thumbnail: '', duration: null, hasAudio: 0 };
           }
         }
 
@@ -421,6 +421,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
     const processedIds = new Set<number>();
     const PENDING_BATCH_SIZE = 500;
+    let cumulativeDone = 0;
+    let cumulativeTotal = 0;
 
     try {
       while (true) {
@@ -430,16 +432,16 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         const toProcess = pending.filter((v) => !processedIds.has(v.id));
         if (toProcess.length === 0) break;
 
-        set({ thumbnailProgress: { done: 0, total: toProcess.length } });
+        cumulativeTotal += toProcess.length;
+        set({ thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal } });
 
-        let doneCount = 0;
         for (let i = 0; i < toProcess.length; i += THUMBNAIL_CONCURRENCY) {
           while (get().isThumbnailPaused || get().isScanning) {
             await new Promise<void>((resolve) => setTimeout(resolve, 200));
           }
           const batch = toProcess.slice(i, i + THUMBNAIL_CONCURRENCY);
           const results = await Promise.all(batch.map(processVideoData));
-          doneCount += batch.length;
+          cumulativeDone += batch.length;
           for (const v of batch) processedIds.add(v.id);
 
           while (get().isThumbnailPaused || get().isScanning) {
@@ -466,6 +468,24 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             });
           }
 
+          // processVideoData が null を返したアイテムを「処理試行済み」としてDBに記録し、
+          // 次回 generateThumbnails 呼び出し時に無限リトライされるのを防ぐ
+          const failedBatch = batch.filter((_, idx) => results[idx] === null);
+          if (failedBatch.length > 0) {
+            const failedNoThumb = failedBatch.filter((v) => !v.thumbnail);
+            const failedHasThumb = failedBatch.filter((v) => !!v.thumbnail);
+            if (failedNoThumb.length > 0) {
+              await invoke('db_update_thumbnails_batch', {
+                updates: failedNoThumb.map((v) => ({ id: v.id, thumbnail: '', duration: null, hasAudio: 0 })),
+              });
+            }
+            if (failedHasThumb.length > 0) {
+              await invoke('db_update_audio_only_batch', {
+                updates: failedHasThumb.map((v) => ({ id: v.id, hasAudio: 0 })),
+              });
+            }
+          }
+
           const updateMap = new Map(
             results
               .filter((r): r is VideoUpdate => r !== null)
@@ -476,7 +496,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
               const upd = updateMap.get(v.id);
               return upd ? { ...v, ...upd } : v;
             }),
-            thumbnailProgress: { done: doneCount, total: toProcess.length },
+            thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal },
           }));
         }
       }
