@@ -47,7 +47,7 @@ pub struct VideoTagRow {
 
 #[tauri::command]
 pub async fn db_fetch_tags(state: State<'_, DbState>) -> Result<Vec<Tag>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare("SELECT id, name, color, icon, tag_category_id, created_at FROM tags ORDER BY name")
         .map_err(|e| e.to_string())?;
@@ -68,7 +68,7 @@ pub async fn db_fetch_tags(state: State<'_, DbState>) -> Result<Vec<Tag>, String
 
 #[tauri::command]
 pub async fn db_fetch_categories(state: State<'_, DbState>) -> Result<Vec<Category>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare(
             "SELECT id, name, color, icon, parent_id, created_at FROM categories ORDER BY name",
@@ -93,7 +93,7 @@ pub async fn db_fetch_categories(state: State<'_, DbState>) -> Result<Vec<Catego
 pub async fn db_fetch_tag_categories(
     state: State<'_, DbState>,
 ) -> Result<Vec<TagCategory>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare("SELECT id, name, created_at FROM tag_categories ORDER BY name")
         .map_err(|e| e.to_string())?;
@@ -117,7 +117,7 @@ pub async fn db_fetch_video_tags_for_ids(
     if video_ids.is_empty() {
         return Ok(vec![]);
     }
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     // Build IN (...) placeholder (up to 499 params)
     let ph = video_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
     let sql = format!(
@@ -151,7 +151,7 @@ pub async fn db_fetch_video_tags(
     state: State<'_, DbState>,
     video_id: i64,
 ) -> Result<Vec<Tag>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.name, t.color, t.icon, t.tag_category_id, t.created_at
@@ -183,7 +183,7 @@ pub async fn db_create_tag(
     color: String,
     icon: Option<String>,
 ) -> Result<Tag, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let rows_affected = conn
         .execute(
             "INSERT OR IGNORE INTO tags (name, color, icon) VALUES (?1, ?2, ?3)",
@@ -234,7 +234,7 @@ pub async fn db_update_tag(
     tag_category_id: Option<i64>,
     icon: Option<String>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "UPDATE tags SET name = ?1, color = ?2, tag_category_id = ?3, icon = ?4 WHERE id = ?5",
         rusqlite::params![name, color, tag_category_id, icon, tag_id],
@@ -245,7 +245,7 @@ pub async fn db_update_tag(
 
 #[tauri::command]
 pub async fn db_delete_tag(state: State<'_, DbState>, tag_id: i64) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute("DELETE FROM tags WHERE id = ?1", [tag_id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -257,7 +257,7 @@ pub async fn db_set_tag_category(
     tag_id: i64,
     tag_category_id: Option<i64>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "UPDATE tags SET tag_category_id = ?1 WHERE id = ?2",
         rusqlite::params![tag_category_id, tag_id],
@@ -273,7 +273,7 @@ pub async fn db_create_tag_category(
     state: State<'_, DbState>,
     name: String,
 ) -> Result<TagCategory, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let rows_affected = conn
         .execute(
             "INSERT OR IGNORE INTO tag_categories (name) VALUES (?1)",
@@ -312,7 +312,7 @@ pub async fn db_update_tag_category(
     id: i64,
     name: String,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "UPDATE tag_categories SET name = ?1 WHERE id = ?2",
         rusqlite::params![name, id],
@@ -326,7 +326,7 @@ pub async fn db_delete_tag_category(
     state: State<'_, DbState>,
     id: i64,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "UPDATE tags SET tag_category_id = NULL WHERE tag_category_id = ?1",
         [id],
@@ -347,7 +347,7 @@ pub async fn db_create_category(
     parent_id: Option<i64>,
     icon: Option<String>,
 ) -> Result<Category, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let rows_affected = conn
         .execute(
             "INSERT OR IGNORE INTO categories (name, color, parent_id, icon) VALUES (?1, ?2, ?3, ?4)",
@@ -399,7 +399,7 @@ pub async fn db_update_category(
     parent_id: Option<i64>,
     icon: Option<String>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "UPDATE categories SET name = ?1, color = ?2, parent_id = ?3, icon = ?4 WHERE id = ?5",
         rusqlite::params![name, color, parent_id, icon, category_id],
@@ -413,7 +413,7 @@ pub async fn db_delete_category(
     state: State<'_, DbState>,
     category_id: i64,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     // Promote children to root
     conn.execute(
         "UPDATE categories SET parent_id = NULL WHERE parent_id = ?1",
@@ -439,7 +439,7 @@ pub async fn db_add_tag_to_video(
     video_id: i64,
     tag_id: i64,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
         [video_id, tag_id],
@@ -454,7 +454,7 @@ pub async fn db_remove_tag_from_video(
     video_id: i64,
     tag_id: i64,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "DELETE FROM video_tags WHERE video_id = ?1 AND tag_id = ?2",
         [video_id, tag_id],
@@ -469,7 +469,7 @@ pub async fn db_set_video_category(
     video_id: i64,
     category_id: Option<i64>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "UPDATE videos SET category_id = ?1 WHERE id = ?2",
         rusqlite::params![category_id, video_id],
@@ -487,7 +487,7 @@ pub async fn db_add_tag_to_multiple(
     if video_ids.is_empty() {
         return Ok(());
     }
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     // Batch insert: 2 params per row, max 499 rows to stay under SQLite 999 limit
     let batch_size = 499;
     for chunk in video_ids.chunks(batch_size) {
@@ -513,7 +513,7 @@ pub async fn db_set_category_multiple(
     if video_ids.is_empty() {
         return Ok(());
     }
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     // 1 param for category_id + up to 498 ids per batch
     let batch_size = 498;
     for chunk in video_ids.chunks(batch_size) {

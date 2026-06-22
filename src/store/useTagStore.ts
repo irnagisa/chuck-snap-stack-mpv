@@ -94,9 +94,11 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   videoTags: {},
 
   init: async () => {
-    await get().fetchTagCategories();
-    await get().fetchTags();
-    await get().fetchCategories();
+    await Promise.all([
+      get().fetchTagCategories(),
+      get().fetchTags(),
+      get().fetchCategories(),
+    ]);
   },
 
   fetchTags: async () => {

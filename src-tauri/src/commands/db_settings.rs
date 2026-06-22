@@ -7,7 +7,7 @@ use crate::db::DbState;
 
 #[tauri::command]
 pub async fn db_load_settings(state: State<'_, DbState>) -> Result<HashMap<String, String>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare(
             "SELECT key, value FROM settings WHERE key IN (
@@ -39,7 +39,7 @@ pub async fn db_save_settings(
     theme: String,
     auto_play_next: bool,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let entries = [
         ("mpv_path", mpv_path),
         ("ffmpeg_path", ffmpeg_path),
@@ -65,7 +65,7 @@ pub async fn db_save_keybindings(
     state: State<'_, DbState>,
     bindings_json: String,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('keybindings', ?1)",
         [&bindings_json],
@@ -79,7 +79,7 @@ pub async fn db_get_setting(
     state: State<'_, DbState>,
     key: String,
 ) -> Result<Option<String>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let result: Option<String> = conn
         .query_row(
             "SELECT value FROM settings WHERE key = ?1",
@@ -97,7 +97,7 @@ pub async fn db_set_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
         [&key, &value],

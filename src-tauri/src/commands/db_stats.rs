@@ -54,7 +54,7 @@ pub struct LibraryStats {
 
 #[tauri::command]
 pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibraryStats, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
 
     let total_videos: i64 = conn
         .query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0))

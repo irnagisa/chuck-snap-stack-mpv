@@ -89,6 +89,27 @@ interface LibraryActions {
 
 const THUMBNAIL_CONCURRENCY = 3;
 
+function notifyScanResult(result: ScanResult): void {
+  if (result.errors.length > 0) {
+    const count = result.errors.length;
+    toast.error(
+      `スキャンエラー ${count}件: ${result.errors[0]}${count > 1 ? ` 他${count - 1}件` : ''}`,
+      8000
+    );
+  }
+  if (result.truncated) {
+    toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
+  }
+  if (result.scannedCount === 0 && result.skippedCount > 0) {
+    toast.info(`対応するメディアファイルが見つかりませんでした（${result.skippedCount}件は非対応形式）`, 8000);
+  }
+  if (result.newCount > 0) {
+    toast.success(`${result.newCount}件の新しいファイルを追加しました (スキャン: ${result.scannedCount}件)`, 5000);
+  } else if (result.scannedCount > 0) {
+    toast.info(`スキャン完了 (${result.scannedCount}件はすでにライブラリに登録済み)`, 5000);
+  }
+}
+
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
   totalCount: 0,
@@ -279,24 +300,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         useDirAsCategory: useDirectoryAsCategory,
       });
 
-      if (result.errors.length > 0) {
-        const count = result.errors.length;
-        toast.error(
-          `スキャンエラー ${count}件: ${result.errors[0]}${count > 1 ? ` 他${count - 1}件` : ''}`,
-          8000
-        );
-      }
-      if (result.truncated) {
-        toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
-      }
-      if (result.scannedCount === 0 && result.skippedCount > 0) {
-        toast.info(`対応するメディアファイルが見つかりませんでした（${result.skippedCount}件は非対応形式）`, 8000);
-      }
-      if (result.newCount > 0) {
-        toast.success(`${result.newCount}件の新しいファイルを追加しました (スキャン: ${result.scannedCount}件)`, 5000);
-      } else if (result.scannedCount > 0) {
-        toast.info(`スキャン完了 (${result.scannedCount}件はすでにライブラリに登録済み)`, 5000);
-      }
+      notifyScanResult(result);
 
       set({ currentPage: 1 });
       await get().fetchVideos();
@@ -316,21 +320,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         downloadDir: downloadDir || null,
       });
 
-      if (result.errors.length > 0) {
-        const count = result.errors.length;
-        toast.error(
-          `スキャンエラー ${count}件: ${result.errors[0]}${count > 1 ? ` 他${count - 1}件` : ''}`,
-          8000
-        );
-      }
-      if (result.truncated) {
-        toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
-      }
-      if (result.newCount > 0) {
-        toast.success(`${result.newCount}件の新しいファイルを追加しました (スキャン: ${result.scannedCount}件)`, 5000);
-      } else if (result.scannedCount > 0) {
-        toast.info(`スキャン完了 (${result.scannedCount}件はすでにライブラリに登録済み)`, 5000);
-      }
+      notifyScanResult(result);
 
       set({ currentPage: 1 });
       await get().fetchVideos();
@@ -675,7 +665,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     if (videoIds.length === 0) return;
 
     const total = videoIds.length;
-    const { addToast, updateToast, removeToast } = useToastStore.getState();
+    const { addToast, removeToast } = useToastStore.getState();
     const toastId = addToast(`カテゴリ割り当て中... 0 / ${total}`, 'info', 0);
     try {
       const assigned = await invoke<number>('db_assign_category_from_path', { videoIds });
@@ -686,7 +676,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         assigned > 0 ? `カテゴリを割り当てました（${assigned} 件）` : 'カテゴリ割り当て完了',
         'success'
       );
-      void updateToast; // suppress unused warning
     } catch (e) {
       removeToast(toastId);
       throw e;

@@ -157,7 +157,7 @@ fn connect_and_start_reader(
             match reader.read_line(&mut line) {
                 Ok(0) => {
                     // EOF: mpv プロセスが終了した
-                    eprintln!("[reader gen={current_gen}] EOF 受信");
+                    log::debug!("[reader gen={current_gen}] EOF 受信");
                     let is_current = gen_counter.load(Ordering::Acquire) == current_gen;
                     if is_current {
                         // ソケット参照をクリアし、ゾンビプロセス回収はバックグラウンドへ
@@ -173,21 +173,21 @@ fn connect_and_start_reader(
                         let still_current =
                             gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
-                            eprintln!("[reader gen={current_gen}] mpv//closed 送信");
+                            log::debug!("[reader gen={current_gen}] mpv//closed 送信");
                             let _ = std::fs::remove_file(mpv_socket_path());
                             let _ = app.emit("mpv://closed", ());
                         } else {
-                            eprintln!("[reader gen={current_gen}] generation 変化 → closed をスキップ");
+                            log::debug!("[reader gen={current_gen}] generation 変化 → closed をスキップ");
                         }
                     } else {
-                        eprintln!("[reader gen={current_gen}] is_current=false → スキップ");
+                        log::debug!("[reader gen={current_gen}] is_current=false → スキップ");
                     }
                     return;
                 }
                 Ok(_) => {}
                 Err(e) => {
                     // I/O エラー (ECONNRESET 等): EOF と同様にクリーンアップして終了する
-                    eprintln!("[reader gen={current_gen}] read error: {e} → cleanup");
+                    log::debug!("[reader gen={current_gen}] read error: {e} → cleanup");
                     let is_current = gen_counter.load(Ordering::Acquire) == current_gen;
                     if is_current {
                         let child_opt = state.lock().ok().and_then(|mut s| {
@@ -202,7 +202,7 @@ fn connect_and_start_reader(
                         }
                         let still_current = gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
-                            eprintln!("[reader gen={current_gen}] error → mpv//closed 送信");
+                            log::debug!("[reader gen={current_gen}] error → mpv//closed 送信");
                             let _ = std::fs::remove_file(mpv_socket_path());
                             let _ = app.emit("mpv://closed", ());
                         }
@@ -252,7 +252,7 @@ fn connect_and_start_reader(
                 Some("end-file") => {
                     // reason: "eof" | "stop" | "quit" | "error" | "redirect" | "unknown"
                     let reason = val["reason"].as_str().unwrap_or("unknown").to_string();
-                    eprintln!("[reader gen={current_gen}] end-file reason={reason}");
+                    log::debug!("[reader gen={current_gen}] end-file reason={reason}");
                     let _ = app.emit("mpv://end-file", reason);
                 }
                 _ => {}
@@ -348,21 +348,21 @@ pub async fn play(
     let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
     if let Some(ref writer) = writer_opt {
         if std::path::Path::new(&mpv_socket_path()).exists() {
-            eprintln!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
+            log::debug!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
             match send_cmd(writer, json!({"command": ["loadfile", path, "replace"]})) {
                 Ok(()) => {
-                    eprintln!("[play] loadfile 送信成功");
+                    log::debug!("[play] loadfile 送信成功");
                     return Ok(());
                 }
                 Err(e) => {
-                    eprintln!("[play] loadfile send_cmd 失敗 ({e}) → 再起動");
+                    log::debug!("[play] loadfile send_cmd 失敗 ({e}) → 再起動");
                 }
             }
         } else {
-            eprintln!("[play] ソケット消失 → 再起動");
+            log::debug!("[play] ソケット消失 → 再起動");
         }
     } else {
-        eprintln!("[play] mpv 未起動 → 新規起動");
+        log::debug!("[play] mpv 未起動 → 新規起動");
     }
 
     // ソケットファイルと古いプロセスを片付ける
@@ -384,7 +384,7 @@ pub async fn play(
     }
 
     // mpv 起動
-    eprintln!("[play] mpv 起動");
+    log::debug!("[play] mpv 起動");
     let socket_path = mpv_socket_path();
     let ipc_server_arg = format!("--input-ipc-server={socket_path}");
     let mut child = Command::new(&mpv_path)
@@ -408,7 +408,7 @@ pub async fn play(
         std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().flatten() {
-                eprintln!("[mpv stderr] {line}");
+                log::debug!("[mpv stderr] {line}");
             }
         });
     }
@@ -437,9 +437,9 @@ pub async fn play(
     })
     .await
     .map_err(|e| e.to_string())
-    .and_then(|r| r.map_err(|e| { eprintln!("[play] IPC 接続失敗: {e}"); e }))?;
+    .and_then(|r| r.map_err(|e| { log::debug!("[play] IPC 接続失敗: {e}"); e }))?;
 
-    eprintln!("[play] IPC 接続成功 gen={current_gen}");
+    log::debug!("[play] IPC 接続成功 gen={current_gen}");
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
 
     let gen_for_constraints = Arc::clone(&gen_counter);

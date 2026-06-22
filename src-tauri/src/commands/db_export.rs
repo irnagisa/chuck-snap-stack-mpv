@@ -82,7 +82,7 @@ fn base64_encode(data: &[u8]) -> String {
 
 #[tauri::command]
 pub async fn db_export_backup(state: State<'_, DbState>) -> Result<BackupData, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let now = chrono_or_fallback();
     Ok(BackupData {
         version: 1,
@@ -109,7 +109,7 @@ pub async fn db_import_backup(
     if data.version.is_none() || data.videos.is_none() {
         return Err("バックアップファイルの形式が正しくありません".to_string());
     }
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
 
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
 

@@ -25,7 +25,7 @@ use crate::commands::db_videos::Video;
 
 #[tauri::command]
 pub async fn db_fetch_playlists(state: State<'_, DbState>) -> Result<Vec<Playlist>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare("SELECT id, name, created_at FROM playlists ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
@@ -43,7 +43,7 @@ pub async fn db_fetch_playlists(state: State<'_, DbState>) -> Result<Vec<Playlis
 
 #[tauri::command]
 pub async fn db_create_playlist(state: State<'_, DbState>, name: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute("INSERT INTO playlists (name) VALUES (?1)", [&name])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -51,7 +51,7 @@ pub async fn db_create_playlist(state: State<'_, DbState>, name: String) -> Resu
 
 #[tauri::command]
 pub async fn db_delete_playlist(state: State<'_, DbState>, id: i64) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute("DELETE FROM playlist_items WHERE playlist_id = ?1", [id])
         .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM playlists WHERE id = ?1", [id])
@@ -64,7 +64,7 @@ pub async fn db_fetch_playlist_videos(
     state: State<'_, DbState>,
     playlist_id: i64,
 ) -> Result<Vec<Video>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare(
             "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
@@ -88,7 +88,7 @@ pub async fn db_add_video_to_playlist(
     playlist_id: i64,
     video_id: i64,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "INSERT OR IGNORE INTO playlist_items (playlist_id, video_id, position)
          SELECT ?1, ?2, COALESCE(MAX(position), 0) + 1 FROM playlist_items WHERE playlist_id = ?1",
@@ -104,7 +104,7 @@ pub async fn db_remove_video_from_playlist(
     playlist_id: i64,
     video_id: i64,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "DELETE FROM playlist_items WHERE playlist_id = ?1 AND video_id = ?2",
         [playlist_id, video_id],
@@ -119,7 +119,7 @@ pub async fn db_reorder_playlist_items(
     playlist_id: i64,
     video_ids: Vec<i64>,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     for (i, &vid) in video_ids.iter().enumerate() {
         conn.execute(
             "UPDATE playlist_items SET position = ?1 WHERE playlist_id = ?2 AND video_id = ?3",
@@ -136,7 +136,7 @@ pub async fn db_reorder_playlist_items(
 pub async fn db_get_smart_playlists(
     state: State<'_, DbState>,
 ) -> Result<Vec<SmartPlaylist>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     let mut stmt = conn
         .prepare(
             "SELECT id, name, filter_json, created_at FROM smart_playlists ORDER BY created_at DESC",
@@ -161,7 +161,7 @@ pub async fn db_create_smart_playlist(
     name: String,
     filter_json: String,
 ) -> Result<SmartPlaylist, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute(
         "INSERT INTO smart_playlists (name, filter_json) VALUES (?1, ?2)",
         rusqlite::params![name, filter_json],
@@ -183,7 +183,7 @@ pub async fn db_delete_smart_playlist(
     state: State<'_, DbState>,
     id: i64,
 ) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn()?;
     conn.execute("DELETE FROM smart_playlists WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
