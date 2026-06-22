@@ -47,7 +47,7 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
 export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
     useTagStore();
-  const { db, fetchVideos, updateVideo, watchDirs, moveVideoFile, rescanVideo } = useLibraryStore();
+  const { fetchVideos, updateVideo, watchDirs, moveVideoFile, rescanVideo } = useLibraryStore();
   const { play } = usePlayerStore();
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
@@ -75,8 +75,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const currentTags = videoTags[video.id] ?? [];
 
   useEffect(() => {
-    if (db) fetchVideoTags(db, video.id);
-  }, [db, video.id]);
+    fetchVideoTags(video.id);
+  }, [video.id]);
 
   useEffect(() => {
     invoke<number>('get_file_size', { path: video.path })
@@ -144,28 +144,25 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   };
 
   const handleAddTag = async (tag: Tag) => {
-    if (!db) return;
-    await addTagToVideo(db, video.id, tag.id);
+    await addTagToVideo(video.id, tag.id);
     setTagInput('');
   };
 
   const handleCreateAndAdd = async () => {
-    if (!db || !tagInput.trim()) return;
-    const tag = await createTag(db, tagInput.trim(), newTagColor, newTagIcon);
-    await addTagToVideo(db, video.id, tag.id);
+    if (!tagInput.trim()) return;
+    const tag = await createTag(tagInput.trim(), newTagColor, newTagIcon);
+    await addTagToVideo(video.id, tag.id);
     setTagInput('');
   };
 
   const handleRemoveTag = async (tagId: number) => {
-    if (!db) return;
-    await removeTagFromVideo(db, video.id, tagId);
+    await removeTagFromVideo(video.id, tagId);
   };
 
   const handleCategoryChange = async (value: string) => {
-    if (!db) return;
     setCategoryId(value);
     const catId = value ? Number(value) : null;
-    await setVideoCategory(db, video.id, catId);
+    await setVideoCategory(video.id, catId);
 
     if (moveFile) {
       const watchDir = findWatchDir(video.path, watchDirs);
@@ -184,7 +181,6 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   };
 
   const handleCaptureThumb = async () => {
-    if (!db) return;
     const ts = parseFloat(thumbTimestamp);
     if (isNaN(ts) || ts < 0) return;
     setIsCapturingThumb(true);
@@ -194,7 +190,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
         timestamp: ts,
         outputPath: video.thumbnail ?? '',
       });
-      await db.execute('UPDATE videos SET thumbnail = ? WHERE id = ?', [video.thumbnail, video.id]);
+      await invoke('db_update_video_thumbnail', { videoId: video.id, thumbnail: video.thumbnail });
       await fetchVideos();
     } catch (e) {
       console.error('Capture failed:', e);

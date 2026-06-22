@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 
 export type KeyAction =
@@ -67,9 +66,9 @@ const DEFAULTS: AppSettings = {
 
 interface SettingsStore extends AppSettings {
   isLoaded: boolean;
-  loadSettings: (db: Database) => Promise<void>;
-  saveSettings: (db: Database, settings: AppSettings) => Promise<void>;
-  saveKeybindings: (db: Database, bindings: KeyBindings) => Promise<void>;
+  loadSettings: () => Promise<void>;
+  saveSettings: (settings: AppSettings) => Promise<void>;
+  saveKeybindings: (bindings: KeyBindings) => Promise<void>;
 }
 
 async function syncToRust(settings: AppSettings) {
@@ -97,22 +96,8 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   ...DEFAULTS,
   isLoaded: false,
 
-  loadSettings: async (db: Database) => {
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key   TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )
-    `);
-
-    const rows = await db.select<{ key: string; value: string }[]>(
-      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'ytdlp_path', 'download_dir', 'screenshot_dir', 'keybindings', 'theme', 'auto_play_next')"
-    );
-
-    const map: Record<string, string> = {};
-    for (const row of rows) {
-      map[row.key] = row.value;
-    }
+  loadSettings: async () => {
+    const map = await invoke<Record<string, string>>("db_load_settings");
 
     const savedMpvPath = map["mpv_path"];
     const resolvedMpvPath = await resolveMpvPath(savedMpvPath);
@@ -141,49 +126,23 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     await syncToRust(settings);
   },
 
-  saveSettings: async (db: Database, settings: AppSettings) => {
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('mpv_path', ?)",
-      [settings.mpvPath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('ffmpeg_path', ?)",
-      [settings.ffmpegPath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('ffprobe_path', ?)",
-      [settings.ffprobePath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('ytdlp_path', ?)",
-      [settings.ytdlpPath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('download_dir', ?)",
-      [settings.downloadDir]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('screenshot_dir', ?)",
-      [settings.screenshotDir]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('theme', ?)",
-      [settings.theme]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_play_next', ?)",
-      [String(settings.autoPlayNext)]
-    );
-
+  saveSettings: async (settings: AppSettings) => {
+    await invoke("db_save_settings", {
+      mpvPath: settings.mpvPath,
+      ffmpegPath: settings.ffmpegPath,
+      ffprobePath: settings.ffprobePath,
+      ytdlpPath: settings.ytdlpPath,
+      downloadDir: settings.downloadDir,
+      screenshotDir: settings.screenshotDir,
+      theme: settings.theme,
+      autoPlayNext: settings.autoPlayNext,
+    });
     set({ ...settings });
     await syncToRust(settings);
   },
 
-  saveKeybindings: async (db: Database, bindings: KeyBindings) => {
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('keybindings', ?)",
-      [JSON.stringify(bindings)]
-    );
+  saveKeybindings: async (bindings: KeyBindings) => {
+    await invoke("db_save_keybindings", { bindingsJson: JSON.stringify(bindings) });
     set({ keybindings: bindings });
   },
 }));

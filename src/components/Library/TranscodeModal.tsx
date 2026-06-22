@@ -40,7 +40,7 @@ interface Props {
 }
 
 export function TranscodeModal({ video, onClose }: Props) {
-  const { addVideoFromPath, db, fetchVideos } = useLibraryStore();
+  const { addVideoFromPath, fetchVideos } = useLibraryStore();
   const { addTagToVideo, setVideoCategory, videoTags } = useTagStore();
   const { isRunning, start } = useTranscodeStore();
 
@@ -81,14 +81,14 @@ export function TranscodeModal({ video, onClose }: Props) {
       preset,
       onSuccess: async (outputPath) => {
         const newId = await addVideoFromPath(outputPath, stem);
-        if (newId == null || !db) return;
+        if (newId == null) return;
         // カテゴリをコピー
         if (originalCategoryId != null) {
-          await setVideoCategory(db, newId, originalCategoryId);
+          await setVideoCategory(newId, originalCategoryId);
         }
         // タグをコピー
         for (const tag of originalTags) {
-          await addTagToVideo(db, newId, tag.id);
+          await addTagToVideo(newId, tag.id);
         }
         if (originalCategoryId != null || originalTags.length > 0) {
           await fetchVideos();

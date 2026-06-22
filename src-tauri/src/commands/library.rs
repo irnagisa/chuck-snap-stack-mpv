@@ -49,84 +49,80 @@ pub struct ScanResult {
     pub skipped_count: u32,
 }
 
+/// Core scanning logic (blocking). Call via spawn_blocking from async context.
+pub fn scan_dir_core(path: &str) -> ScanResult {
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+    let mut skipped_count: u32 = 0;
+    let root = std::path::PathBuf::from(path);
+
+    const MAX_DEPTH: usize = 10;
+    const MAX_FILES: usize = 50_000;
+    let mut truncated = false;
+
+    for entry in WalkDir::new(path)
+        .follow_links(true)
+        .max_depth(MAX_DEPTH)
+    {
+        if files.len() >= MAX_FILES {
+            truncated = true;
+            break;
+        }
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                errors.push(format!("walk error: {e}"));
+                continue;
+            }
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let ext = entry
+            .path()
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+        let media_type = if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+            "video"
+        } else if AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+            "audio"
+        } else if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+            "image"
+        } else {
+            skipped_count += 1;
+            continue;
+        };
+        let title = entry
+            .path()
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let file_path = entry.path().to_path_buf();
+        let parent_dir_name = file_path.parent().and_then(|p| {
+            if p == root {
+                None
+            } else {
+                p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+            }
+        });
+        files.push(ScannedFile {
+            path: file_path.to_string_lossy().to_string(),
+            title,
+            parent_dir_name,
+            media_type: media_type.to_string(),
+        });
+    }
+
+    ScanResult { files, errors, truncated, skipped_count }
+}
+
 #[tauri::command]
 pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
     let result = tokio::task::spawn_blocking(move || -> Result<ScanResult, String> {
-        let mut files = Vec::new();
-        let mut errors = Vec::new();
-        let mut skipped_count: u32 = 0;
-        // ウォッチディレクトリのパス (論理パス、正規化しない)
-        // シンボリックリンク経由で見つかったファイルのパスが必ずここから始まることを保証する
-        let root = std::path::PathBuf::from(&path);
-
-        // 深さ・件数の上限を設けて DoS を防ぐ
-        const MAX_DEPTH: usize = 10;
-        const MAX_FILES: usize = 50_000;
-
-        let mut truncated = false;
-        for entry in WalkDir::new(&path)
-            .follow_links(true)   // シンボリックリンク先のディレクトリ・ファイルも走査する
-            .max_depth(MAX_DEPTH)
-        {
-            if files.len() >= MAX_FILES {
-                truncated = true;
-                break;
-            }
-            // アクセス権エラー・循環シンボリックリンク等は個別エントリをスキップし、スキャン全体は継続する
-            let entry = match entry {
-                Ok(e) => e,
-                Err(e) => {
-                    errors.push(format!("walk error: {e}"));
-                    continue;
-                }
-            };
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let ext = entry
-                .path()
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_lowercase())
-                .unwrap_or_default();
-            let media_type = if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-                "video"
-            } else if AUDIO_EXTENSIONS.contains(&ext.as_str()) {
-                "audio"
-            } else if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-                "image"
-            } else {
-                skipped_count += 1;
-                continue;
-            };
-            {
-                let title = entry
-                    .path()
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_string();
-                // ウォッチディレクトリ内の論理パスを保存する (canonical にしない)
-                // こうすることでパスが必ずウォッチディレクトリから始まり、
-                // LIKE パターンマッチが正しく機能する
-                let file_path = entry.path().to_path_buf();
-                let parent_dir_name = file_path.parent().and_then(|p| {
-                    if p == root {
-                        None
-                    } else {
-                        p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
-                    }
-                });
-                files.push(ScannedFile {
-                    path: file_path.to_string_lossy().to_string(),
-                    title,
-                    parent_dir_name,
-                    media_type: media_type.to_string(),
-                });
-            }
-        }
-
-        Ok(ScanResult { files, errors, truncated, skipped_count })
+        Ok(scan_dir_core(&path))
     })
     .await
     .map_err(|e| e.to_string())??;

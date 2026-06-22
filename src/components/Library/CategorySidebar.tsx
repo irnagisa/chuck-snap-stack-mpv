@@ -22,7 +22,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     updateTag, deleteTag,
     createTagCategory, updateTagCategory, deleteTagCategory,
   } = useTagStore();
-  const { db, fetchVideos } = useLibraryStore();
+  const { fetchVideos } = useLibraryStore();
 
   // カテゴリ追加フォーム状態
   const [addingParentId, setAddingParentId] = useState<number | null | undefined>(undefined); // undefined=非表示
@@ -87,8 +87,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   }, [searchLower, categories]);
 
   const handleAdd = async () => {
-    if (!db || !newName.trim()) return;
-    await createCategory(db, newName.trim(), newColor, newParentId, newIcon);
+    if (!newName.trim()) return;
+    await createCategory(newName.trim(), newColor, newParentId, newIcon);
     setNewName('');
     setAddingParentId(undefined);
     setNewParentId(null);
@@ -96,9 +96,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   };
 
   const handleDelete = async (id: number) => {
-    if (!db) return;
     if (selectedCategoryId === id) onSelectCategory(null);
-    await deleteCategory(db, id);
+    await deleteCategory(id);
     await fetchVideos();
   };
 
@@ -111,8 +110,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   };
 
   const handleEditSave = async () => {
-    if (!db || !editingId || !editName.trim()) return;
-    await updateCategory(db, editingId, editName.trim(), editColor, editParentId, editIcon);
+    if (!editingId || !editName.trim()) return;
+    await updateCategory(editingId, editName.trim(), editColor, editParentId, editIcon);
     await fetchVideos();
     setEditingId(null);
   };
@@ -126,32 +125,30 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   };
 
   const handleEditTagSave = async () => {
-    if (!db || !editingTagId || !editTagName.trim()) return;
-    await updateTag(db, editingTagId, editTagName.trim(), editTagColor, editTagCategoryId, editTagIcon);
+    if (!editingTagId || !editTagName.trim()) return;
+    await updateTag(editingTagId, editTagName.trim(), editTagColor, editTagCategoryId, editTagIcon);
     setEditingTagId(null);
   };
 
   const handleDeleteTag = async (tagId: number) => {
-    if (!db) return;
-    await deleteTag(db, tagId);
+    await deleteTag(tagId);
   };
 
   const handleAddTagCat = async () => {
-    if (!db || !newTagCatName.trim()) return;
-    await createTagCategory(db, newTagCatName.trim());
+    if (!newTagCatName.trim()) return;
+    await createTagCategory(newTagCatName.trim());
     setNewTagCatName('');
     setIsAddingTagCat(false);
   };
 
   const handleEditTagCatSave = async () => {
-    if (!db || !editingTagCatId || !editTagCatName.trim()) return;
-    await updateTagCategory(db, editingTagCatId, editTagCatName.trim());
+    if (!editingTagCatId || !editTagCatName.trim()) return;
+    await updateTagCategory(editingTagCatId, editTagCatName.trim());
     setEditingTagCatId(null);
   };
 
   const handleDeleteTagCat = async (id: number) => {
-    if (!db) return;
-    await deleteTagCategory(db, id);
+    await deleteTagCategory(id);
   };
 
   // タグをカテゴリ別にグループ化

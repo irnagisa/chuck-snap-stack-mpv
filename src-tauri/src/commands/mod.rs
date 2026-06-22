@@ -1,3 +1,9 @@
+pub mod db_export;
+pub mod db_playlists;
+pub mod db_settings;
+pub mod db_stats;
+pub mod db_tags;
+pub mod db_videos;
 pub mod download;
 pub mod library;
 pub mod mpv;

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useTagStore } from '../../store/useTagStore';
-import { useLibraryStore } from '../../store/useLibraryStore';
 
 interface Props {
   videoIds: number[];
@@ -10,7 +9,6 @@ interface Props {
 
 export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
   const { tags, addTagToMultiple } = useTagStore();
-  const { db } = useLibraryStore();
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
 
@@ -24,11 +22,11 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
   };
 
   const handleApply = async () => {
-    if (!db || selectedTagIds.size === 0) return;
+    if (selectedTagIds.size === 0) return;
     setLoading(true);
     try {
       for (const tagId of selectedTagIds) {
-        await addTagToMultiple(db, videoIds, tagId);
+        await addTagToMultiple(videoIds, tagId);
       }
       onDone();
     } finally {

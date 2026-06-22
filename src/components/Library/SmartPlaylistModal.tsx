@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '../../store/useLibraryStore';
 
 interface Props {
@@ -7,7 +8,7 @@ interface Props {
 
 export function SmartPlaylistModal({ onClose }: Props) {
   const {
-    db, filterSearch, filterCategoryId, filterTagIds, filterMinRating,
+    filterSearch, filterCategoryId, filterTagIds, filterMinRating,
     filterHasAudio, filterMinDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
   } = useLibraryStore();
 
@@ -16,17 +17,17 @@ export function SmartPlaylistModal({ onClose }: Props) {
   const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
-    if (!db || !name.trim()) return;
+    if (!name.trim()) return;
     setIsSaving(true);
     try {
       const filterState = {
         filterSearch, filterCategoryId, filterTagIds, filterMinRating,
         filterHasAudio, filterMinDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
       };
-      await db.execute(
-        'INSERT INTO smart_playlists (name, filter_json) VALUES (?, ?)',
-        [name.trim(), JSON.stringify(filterState)]
-      );
+      await invoke('db_create_smart_playlist', {
+        name: name.trim(),
+        filterJson: JSON.stringify(filterState),
+      });
       setSaved(true);
     } catch (e) {
       console.error('Smart playlist save failed:', e);

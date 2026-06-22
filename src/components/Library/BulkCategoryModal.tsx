@@ -19,17 +19,17 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
 
 export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
   const { categories, setCategoryMultiple } = useTagStore();
-  const { db, fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
+  const { fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
   const flatCategories = useMemo(() => flattenCategoryTree(buildCategoryTree(categories)), [categories]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null | 'unset'>('unset');
   const [moveFiles, setMoveFiles] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const handleApply = async () => {
-    if (!db || selectedCategoryId === 'unset') return;
+    if (selectedCategoryId === 'unset') return;
     setLoading(true);
     try {
-      await setCategoryMultiple(db, videoIds, selectedCategoryId);
+      await setCategoryMultiple(videoIds, selectedCategoryId);
 
       if (moveFiles) {
         const catPath = typeof selectedCategoryId === 'number'

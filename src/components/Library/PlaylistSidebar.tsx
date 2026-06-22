@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import type { Playlist, SmartPlaylist } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { useLibraryStore, type SortBy, type SortOrder, type WatchedStatus } from '../../store/useLibraryStore';
@@ -10,7 +11,7 @@ interface Props {
 export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   const { playlists, createPlaylist, deletePlaylist } = usePlaylistStore();
   const {
-    db, setSearch, setCategoryFilter, setMinRating, setHasAudio,
+    setSearch, setCategoryFilter, setMinRating, setHasAudio,
     setMinDuration, setWatchedStatus, setSort,
   } = useLibraryStore();
   const [isCreating, setIsCreating] = useState(false);
@@ -18,11 +19,10 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   const [smartPlaylists, setSmartPlaylists] = useState<SmartPlaylist[]>([]);
 
   useEffect(() => {
-    if (!db) return;
-    db.select<SmartPlaylist[]>('SELECT * FROM smart_playlists ORDER BY created_at DESC')
+    invoke<SmartPlaylist[]>('db_get_smart_playlists')
       .then(setSmartPlaylists)
       .catch(() => {});
-  }, [db]);
+  }, []);
 
   const handleCreate = async () => {
     const name = newName.trim();
@@ -50,8 +50,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   };
 
   const handleDeleteSmartPlaylist = async (id: number) => {
-    if (!db) return;
-    await db.execute('DELETE FROM smart_playlists WHERE id = ?', [id]);
+    await invoke('db_delete_smart_playlist', { id });
     setSmartPlaylists((prev) => prev.filter((sp) => sp.id !== id));
   };
 

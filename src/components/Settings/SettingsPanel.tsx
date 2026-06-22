@@ -28,7 +28,7 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 
 export function SettingsPanel({ onClose }: Props) {
   const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, saveSettings, saveKeybindings } = useSettingsStore();
-  const { db, watchDirs, scanAndImport, removeWatchDir, isScanning, isThumbnailGenerating } = useLibraryStore();
+  const { watchDirs, scanAndImport, removeWatchDir, isScanning, isThumbnailGenerating } = useLibraryStore();
 
   const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext });
   const [isSaving, setIsSaving] = useState(false);
@@ -144,11 +144,10 @@ export function SettingsPanel({ onClose }: Props) {
   };
 
   const handleSave = async () => {
-    if (!db) return;
     setIsSaving(true);
     try {
-      await saveSettings(db, local);
-      await saveKeybindings(db, local.keybindings);
+      await saveSettings(local);
+      await saveKeybindings(local.keybindings);
       onClose();
     } finally {
       setIsSaving(false);
@@ -574,7 +573,7 @@ export function SettingsPanel({ onClose }: Props) {
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving || !db}
+            disabled={isSaving}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded disabled:opacity-50"
           >
             {isSaving ? "保存中..." : "保存"}

@@ -12,7 +12,6 @@ interface Props {
 type Phase = 'idle' | 'exporting' | 'importing' | 'done' | 'error';
 
 export function ExportModal({ onClose }: Props) {
-  const db = useLibraryStore((s) => s.db);
   const fetchVideos = useLibraryStore((s) => s.fetchVideos);
   const initTag = useTagStore((s) => s.init);
   const initPlaylist = usePlaylistStore((s) => s.init);
@@ -21,8 +20,6 @@ export function ExportModal({ onClose }: Props) {
   const [message, setMessage] = useState('');
 
   const handleExport = async () => {
-    if (!db) return;
-
     const filePath = await save({
       defaultPath: `chuck-backup-${new Date().toISOString().slice(0, 10)}.json`,
       filters: [{ name: 'JSON', extensions: ['json'] }],
@@ -31,32 +28,11 @@ export function ExportModal({ onClose }: Props) {
 
     setPhase('exporting');
     try {
-      const [videos, categories, tags, tagCategories, videoTags, playlists, playlistItems, settings, watchDirs, smartPlaylists] =
-        await Promise.all([
-          db.select('SELECT * FROM videos'),
-          db.select('SELECT * FROM categories'),
-          db.select('SELECT * FROM tags'),
-          db.select('SELECT * FROM tag_categories').catch(() => []),
-          db.select('SELECT * FROM video_tags'),
-          db.select('SELECT * FROM playlists'),
-          db.select('SELECT * FROM playlist_items'),
-          db.select('SELECT * FROM settings'),
-          db.select('SELECT * FROM watch_dirs'),
-          db.select('SELECT * FROM smart_playlists').catch(() => []),
-        ]);
-
-      const backup = {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        videos, categories, tags, tagCategories, videoTags, playlists,
-        playlistItems, settings, watchDirs, smartPlaylists,
-      };
-
+      const backup = await invoke<object>('db_export_backup');
       await invoke('save_text_file', {
         path: filePath,
         content: JSON.stringify(backup, null, 2),
       });
-
       setPhase('done');
       setMessage(`エクスポート完了: ${filePath}`);
     } catch (e) {
@@ -66,7 +42,6 @@ export function ExportModal({ onClose }: Props) {
   };
 
   const handleImport = async () => {
-    if (!db) return;
     const filePath = await open({
       filters: [{ name: 'JSON', extensions: ['json'] }],
       multiple: false,
@@ -78,75 +53,11 @@ export function ExportModal({ onClose }: Props) {
       const content = await invoke<string>('read_text_file', { path: filePath as string });
       const backup = JSON.parse(content);
 
-      if (!backup.version || !backup.videos) {
-        throw new Error('バックアップファイルの形式が正しくありません');
-      }
-
-      await db.execute('BEGIN');
-      try {
-        await db.execute('DELETE FROM playlist_items');
-        await db.execute('DELETE FROM video_tags');
-        await db.execute('DELETE FROM playlists');
-        await db.execute('DELETE FROM videos');
-        await db.execute('DELETE FROM tags');
-        await db.execute('DELETE FROM categories');
-        await db.execute('DELETE FROM smart_playlists').catch(() => {});
-
-        for (const row of backup.categories ?? []) {
-          await db.execute(
-            'INSERT OR IGNORE INTO categories (id, name, color, parent_id, icon, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-            [row.id, row.name, row.color, row.parent_id ?? null, row.icon ?? null, row.created_at]
-          );
-        }
-        for (const row of backup.tags ?? []) {
-          await db.execute(
-            'INSERT OR IGNORE INTO tags (id, name, color, tag_category_id, created_at) VALUES (?, ?, ?, ?, ?)',
-            [row.id, row.name, row.color, row.tag_category_id, row.created_at]
-          );
-        }
-        for (const row of backup.videos ?? []) {
-          await db.execute(
-            `INSERT OR IGNORE INTO videos
-              (id, path, title, duration, thumbnail, watched_at, progress, rating, category_id, has_audio, watch_count, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [row.id, row.path, row.title, row.duration, row.thumbnail, row.watched_at,
-             row.progress ?? 0, row.rating ?? 0, row.category_id, row.has_audio, row.watch_count ?? 0, row.created_at]
-          );
-        }
-        for (const row of backup.videoTags ?? []) {
-          await db.execute(
-            'INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)',
-            [row.video_id, row.tag_id]
-          );
-        }
-        for (const row of backup.playlists ?? []) {
-          await db.execute(
-            'INSERT OR IGNORE INTO playlists (id, name, created_at) VALUES (?, ?, ?)',
-            [row.id, row.name, row.created_at]
-          );
-        }
-        for (const row of backup.playlistItems ?? []) {
-          await db.execute(
-            'INSERT OR IGNORE INTO playlist_items (playlist_id, video_id, position) VALUES (?, ?, ?)',
-            [row.playlist_id, row.video_id, row.position]
-          );
-        }
-        for (const row of backup.smartPlaylists ?? []) {
-          await db.execute(
-            'INSERT OR IGNORE INTO smart_playlists (id, name, filter_json, created_at) VALUES (?, ?, ?, ?)',
-            [row.id, row.name, row.filter_json, row.created_at]
-          );
-        }
-
-        await db.execute('COMMIT');
-      } catch (e) {
-        await db.execute('ROLLBACK');
-        throw e;
-      }
+      await invoke('db_import_backup', { data: backup });
 
       await fetchVideos();
-      await initTag(db);
-      await initPlaylist(db);
+      await initTag();
+      await initPlaylist();
 
       setPhase('done');
       setMessage('インポート完了。ライブラリが更新されました。');

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLibraryStore } from '../../store/useLibraryStore';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Stats {
   totalVideos: number;
@@ -8,8 +8,8 @@ interface Stats {
   avgRating: number;
   categoryStats: { name: string; count: number }[];
   topRated: { title: string | null; path: string; rating: number }[];
-  recentlyWatched: { title: string | null; path: string; watched_at: string }[];
-  topWatched: { title: string | null; path: string; watch_count: number }[];
+  recentlyWatched: { title: string | null; path: string; watchedAt: string }[];
+  topWatched: { title: string | null; path: string; watchCount: number }[];
   topTags: { name: string; count: number }[];
 }
 
@@ -44,62 +44,14 @@ interface Props {
 }
 
 export function StatsModal({ onClose }: Props) {
-  const db = useLibraryStore((s) => s.db);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!db) return;
     const load = async () => {
       try {
-        const [
-          totalRow,
-          watchedRow,
-          durationRow,
-          ratingRow,
-          catRows,
-          topRatedRows,
-          recentRows,
-          topWatchedRows,
-          topTagRows,
-        ] = await Promise.all([
-          db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM videos'),
-          db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM videos WHERE watched_at IS NOT NULL'),
-          db.select<{ total: number }[]>('SELECT COALESCE(SUM(duration), 0) as total FROM videos'),
-          db.select<{ avg: number }[]>('SELECT AVG(NULLIF(rating, 0)) as avg FROM videos'),
-          db.select<{ name: string; count: number }[]>(
-            `SELECT c.name, COUNT(v.id) as count
-             FROM categories c
-             JOIN videos v ON v.category_id = c.id
-             GROUP BY c.id ORDER BY count DESC LIMIT 10`
-          ),
-          db.select<{ title: string | null; path: string; rating: number }[]>(
-            'SELECT title, path, rating FROM videos WHERE rating > 0 ORDER BY rating DESC, watched_at DESC LIMIT 5'
-          ),
-          db.select<{ title: string | null; path: string; watched_at: string }[]>(
-            'SELECT title, path, watched_at FROM videos WHERE watched_at IS NOT NULL ORDER BY watched_at DESC LIMIT 5'
-          ),
-          db.select<{ title: string | null; path: string; watch_count: number }[]>(
-            'SELECT title, path, COALESCE(watch_count, 0) as watch_count FROM videos WHERE COALESCE(watch_count, 0) > 0 ORDER BY watch_count DESC LIMIT 5'
-          ),
-          db.select<{ name: string; count: number }[]>(
-            `SELECT t.name, COUNT(vt.video_id) as count
-             FROM tags t JOIN video_tags vt ON t.id = vt.tag_id
-             GROUP BY t.id ORDER BY count DESC LIMIT 10`
-          ),
-        ]);
-
-        setStats({
-          totalVideos: totalRow[0]?.count ?? 0,
-          watchedCount: watchedRow[0]?.count ?? 0,
-          totalDurationSec: durationRow[0]?.total ?? 0,
-          avgRating: ratingRow[0]?.avg ?? 0,
-          categoryStats: catRows,
-          topRated: topRatedRows,
-          recentlyWatched: recentRows,
-          topWatched: topWatchedRows,
-          topTags: topTagRows,
-        });
+        const data = await invoke<Stats>('db_get_library_stats');
+        setStats(data);
       } catch (e) {
         console.error('Stats load failed:', e);
       } finally {
@@ -107,7 +59,7 @@ export function StatsModal({ onClose }: Props) {
       }
     };
     load();
-  }, [db]);
+  }, []);
 
   const watchedPct = stats && stats.totalVideos > 0
     ? Math.round((stats.watchedCount / stats.totalVideos) * 100)
@@ -228,7 +180,7 @@ export function StatsModal({ onClose }: Props) {
                             {v.title ?? v.path.split('/').pop()}
                           </span>
                           <span className="text-xs text-gray-400">
-                            {new Date(v.watched_at).toLocaleDateString('ja-JP')}
+                            {new Date(v.watchedAt).toLocaleDateString('ja-JP')}
                           </span>
                         </li>
                       ))}
@@ -247,7 +199,7 @@ export function StatsModal({ onClose }: Props) {
                           <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">
                             {v.title ?? v.path.split('/').pop()}
                           </span>
-                          <span className="text-xs text-gray-500 shrink-0 tabular-nums">{v.watch_count}回</span>
+                          <span className="text-xs text-gray-500 shrink-0 tabular-nums">{v.watchCount}回</span>
                         </li>
                       ))}
                     </ol>
