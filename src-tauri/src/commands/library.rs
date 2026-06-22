@@ -166,11 +166,13 @@ pub async fn generate_thumbnail(
     let is_image = IMAGE_EXTENSIONS.contains(&ext.as_str());
 
     // 画像ファイルはffprobeスキップ・シークなしでリサイズのみ
+    // scale=320:-2: 高さを2の倍数に丸めることで JPEG の偶数次元制約を満たす
+    // (GIF は pal8 フォーマットのため -1 では奇数高さになると JPEG エンコードが失敗する)
     if is_image {
         let status = tokio::process::Command::new(&ffmpeg_path)
             .args([
                 "-y", "-i", &video_path,
-                "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",
+                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
                 &output_path,
             ])
             .stdout(std::process::Stdio::null())
@@ -179,7 +181,7 @@ pub async fn generate_thumbnail(
             .await
             .map_err(|e| e.to_string())?;
 
-        return if status.success() {
+        return if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
             Ok(ThumbnailResult { thumbnail_path: output_path, duration: None, has_audio: false })
         } else {
             Err("ffmpeg failed".to_string())
@@ -232,28 +234,54 @@ pub async fn generate_thumbnail(
         return Err("アルバムアートが見つかりません".to_string());
     }
 
-    // 5秒地点からフレームを抽出 (高速シーク)
-    let status = tokio::process::Command::new(&ffmpeg_path)
-        .args([
-            "-y", "-ss", "5", "-i", &video_path,
-            "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",
-            &output_path,
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map_err(|e| e.to_string())?;
+    // duration に応じてシーク位置を決定する
+    // duration < 1秒の場合は -ss を使わずに先頭フレームを直接抽出する
+    // (短い動画では -ss でシーク先がEOFを超えてffmpegが空出力で終了するため)
+    let seek_secs = match duration {
+        Some(d) if d >= 5.0 => Some(5.0_f64),
+        Some(d) if d >= 1.0 => Some((d * 0.1_f64).max(0.5)),
+        _ => None, // duration 不明または 1 秒未満: シークなし
+    };
 
-    if status.success() {
+    let status = if let Some(ss) = seek_secs {
+        let ss_str = ss.to_string();
+        tokio::process::Command::new(&ffmpeg_path)
+            .args([
+                "-y", "-ss", &ss_str, "-i", &video_path,
+                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
+                &output_path,
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        // 1 秒未満: 先頭フレームを直接抽出
+        tokio::process::Command::new(&ffmpeg_path)
+            .args([
+                "-y", "-i", &video_path,
+                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
+                &output_path,
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    // 出力ファイルが実際に生成されたか確認する
+    // (短い動画では ffmpeg が成功扱いで終了しても空出力になる場合がある)
+    if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
         return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio });
     }
 
-    // 動画が5秒未満の場合は先頭フレームで再試行
+    // シークありで失敗 or 出力が空 → 先頭フレームで再試行
     let status2 = tokio::process::Command::new(&ffmpeg_path)
         .args([
             "-y", "-i", &video_path,
-            "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",
+            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
             &output_path,
         ])
         .stdout(std::process::Stdio::null())
@@ -262,7 +290,7 @@ pub async fn generate_thumbnail(
         .await
         .map_err(|e| e.to_string())?;
 
-    if status2.success() {
+    if status2.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
         Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio })
     } else {
         Err("ffmpeg failed".to_string())
@@ -694,7 +722,7 @@ pub async fn capture_frame_at(
     let status = tokio::process::Command::new(&ffmpeg_path)
         .args([
             "-y", "-ss", &ts, "-i", &video_path,
-            "-frames:v", "1", "-vf", "scale=320:-1", "-q:v", "2",
+            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
             &output_path,
         ])
         .stdout(std::process::Stdio::null())
