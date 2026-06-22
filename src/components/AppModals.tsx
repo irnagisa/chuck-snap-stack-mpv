@@ -9,6 +9,7 @@ import { BulkTagModal } from './Library/BulkTagModal';
 import { BulkCategoryModal } from './Library/BulkCategoryModal';
 import { BulkRenameModal } from './Library/BulkRenameModal';
 import { DuplicatesModal } from './Library/DuplicatesModal';
+import { MissingFilesModal } from './Library/MissingFilesModal';
 import { StatsModal } from './Library/StatsModal';
 import { ExportModal } from './Library/ExportModal';
 import { SmartPlaylistModal } from './Library/SmartPlaylistModal';
@@ -26,6 +27,7 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
     showSettings, closeSettings,
     showDownload, closeDownload,
     showDuplicates, closeDuplicates,
+    showMissingFiles, closeMissingFiles,
     showStats, closeStats,
     showExport, closeExport,
     showSmartPlaylist, closeSmartPlaylist,
@@ -42,6 +44,8 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {showDownload && <DownloadModal onClose={closeDownload} />}
 
       {showDuplicates && <DuplicatesModal onClose={closeDuplicates} />}
+
+      {showMissingFiles && <MissingFilesModal onClose={closeMissingFiles} />}
 
       {showStats && <StatsModal onClose={closeStats} />}
 

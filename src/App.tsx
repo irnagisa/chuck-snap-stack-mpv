@@ -104,7 +104,7 @@ function App() {
   } = useTranscodeStore();
   const {
     openSettings, openDownload, openDetailVideo, openAddToPlaylist,
-    openPlaylist, openBulkModal, openDuplicates, openStats, openExport, openSmartPlaylist, closeAll,
+    openPlaylist, openBulkModal, openDuplicates, openMissingFiles, openStats, openExport, openSmartPlaylist, closeAll,
     detailVideo, closeDetailVideo,
   } = useModalStore();
   const theme = useSettingsStore((s) => s.theme);
@@ -282,6 +282,15 @@ function App() {
           onClick={openDuplicates}
         >
           重複
+        </button>
+        <button
+          type="button"
+          title="欠損・破損ファイルを検出"
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
+          disabled={!isDbReady}
+          onClick={openMissingFiles}
+        >
+          欠損
         </button>
         <button
           type="button"
