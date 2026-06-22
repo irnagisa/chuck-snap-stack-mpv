@@ -1004,17 +1004,36 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             await new Promise<void>((resolve) => setTimeout(resolve, 200));
           }
 
-          // ffmpeg 完了後に DB 書き込みをシリアルで実行（並行書き込みによるロック競合を回避）
-          for (const r of results) {
-            if (r === null) continue;
-            if (r.thumbnail !== undefined) {
-              await db.execute(
-                'UPDATE videos SET thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
-                [r.thumbnail, r.duration ?? null, r.has_audio, r.id]
-              );
-            } else {
-              await db.execute('UPDATE videos SET has_audio = ? WHERE id = ?', [r.has_audio, r.id]);
-            }
+          // ffmpeg 完了後に DB 書き込みを CASE WHEN で一括実行（ロック保持時間を最小化）
+          const withThumb = results.filter((r): r is VideoUpdate => r !== null && r.thumbnail !== undefined);
+          const withoutThumb = results.filter((r): r is VideoUpdate => r !== null && r.thumbnail === undefined);
+
+          if (withThumb.length > 0) {
+            const whenClause = withThumb.map(() => 'WHEN ? THEN ?').join(' ');
+            const idPh = withThumb.map(() => '?').join(', ');
+            const thumbParams: unknown[] = [];
+            const durParams: unknown[] = [];
+            const audioParams: unknown[] = [];
+            for (const r of withThumb) { thumbParams.push(r.id, r.thumbnail ?? null); }
+            for (const r of withThumb) { durParams.push(r.id, r.duration ?? null); }
+            for (const r of withThumb) { audioParams.push(r.id, r.has_audio); }
+            const ids = withThumb.map((r) => r.id);
+            await db.execute(
+              `UPDATE videos SET thumbnail = CASE id ${whenClause} ELSE thumbnail END, duration = CASE id ${whenClause} ELSE duration END, has_audio = CASE id ${whenClause} ELSE has_audio END WHERE id IN (${idPh})`,
+              [...thumbParams, ...durParams, ...audioParams, ...ids]
+            );
+          }
+
+          if (withoutThumb.length > 0) {
+            const whenClause = withoutThumb.map(() => 'WHEN ? THEN ?').join(' ');
+            const idPh = withoutThumb.map(() => '?').join(', ');
+            const audioParams: unknown[] = [];
+            for (const r of withoutThumb) { audioParams.push(r.id, r.has_audio); }
+            const ids = withoutThumb.map((r) => r.id);
+            await db.execute(
+              `UPDATE videos SET has_audio = CASE id ${whenClause} ELSE has_audio END WHERE id IN (${idPh})`,
+              [...audioParams, ...ids]
+            );
           }
 
           // バッチ完了後に一括 set（動画更新 + 進捗を1回の state 更新で処理）
@@ -1181,11 +1200,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         const batch = rows.slice(i, i + THUMBNAIL_CONCURRENCY);
         const results = await Promise.all(batch.map(processOne));
         done += batch.length;
-        for (const r of results) {
-          if (!r) continue;
+        const valid = results.filter((r): r is RescanUpdate => r !== null);
+        if (valid.length > 0) {
+          const whenClause = valid.map(() => 'WHEN ? THEN ?').join(' ');
+          const idPh = valid.map(() => '?').join(', ');
+          const mtParams: unknown[] = [];
+          const thParams: unknown[] = [];
+          const durParams: unknown[] = [];
+          const auParams: unknown[] = [];
+          for (const r of valid) { mtParams.push(r.id, r.mediaType); }
+          for (const r of valid) { thParams.push(r.id, r.thumbnail); }
+          for (const r of valid) { durParams.push(r.id, r.duration); }
+          for (const r of valid) { auParams.push(r.id, r.hasAudio); }
+          const ids = valid.map((r) => r.id);
           await db.execute(
-            'UPDATE videos SET media_type = ?, thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
-            [r.mediaType, r.thumbnail, r.duration, r.hasAudio, r.id]
+            `UPDATE videos SET media_type = CASE id ${whenClause} ELSE media_type END, thumbnail = CASE id ${whenClause} ELSE thumbnail END, duration = CASE id ${whenClause} ELSE duration END, has_audio = CASE id ${whenClause} ELSE has_audio END WHERE id IN (${idPh})`,
+            [...mtParams, ...thParams, ...durParams, ...auParams, ...ids]
           );
         }
         set({ thumbnailProgress: { done, total: rows.length } });
