@@ -55,6 +55,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
 
   // フリーワード検索
   const [search, setSearch] = useState('');
+  const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const searchLower = search.toLowerCase();
 
   // ツリー構築
@@ -263,9 +264,21 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   // カテゴリツリーの各行をレンダリング
   const renderCategoryRows = () => {
     const rows: React.ReactNode[] = [];
+    const subtreeHiddenIds = new Set<number>();
+
     for (const { category: cat, depth } of flatCategories) {
+      // 祖先が折りたたまれている場合はスキップ
+      if (cat.parent_id !== null && subtreeHiddenIds.has(cat.parent_id)) {
+        subtreeHiddenIds.add(cat.id);
+        continue;
+      }
+
       if (visibleCategoryIds !== null && !visibleCategoryIds.has(cat.id)) continue;
       const indent = depth * 12;
+
+      const hasChildren = categories.some(c => c.parent_id === cat.id);
+      const isCollapsed = collapsedIds.has(cat.id);
+      if (hasChildren && isCollapsed) subtreeHiddenIds.add(cat.id);
 
       if (editingId === cat.id) {
         rows.push(
@@ -327,10 +340,24 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
       } else {
         rows.push(
           <div key={cat.id} style={{ paddingLeft: indent }} className="group flex items-center gap-0.5">
-            {/* 子階層インジケーター */}
-            {depth > 0 && (
+            {hasChildren ? (
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-0.5 shrink-0"
+                onClick={() => setCollapsedIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(cat.id)) next.delete(cat.id); else next.add(cat.id);
+                  return next;
+                })}
+                title={isCollapsed ? '展開' : '折りたたむ'}
+              >
+                <svg className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ) : depth > 0 ? (
               <span className="text-gray-300 dark:text-gray-600 text-xs mr-0.5 shrink-0">└</span>
-            )}
+            ) : null}
             <button
               type="button"
               className={`flex-1 text-left px-2 py-1.5 rounded text-xs flex items-center gap-1.5 transition-colors min-w-0 ${
@@ -349,6 +376,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               type="button"
               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-green-500 text-xs px-0.5 shrink-0"
               onClick={() => {
+                setCollapsedIds(prev => { const next = new Set(prev); next.delete(cat.id); return next; });
                 setAddingParentId(cat.id);
                 setNewParentId(cat.id);
                 setNewName('');
@@ -380,7 +408,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
       }
 
       // 子カテゴリとして追加フォームをここに挿入
-      if (addingParentId === cat.id) {
+      if (addingParentId === cat.id && !isCollapsed) {
         rows.push(
           <div key={`add-child-${cat.id}`} style={{ paddingLeft: indent + 12 }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
             <input
