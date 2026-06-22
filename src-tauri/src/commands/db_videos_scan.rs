@@ -397,13 +397,27 @@ pub async fn db_rescan_all_dirs(
     }
 
     // Step 4: Delete missing files in scanned dirs
+    // アクセス可能なディレクトリのみ対象（ドライブ未接続時はスキップしてデータ保護）
     {
-        let dir_conditions: Vec<String> = dirs_to_scan
+        let accessible_dirs: Vec<&(String, bool)> = dirs_to_scan
+            .iter()
+            .filter(|(d, _)| std::path::Path::new(d).is_dir())
+            .collect();
+        if accessible_dirs.is_empty() {
+            return Ok(RescanResult {
+                new_count: total_new_count,
+                scanned_count: total_scanned_count,
+                errors: all_errors,
+                truncated: total_truncated,
+                skipped_count: total_skipped,
+            });
+        }
+        let dir_conditions: Vec<String> = accessible_dirs
             .iter()
             .map(|_| "REPLACE(path, '\\\\', '/') LIKE ? ESCAPE '!'".to_string())
             .collect();
         let dir_cond_sql = dir_conditions.join(" OR ");
-        let dir_params: Vec<rusqlite::types::Value> = dirs_to_scan
+        let dir_params: Vec<rusqlite::types::Value> = accessible_dirs
             .iter()
             .map(|(d, _)| rusqlite::types::Value::Text(format!("{}/%" , escape_like_dir(d))))
             .collect();

@@ -71,7 +71,15 @@ pub fn scan_dir_core(path: &str) -> ScanResult {
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {
-                errors.push(format!("walk error: {e}"));
+                let msg = if !root.exists() {
+                    format!(
+                        "フォルダにアクセスできません: {} (ドライブが接続されていない可能性があります)",
+                        root.display()
+                    )
+                } else {
+                    format!("walk error: {e}")
+                };
+                errors.push(msg);
                 continue;
             }
         };
