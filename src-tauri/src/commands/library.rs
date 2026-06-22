@@ -162,13 +162,12 @@ pub async fn generate_thumbnail(
     let is_image = IMAGE_EXTENSIONS.contains(&ext.as_str());
 
     // 画像ファイルはffprobeスキップ・シークなしでリサイズのみ
-    // scale=320:-2: 高さを2の倍数に丸めることで JPEG の偶数次元制約を満たす
-    // (GIF は pal8 フォーマットのため -1 では奇数高さになると JPEG エンコードが失敗する)
+    // scale=320:-2: 高さを2の倍数に丸めることで偶数次元を保証する
     if is_image {
         let status = tokio::process::Command::new(&ffmpeg_path)
             .args([
                 "-y", "-i", &video_path,
-                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
+                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
                 &output_path,
             ])
             .stdout(std::process::Stdio::null())
@@ -210,11 +209,11 @@ pub async fn generate_thumbnail(
         .unwrap_or(true);
 
     if is_audio {
-        // 音声ファイル: 埋め込みアルバムアートを抽出する
+        // 音声ファイル: 埋め込みアルバムアートを抽出し WebP へ再エンコードする
         let status = tokio::process::Command::new(&ffmpeg_path)
             .args([
                 "-y", "-i", &video_path,
-                "-an", "-vcodec", "copy",
+                "-an", "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
                 &output_path,
             ])
             .stdout(std::process::Stdio::null())
@@ -244,7 +243,7 @@ pub async fn generate_thumbnail(
         tokio::process::Command::new(&ffmpeg_path)
             .args([
                 "-y", "-ss", &ss_str, "-i", &video_path,
-                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
+                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
                 &output_path,
             ])
             .stdout(std::process::Stdio::null())
@@ -257,7 +256,7 @@ pub async fn generate_thumbnail(
         tokio::process::Command::new(&ffmpeg_path)
             .args([
                 "-y", "-i", &video_path,
-                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
+                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
                 &output_path,
             ])
             .stdout(std::process::Stdio::null())
@@ -277,7 +276,7 @@ pub async fn generate_thumbnail(
     let status2 = tokio::process::Command::new(&ffmpeg_path)
         .args([
             "-y", "-i", &video_path,
-            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
+            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
             &output_path,
         ])
         .stdout(std::process::Stdio::null())
@@ -718,7 +717,7 @@ pub async fn capture_frame_at(
     let status = tokio::process::Command::new(&ffmpeg_path)
         .args([
             "-y", "-ss", &ts, "-i", &video_path,
-            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "2",
+            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
             &output_path,
         ])
         .stdout(std::process::Stdio::null())
@@ -741,4 +740,25 @@ pub async fn canonicalize_path(path: String) -> String {
         .await
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or(path)
+}
+
+/// サムネイルキャッシュディレクトリ内の .jpg ファイルをすべて削除する。
+/// WebP 移行時の一括クリーンアップ用。
+#[tauri::command]
+pub async fn cleanup_jpg_thumbnails(thumbs_dir: String) -> Result<u32, String> {
+    use super::utils::validate_path;
+    validate_path(&thumbs_dir)?;
+    let base = std::path::Path::new(&thumbs_dir);
+    if !base.exists() {
+        return Ok(0);
+    }
+    let mut count = 0u32;
+    for entry in WalkDir::new(base).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("jpg")).unwrap_or(false) {
+            let _ = tokio::fs::remove_file(path).await;
+            count += 1;
+        }
+    }
+    Ok(count)
 }

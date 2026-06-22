@@ -762,6 +762,22 @@ pub async fn db_get_pending_thumbnails(
     rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
 }
 
+/// .jpg サムネイルを持つ動画レコードの thumbnail を NULL にリセットする。
+/// WebP 移行時に既存 .jpg サムネイルを再生成対象にするために使用する。
+#[tauri::command]
+pub async fn db_reset_jpg_thumbnails(
+    state: State<'_, DbState>,
+) -> Result<u32, String> {
+    let conn = state.conn()?;
+    let count = conn
+        .execute(
+            "UPDATE videos SET thumbnail = NULL WHERE thumbnail LIKE '%.jpg'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count as u32)
+}
+
 #[tauri::command]
 pub async fn db_update_thumbnails_batch(
     state: State<'_, DbState>,

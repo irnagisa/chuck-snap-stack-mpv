@@ -357,6 +357,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const cacheDir = await appCacheDir();
     const thumbDir = await join(cacheDir, 'thumbnails');
 
+    // JPG → WebP マイグレーション: 既存 .jpg サムネイルを削除して再生成対象にする
+    try {
+      await invoke('db_reset_jpg_thumbnails');
+      await invoke('cleanup_jpg_thumbnails', { thumbsDir: thumbDir });
+    } catch (e) {
+      console.warn('JPG thumbnail migration failed:', e);
+    }
+
     set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: null });
 
     type VideoUpdate = { id: number; thumbnail?: string | null; duration?: number | null; hasAudio: number };
@@ -376,7 +384,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           }
           const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
           const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
           try {
             const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
               'generate_thumbnail',
@@ -391,7 +399,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         if (!video.thumbnail) {
           const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
           const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
 
           if (isAudio) {
             try {
@@ -501,7 +509,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const thumbDir = await join(cacheDir, 'thumbnails');
     const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
     const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-    const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+    const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
 
     try {
       let thumbnail: string | null = null;
@@ -568,7 +576,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
       const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
       const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-      const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+      const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
       try {
         if (isImage) {
           try {
