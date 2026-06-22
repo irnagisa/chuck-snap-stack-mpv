@@ -357,14 +357,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const cacheDir = await appCacheDir();
     const thumbDir = await join(cacheDir, 'thumbnails');
 
-    // JPG → WebP マイグレーション: 既存 .jpg サムネイルを削除して再生成対象にする
-    try {
-      await invoke('db_reset_jpg_thumbnails');
-      await invoke('cleanup_jpg_thumbnails', { thumbsDir: thumbDir });
-    } catch (e) {
-      console.warn('JPG thumbnail migration failed:', e);
-    }
-
     set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: null });
 
     type VideoUpdate = { id: number; thumbnail?: string | null; duration?: number | null; hasAudio: number };
