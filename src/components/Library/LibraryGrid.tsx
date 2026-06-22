@@ -137,7 +137,7 @@ const VideoCard = memo(function VideoCard({
           </div>
         </div>
 
-        {v.has_audio === 0 && (
+        {v.has_audio === 0 && !isImage && !isAudio && (
           <div className="absolute top-1 left-1 pointer-events-none group-hover:opacity-0 transition-opacity">
             <div className="bg-black/60 rounded p-0.5">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
