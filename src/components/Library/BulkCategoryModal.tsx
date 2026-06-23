@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 interface Props {
   videoIds: number[];
@@ -22,9 +23,11 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
   const { t } = useTranslation();
   const { categories, setCategoryMultiple } = useTagStore();
   const { fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
+  const { categoryMode } = useSettingsStore();
   const flatCategories = useMemo(() => flattenCategoryTree(buildCategoryTree(categories)), [categories]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null | 'unset'>('unset');
-  const [moveFiles, setMoveFiles] = useState(true);
+  // Sync モード: 常に移動 / Virtual モード: 移動しない
+  const moveFiles = categoryMode === 'sync';
   const [loading, setLoading] = useState(false);
 
   const handleApply = async () => {
@@ -37,13 +40,18 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
         const catPath = typeof selectedCategoryId === 'number'
           ? getCategoryPath(selectedCategoryId, categories)
           : null;
+        let failCount = 0;
         for (const videoId of videoIds) {
           const video = videos.find((v) => v.id === videoId);
           if (!video) continue;
           const watchDir = findWatchDir(video.path, watchDirs);
           if (!watchDir) continue;
           const destDir = catPath ? `${watchDir}/${catPath}` : watchDir;
-          await moveVideoFile(videoId, destDir);
+          const result = await moveVideoFile(videoId, destDir);
+          if (result === null) failCount++;
+        }
+        if (failCount > 0) {
+          alert(t('syncMode.moveFilesFailed', { count: failCount }));
         }
       }
 
@@ -103,15 +111,11 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{t('bulkCategory.empty')}</p>
         )}
 
-        <label className="flex items-center gap-1.5 mb-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={moveFiles}
-            onChange={(e) => setMoveFiles(e.target.checked)}
-            className="accent-blue-600"
-          />
-          <span className="text-xs text-gray-500 dark:text-gray-400">{t('bulkCategory.moveFile')}</span>
-        </label>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+          {categoryMode === 'sync'
+            ? t('bulkCategory.syncModeNote')
+            : t('bulkCategory.virtualModeNote')}
+        </p>
 
         <div className="flex gap-2">
           <button

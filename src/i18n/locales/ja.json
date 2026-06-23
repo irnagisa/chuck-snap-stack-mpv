@@ -128,7 +128,13 @@
     "sectionKeybindings": "キーボードショートカット",
     "keybindingCapture": "「{{action}}」に割り当てるキーを押してください...",
     "keybindingCancel": "キャンセル",
-    "keybindingReset": "すべてデフォルトに戻す"
+    "keybindingReset": "すべてデフォルトに戻す",
+    "sectionCategoryMode": "カテゴリモード",
+    "categoryModeVirtual": "Virtual モード",
+    "categoryModeVirtualDesc": "カテゴリは DB にのみ記録し、ファイルは移動しません。読み取り専用・ネットワークドライブでも使用可能。",
+    "categoryModeSync": "Sync モード",
+    "categoryModeSyncDesc": "カテゴリを変更するとファイルを対応ディレクトリへ移動します。ディレクトリ構成でカテゴリが見えます。",
+    "categoryModeActive": "現在のモード"
   },
   "keybindings": {
     "pause": "一時停止/再開",
@@ -304,7 +310,35 @@
     "moveFile": "ファイルも移動する",
     "applying": "処理中...",
     "apply": "適用",
+    "cancel": "キャンセル",
+    "syncModeNote": "Sync モード: カテゴリ変更時にファイルも移動します",
+    "virtualModeNote": "Virtual モード: カテゴリは DB にのみ記録します"
+  },
+  "categoryMigration": {
+    "title": "Virtual → Sync モード移行",
+    "desc": "Sync モードに切り替えると、カテゴリが設定されているファイルをカテゴリ名のディレクトリに移動します。",
+    "warning": "この操作はファイルを移動します。移動できないファイルはスキップされます。",
+    "watchDirNote": "ウォッチディレクトリに属さないファイルはスキップされます。",
+    "startButton": "移行を開始",
+    "skipButton": "移行せずに Sync に切り替え",
+    "cancelButton": "キャンセル",
+    "running": "移行中... {{done}} / {{total}}",
+    "done": "移行完了",
+    "resultMoved": "{{count}} 件のファイルを移動しました",
+    "resultSkipped": "{{count}} 件はウォッチディレクトリ外でスキップ",
+    "resultFailed": "{{count}} 件の移動に失敗しました",
+    "closeButton": "閉じる",
+    "switchConfirm": "Sync モードに切り替えます。\nカテゴリを変更するたびにファイルが自動移動されます。\nよろしいですか？"
+  },
+  "categoryModeChange": {
+    "toVirtualTitle": "Virtual モードに切り替え",
+    "toVirtualDesc": "Virtual モードでは、カテゴリ変更時にファイルは移動されません。既存のファイル配置はそのまま維持されます。",
+    "toVirtualConfirm": "Virtual モードに切り替える",
     "cancel": "キャンセル"
+  },
+  "syncMode": {
+    "moveFileFailed": "ファイルの移動に失敗しました。カテゴリは保存されましたが、ファイルは元の場所にあります。",
+    "moveFilesFailed": "{{count}} 件のファイル移動に失敗しました。カテゴリは保存されましたが、ファイルは元の場所にあります。"
   },
   "bulkRename": {
     "title": "{{count}} 件の動画を一括リネーム",

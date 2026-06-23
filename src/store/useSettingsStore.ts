@@ -42,6 +42,8 @@ export const KEY_ACTION_KEYS: Record<KeyAction, string> = {
 
 export type Theme = 'light' | 'dark' | 'auto';
 
+export type CategoryMode = 'virtual' | 'sync';
+
 export interface AppSettings {
   mpvPath: string;
   ffmpegPath: string;
@@ -53,6 +55,7 @@ export interface AppSettings {
   theme: Theme;
   autoPlayNext: boolean;
   language: Language;
+  categoryMode: CategoryMode;
 }
 
 const DEFAULTS: AppSettings = {
@@ -66,6 +69,7 @@ const DEFAULTS: AppSettings = {
   theme: "auto",
   autoPlayNext: false,
   language: "ja",
+  categoryMode: 'virtual',
 };
 
 interface SettingsStore extends AppSettings {
@@ -73,6 +77,7 @@ interface SettingsStore extends AppSettings {
   loadSettings: () => Promise<void>;
   saveSettings: (settings: AppSettings) => Promise<void>;
   saveKeybindings: (bindings: KeyBindings) => Promise<void>;
+  setCategoryMode: (mode: CategoryMode) => Promise<void>;
 }
 
 async function syncToRust(settings: AppSettings) {
@@ -128,6 +133,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       theme: (map["theme"] as Theme | undefined) ?? DEFAULTS.theme,
       autoPlayNext: map["auto_play_next"] === "true",
       language,
+      categoryMode: (map["category_mode"] as CategoryMode | undefined) ?? 'virtual',
     };
 
     set({ ...settings, isLoaded: true });
@@ -147,12 +153,18 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       language: settings.language,
     });
     await i18n.changeLanguage(settings.language);
-    set({ ...settings });
+    // categoryMode は setCategoryMode で独立管理するため上書きしない
+    set((state) => ({ ...settings, categoryMode: state.categoryMode }));
     await syncToRust(settings);
   },
 
   saveKeybindings: async (bindings: KeyBindings) => {
     await invoke("db_save_keybindings", { bindingsJson: JSON.stringify(bindings) });
     set({ keybindings: bindings });
+  },
+
+  setCategoryMode: async (mode: CategoryMode) => {
+    await invoke("db_set_setting", { key: "category_mode", value: mode });
+    set({ categoryMode: mode });
   },
 }));

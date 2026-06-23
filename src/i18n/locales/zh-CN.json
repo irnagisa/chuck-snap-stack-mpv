@@ -128,7 +128,13 @@
     "sectionKeybindings": "键盘快捷键",
     "keybindingCapture": "请按下要分配给「{{action}}」的按键...",
     "keybindingCancel": "取消",
-    "keybindingReset": "全部恢复默认"
+    "keybindingReset": "全部恢复默认",
+    "sectionCategoryMode": "分类模式",
+    "categoryModeVirtual": "Virtual 模式",
+    "categoryModeVirtualDesc": "分类仅记录在数据库中，不移动文件。支持只读和网络驱动器。",
+    "categoryModeSync": "Sync 模式",
+    "categoryModeSyncDesc": "更改分类时自动将文件移动到对应目录，目录结构反映分类层级。",
+    "categoryModeActive": "当前模式"
   },
   "keybindings": {
     "pause": "播放/暂停",
@@ -304,7 +310,35 @@
     "moveFile": "同时移动文件",
     "applying": "处理中...",
     "apply": "应用",
+    "cancel": "取消",
+    "syncModeNote": "Sync 模式：更改分类时将自动移动文件",
+    "virtualModeNote": "Virtual 模式：分类仅记录在数据库中"
+  },
+  "categoryMigration": {
+    "title": "Virtual → Sync 迁移",
+    "desc": "切换到 Sync 模式后，已设置分类的文件将被移动到对应分类目录。",
+    "warning": "此操作将移动文件，无法移动的文件将被跳过。",
+    "watchDirNote": "不属于任何监视目录的文件将被跳过。",
+    "startButton": "开始迁移",
+    "skipButton": "不迁移直接切换到 Sync",
+    "cancelButton": "取消",
+    "running": "迁移中... {{done}} / {{total}}",
+    "done": "迁移完成",
+    "resultMoved": "已移动 {{count}} 个文件",
+    "resultSkipped": "{{count}} 个文件在监视目录外，已跳过",
+    "resultFailed": "{{count}} 个文件移动失败",
+    "closeButton": "关闭",
+    "switchConfirm": "切换到 Sync 模式。\n更改分类时将自动移动文件。\n确认？"
+  },
+  "categoryModeChange": {
+    "toVirtualTitle": "切换到 Virtual 模式",
+    "toVirtualDesc": "在 Virtual 模式下，更改分类时不会移动文件，现有文件位置保持不变。",
+    "toVirtualConfirm": "切换到 Virtual 模式",
     "cancel": "取消"
+  },
+  "syncMode": {
+    "moveFileFailed": "文件移动失败。分类已保存，但文件仍在原始位置。",
+    "moveFilesFailed": "{{count}} 个文件移动失败。分类已保存，但文件仍在原始位置。"
   },
   "bulkRename": {
     "title": "批量重命名 {{count}} 个视频",

@@ -128,7 +128,13 @@
     "sectionKeybindings": "Keyboard Shortcuts",
     "keybindingCapture": "Press a key for \"{{action}}\"...",
     "keybindingCancel": "Cancel",
-    "keybindingReset": "Reset all to defaults"
+    "keybindingReset": "Reset all to defaults",
+    "sectionCategoryMode": "Category Mode",
+    "categoryModeVirtual": "Virtual Mode",
+    "categoryModeVirtualDesc": "Categories are stored in DB only. Files are not moved. Works with read-only and network drives.",
+    "categoryModeSync": "Sync Mode",
+    "categoryModeSyncDesc": "Changing a category moves the file to the corresponding directory. Directory structure reflects categories.",
+    "categoryModeActive": "Current mode"
   },
   "keybindings": {
     "pause": "Play/Pause",
@@ -304,7 +310,35 @@
     "moveFile": "Also move files",
     "applying": "Processing...",
     "apply": "Apply",
+    "cancel": "Cancel",
+    "syncModeNote": "Sync mode: files will be moved when category changes",
+    "virtualModeNote": "Virtual mode: category is recorded in DB only"
+  },
+  "categoryMigration": {
+    "title": "Virtual → Sync Migration",
+    "desc": "Switching to Sync mode will move files with a category to the corresponding category directory.",
+    "warning": "This will move files. Files that cannot be moved will be skipped.",
+    "watchDirNote": "Files outside a watch directory will be skipped.",
+    "startButton": "Start Migration",
+    "skipButton": "Switch to Sync without migrating",
+    "cancelButton": "Cancel",
+    "running": "Migrating... {{done}} / {{total}}",
+    "done": "Migration complete",
+    "resultMoved": "{{count}} files moved",
+    "resultSkipped": "{{count}} skipped (outside watch dir)",
+    "resultFailed": "{{count}} failed to move",
+    "closeButton": "Close",
+    "switchConfirm": "Switch to Sync mode.\nFiles will be automatically moved when categories change.\nProceed?"
+  },
+  "categoryModeChange": {
+    "toVirtualTitle": "Switch to Virtual Mode",
+    "toVirtualDesc": "In Virtual mode, files are not moved when categories change. Existing file locations are preserved.",
+    "toVirtualConfirm": "Switch to Virtual Mode",
     "cancel": "Cancel"
+  },
+  "syncMode": {
+    "moveFileFailed": "Failed to move the file. The category was saved, but the file remains in its original location.",
+    "moveFilesFailed": "Failed to move {{count}} file(s). Categories were saved, but files remain in their original locations."
   },
   "bulkRename": {
     "title": "Bulk rename {{count}} videos",

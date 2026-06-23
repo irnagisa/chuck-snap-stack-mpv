@@ -3,11 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import {
-  useSettingsStore, type AppSettings, type KeyAction, type Theme,
+  useSettingsStore, type AppSettings, type KeyAction, type Theme, type CategoryMode,
   KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
 } from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { LANGUAGE_LABELS, type Language } from "../../i18n";
+import { CategoryMigrationModal } from "../Library/CategoryMigrationModal";
 
 interface Props {
   onClose: () => void;
@@ -30,13 +31,36 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 
 export function SettingsPanel({ onClose }: Props) {
   const { t } = useTranslation();
-  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, saveSettings, saveKeybindings } = useSettingsStore();
+  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, categoryMode, saveSettings, saveKeybindings, setCategoryMode } = useSettingsStore();
   const { watchDirs, scanAndImport, removeWatchDir, isScanning, isThumbnailGenerating } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, categoryMode });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
+
+  // カテゴリモード変更
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [showVirtualConfirm, setShowVirtualConfirm] = useState(false);
+
+  const handleCategoryModeSelect = (mode: CategoryMode) => {
+    if (mode === categoryMode) return;
+    if (mode === 'sync') {
+      setShowMigrationModal(true);
+    } else {
+      setShowVirtualConfirm(true);
+    }
+  };
+
+  const handleMigrationDone = async () => {
+    await setCategoryMode('sync');
+    setShowMigrationModal(false);
+  };
+
+  const handleVirtualConfirm = async () => {
+    await setCategoryMode('virtual');
+    setShowVirtualConfirm(false);
+  };
 
   // ウェブサーバー
   const [wsPort, setWsPort] = useState(7777);
@@ -158,6 +182,43 @@ export function SettingsPanel({ onClose }: Props) {
   };
 
   return (
+    <>
+    {showMigrationModal && (
+      <CategoryMigrationModal
+        onDone={handleMigrationDone}
+        onCancel={() => setShowMigrationModal(false)}
+      />
+    )}
+
+    {showVirtualConfirm && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowVirtualConfirm(false)}>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-80 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            {t('categoryModeChange.toVirtualTitle')}
+          </h3>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+            {t('categoryModeChange.toVirtualDesc')}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
+              onClick={handleVirtualConfirm}
+            >
+              {t('categoryModeChange.toVirtualConfirm')}
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+              onClick={() => setShowVirtualConfirm(false)}
+            >
+              {t('categoryModeChange.cancel')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -254,6 +315,42 @@ export function SettingsPanel({ onClose }: Props) {
                 }`}
               />
             </button>
+          </div>
+
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          {/* カテゴリモード */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            {t('settings.sectionCategoryMode')}
+          </p>
+
+          <div className="space-y-2">
+            {(['virtual', 'sync'] as CategoryMode[]).map((mode) => (
+              <label
+                key={mode}
+                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  categoryMode === mode
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="category-mode"
+                  checked={categoryMode === mode}
+                  onChange={() => handleCategoryModeSelect(mode)}
+                  className="mt-0.5 accent-blue-600"
+                />
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {t(`settings.categoryMode${mode.charAt(0).toUpperCase() + mode.slice(1)}`)}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {t(`settings.categoryMode${mode.charAt(0).toUpperCase() + mode.slice(1)}Desc`)}
+                  </p>
+                </div>
+              </label>
+            ))}
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />
@@ -607,5 +704,6 @@ export function SettingsPanel({ onClose }: Props) {
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -6,6 +6,7 @@ import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { TagBadge } from './TagBadge';
 import { TranscodeModal } from './TranscodeModal';
 import { Select } from '../common/Select';
@@ -52,13 +53,15 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     useTagStore();
   const { fetchVideos, updateVideo, watchDirs, moveVideoFile, rescanVideo } = useLibraryStore();
   const { play } = usePlayerStore();
+  const { categoryMode } = useSettingsStore();
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
   const [localRating, setLocalRating] = useState(video.rating ?? 0);
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
-  const [moveFile, setMoveFile] = useState(true);
+  // Sync モード: 常に移動 / Virtual モード: 移動しない
+  const moveFile = categoryMode === 'sync';
   const [renameFile, setRenameFile] = useState(true);
   const [tagInput, setTagInput] = useState('');
   const [newTagColor, setNewTagColor] = useState(COLORS[5]);
@@ -174,7 +177,10 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       if (watchDir) {
         const catPath = catId !== null ? getCategoryPath(catId, categories) : null;
         const destDir = catPath ? `${watchDir}/${catPath}` : watchDir;
-        await moveVideoFile(video.id, destDir);
+        const result = await moveVideoFile(video.id, destDir);
+        if (result === null) {
+          alert(t('syncMode.moveFileFailed'));
+        }
       }
     }
 
@@ -455,15 +461,11 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                     </option>
                   ))}
                 </Select>
-                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={moveFile}
-                    onChange={(e) => setMoveFile(e.target.checked)}
-                    className="accent-blue-600"
-                  />
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{t('detail.moveFile')}</span>
-                </label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                  {categoryMode === 'sync'
+                    ? t('bulkCategory.syncModeNote')
+                    : t('bulkCategory.virtualModeNote')}
+                </p>
               </div>
 
               <div>
