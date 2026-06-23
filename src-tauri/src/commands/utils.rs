@@ -3,6 +3,7 @@ use std::path::{Component, Path, PathBuf};
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "aac", "wav", "ogg", "opus", "m4a", "wma"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "avif"];
+const TEXT_EXTENSIONS: &[&str] = &["json", "txt", "csv", "tsv", "md", "xml", "yaml", "yml", "toml", "nfo", "srt", "vtt"];
 
 /// 絶対パスであり `..` コンポーネントや制御文字を含まないことを検証する。
 pub fn validate_path(path: &str) -> Result<PathBuf, String> {
@@ -49,6 +50,23 @@ pub fn validate_media_path(path: &str) -> Result<PathBuf, String> {
         && !IMAGE_EXTENSIONS.contains(&ext.as_str())
     {
         return Err(format!("対応メディアファイルのみ操作できます: {path}"));
+    }
+    Ok(p)
+}
+
+/// テキスト系ファイルのパスを検証する (絶対パス + `..` なし + テキスト拡張子)。
+/// 任意ファイルの読み書きを防ぐため、許可する拡張子を明示的に限定する。
+pub fn validate_text_path(path: &str) -> Result<PathBuf, String> {
+    let p = validate_path(path)?;
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if !TEXT_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(format!(
+            "テキストファイル (.json, .txt, .csv 等) のみ操作できます: {path}"
+        ));
     }
     Ok(p)
 }

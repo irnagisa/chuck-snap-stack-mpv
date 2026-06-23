@@ -94,6 +94,10 @@ pub async fn download_with_ytdlp(
     url: String,
     save_dir: String,
 ) -> Result<String, String> {
+    // 入力検証 (他の download コマンドと同じ基準で統一)
+    super::utils::validate_download_url(&url)?;
+    super::utils::validate_path(&save_dir)?;
+
     // 既存ダウンロードが実行中なら拒否
     {
         let guard = state.child.lock().map_err(|e| e.to_string())?;

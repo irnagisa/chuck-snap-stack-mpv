@@ -4,7 +4,7 @@ use std::path::Path;
 use std::fs;
 
 use super::settings::SharedAppSettings;
-use super::utils::{resolve_unique_path, validate_image_output_path, validate_media_path, validate_path, validate_video_path};
+use super::utils::{resolve_unique_path, validate_image_output_path, validate_media_path, validate_path, validate_text_path, validate_video_path};
 
 #[derive(Serialize)]
 pub struct Chapter {
@@ -61,7 +61,7 @@ pub fn scan_dir_core(path: &str) -> ScanResult {
     let mut truncated = false;
 
     for entry in WalkDir::new(path)
-        .follow_links(true)
+        .follow_links(false) // シンボリックリンクは追跡しない (ライブラリ外への逸脱防止)
         .max_depth(MAX_DEPTH)
     {
         if files.len() >= MAX_FILES {
@@ -454,6 +454,17 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
                     .to_string(),
             );
         }
+        // クロスデバイスコピー後: symlink 置換 TOCTOU でコピー先がディレクトリ外に逸脱していないか再確認
+        let canonical_dest = tokio::fs::canonicalize(&dest_path)
+            .await
+            .map_err(|e| format!("コピー先の正規化失敗: {e}"))?;
+        if let Ok(canon_base) = dest_base.canonicalize() {
+            if !canonical_dest.starts_with(&canon_base) {
+                let _ = tokio::fs::remove_file(&dest_path).await;
+                return Err("移動先がディレクトリ外に解決されました".to_string());
+            }
+        }
+
         tokio::fs::remove_file(&source)
             .await
             .map_err(|e| format!("元ファイルの削除失敗 (コピー先にデータは存在します): {e}"))?;
@@ -500,10 +511,16 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
         .await
         .map_err(|e| e.to_string())?;
 
-    // ウォッチャーが正規化パスでイベントを発火するため、返すパスも正規化して二重登録を防ぐ
+    // コピー後に正規化し、symlink 置換 TOCTOU でコピー先がディレクトリ外に逸脱していないか再確認
     let canonical = tokio::fs::canonicalize(&dest_path)
         .await
-        .unwrap_or(dest_path);
+        .map_err(|e| format!("コピー先の正規化失敗: {e}"))?;
+    if let Ok(canon_base) = dest_base.canonicalize() {
+        if !canonical.starts_with(&canon_base) {
+            let _ = tokio::fs::remove_file(&dest_path).await;
+            return Err("コピー先がディレクトリ外に解決されました".to_string());
+        }
+    }
     Ok(canonical.to_string_lossy().into_owned())
 }
 
@@ -673,7 +690,7 @@ pub async fn scan_subtitle_files(video_path: String) -> Result<Vec<SubtitleFile>
 /// テキストファイルを保存する。
 #[tauri::command]
 pub async fn save_text_file(path: String, content: String) -> Result<(), String> {
-    validate_path(&path)?;
+    validate_text_path(&path)?;
     if let Some(parent) = std::path::Path::new(&path).parent() {
         tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
     }
@@ -685,7 +702,7 @@ pub async fn save_text_file(path: String, content: String) -> Result<(), String>
 /// テキストファイルを読み込む。
 #[tauri::command]
 pub async fn read_text_file(path: String) -> Result<String, String> {
-    validate_path(&path)?;
+    validate_text_path(&path)?;
     tokio::fs::read_to_string(&path)
         .await
         .map_err(|e| e.to_string())
@@ -714,8 +731,23 @@ pub async fn rename_video_file(old_path: String, new_name: String) -> Result<Str
         return Err("ファイル名にパス区切り文字が含まれています".to_string());
     }
 
-    if new_path.exists() {
-        return Err(format!("同名のファイルがすでに存在します: {}", trimmed));
+    // create_new で排他的にプレースホルダーを作成し、同名ファイルの存在確認を実質アトミックにする
+    // (exists() チェック + rename の TOCTOU を縮小: exists()→create_new に変更)
+    match tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&new_path)
+        .await
+    {
+        Ok(placeholder) => {
+            drop(placeholder);
+            // プレースホルダーを削除してから rename (この間隔は極めて短い)
+            let _ = tokio::fs::remove_file(&new_path).await;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            return Err(format!("同名のファイルがすでに存在します: {}", trimmed));
+        }
+        Err(e) => return Err(e.to_string()),
     }
 
     tokio::fs::rename(&old, &new_path).await.map_err(|e| e.to_string())?;
@@ -776,18 +808,41 @@ pub async fn canonicalize_path(path: String) -> String {
 
 /// サムネイルキャッシュディレクトリ内の .jpg ファイルをすべて削除する。
 /// WebP 移行時の一括クリーンアップ用。
+/// アプリのキャッシュディレクトリ内であることを canonicalize で検証してから実行する。
 #[tauri::command]
-pub async fn cleanup_jpg_thumbnails(thumbs_dir: String) -> Result<u32, String> {
-    use super::utils::validate_path;
+pub async fn cleanup_jpg_thumbnails(
+    app: tauri::AppHandle,
+    thumbs_dir: String,
+) -> Result<u32, String> {
+    use tauri::Manager;
     validate_path(&thumbs_dir)?;
+
     let base = std::path::Path::new(&thumbs_dir);
     if !base.exists() {
         return Ok(0);
     }
+
+    // アプリのキャッシュディレクトリ内に収まっていることを確認
+    let app_cache = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    let canon_cache = app_cache.canonicalize().unwrap_or(app_cache);
+    let canon_base = base
+        .canonicalize()
+        .map_err(|_| "サムネイルディレクトリが存在しません".to_string())?;
+    if !canon_base.starts_with(&canon_cache) {
+        return Err(
+            "アプリのキャッシュディレクトリ外のパスは指定できません".to_string(),
+        );
+    }
+
     let mut count = 0u32;
     for entry in WalkDir::new(base).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("jpg")).unwrap_or(false) {
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("jpg"))
+            .unwrap_or(false)
+        {
             let _ = tokio::fs::remove_file(path).await;
             count += 1;
         }
