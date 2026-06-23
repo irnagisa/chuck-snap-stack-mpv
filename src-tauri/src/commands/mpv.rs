@@ -580,10 +580,7 @@ pub async fn take_screenshot(
     state: tauri::State<'_, SharedMpvState>,
     output_path: String,
 ) -> Result<(), String> {
-    // パストラバーサル防止
-    if output_path.contains('\0') || output_path.contains("..") {
-        return Err("不正なパスです".to_string());
-    }
+    super::utils::validate_image_output_path(&output_path)?;
     let writer = state
         .lock()
         .map_err(|e| e.to_string())?
@@ -637,10 +634,7 @@ pub async fn load_subtitle(
     state: tauri::State<'_, SharedMpvState>,
     path: String,
 ) -> Result<(), String> {
-    // パス検証
-    if path.contains('\0') {
-        return Err("不正なパスです".to_string());
-    }
+    super::utils::validate_path(&path)?;
     let writer = state
         .lock()
         .map_err(|e| e.to_string())?

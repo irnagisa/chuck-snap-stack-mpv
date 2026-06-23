@@ -129,6 +129,7 @@ pub fn scan_dir_core(path: &str) -> ScanResult {
 
 #[tauri::command]
 pub async fn scan_directory(path: String) -> Result<ScanResult, String> {
+    validate_path(&path)?;
     let result = tokio::task::spawn_blocking(move || -> Result<ScanResult, String> {
         Ok(scan_dir_core(&path))
     })
@@ -306,6 +307,7 @@ pub async fn check_has_audio(
     app_settings: tauri::State<'_, SharedAppSettings>,
     video_path: String,
 ) -> Result<bool, String> {
+    validate_media_path(&video_path)?;
     let ffprobe_path = {
         let s = app_settings.lock().map_err(|e| e.to_string())?;
         s.ffprobe_path.clone()
@@ -329,17 +331,23 @@ pub async fn check_has_audio(
 /// ファイルサイズをバイト単位で返す。
 #[tauri::command]
 pub async fn get_file_size(path: String) -> Result<u64, String> {
+    validate_path(&path)?;
     fs::metadata(&path)
         .map(|m| m.len())
         .map_err(|e| format!("ファイルサイズ取得失敗: {e}"))
 }
 
-/// 複数ファイルのサイズをバッチで返す。ファイルが存在しない場合は None。
+/// 複数ファイルのサイズをバッチで返す。パスが不正な場合または存在しない場合は None。
 #[tauri::command]
 pub async fn get_file_sizes(paths: Vec<String>) -> Result<Vec<Option<u64>>, String> {
     let sizes = paths
         .iter()
-        .map(|p| fs::metadata(p).ok().map(|m| m.len()))
+        .map(|p| {
+            validate_path(p)
+                .ok()
+                .and_then(|_| fs::metadata(p).ok())
+                .map(|m| m.len())
+        })
         .collect();
     Ok(sizes)
 }
@@ -356,6 +364,7 @@ pub async fn get_video_dimensions(
     app_settings: tauri::State<'_, SharedAppSettings>,
     path: String,
 ) -> Result<VideoDimensions, String> {
+    validate_media_path(&path)?;
     let ffprobe_path = {
         let s = app_settings.lock().map_err(|e| e.to_string())?;
         s.ffprobe_path.clone()

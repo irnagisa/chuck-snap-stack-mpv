@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::Emitter;
 
 use super::settings::SharedAppSettings;
-use super::utils::validate_video_path;
+use super::utils::{resolve_unique_path, validate_video_path};
 
 #[derive(Clone, Serialize)]
 pub struct TranscodeProgress {
@@ -59,9 +59,14 @@ pub async fn transcode_video(
     let dir = input
         .parent()
         .ok_or_else(|| "入力ファイルの親ディレクトリが取得できません".to_string())?;
-    let output_path = dir.join(format!("{stem}.av1.mkv"));
-    // 一時出力ファイル: 完成後にアトミックリネームすることで TOCTOU を防ぐ
-    let tmp_output_path = dir.join(format!("._{stem}.av1.mkv.tmp"));
+    // 同名の出力ファイルが存在する場合は連番サフィックスで一意化する (上書き防止)
+    let output_path = resolve_unique_path(&dir.join(format!("{stem}.av1.mkv")));
+    // 一時出力ファイルは確定した output_path から派生させる
+    let out_filename = output_path
+        .file_name()
+        .map(|n| format!("._{}", n.to_string_lossy()))
+        .unwrap_or_else(|| format!("._{stem}.av1.mkv"));
+    let tmp_output_path = dir.join(format!("{out_filename}.tmp"));
 
     // 出力パスが入力と同一ディレクトリ内にあることを確認
     if let Ok(canon_dir) = dir.canonicalize() {
