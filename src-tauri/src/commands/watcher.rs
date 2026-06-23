@@ -32,7 +32,7 @@ pub async fn start_watching(
 ) -> Result<(), String> {
     let canonical = tokio::fs::canonicalize(&path)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("パスの正規化に失敗しました ({path}): {e}"))?
         .to_string_lossy()
         .to_string();
 
@@ -55,10 +55,12 @@ pub async fn start_watching(
     state
         .lock()
         .map_err(|e| e.to_string())?
-        .insert(canonical, watcher);
+        .insert(canonical.clone(), watcher);
 
     let handle = app_handle.clone();
+    let canonical_for_log = canonical;
     std::thread::spawn(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let is_video = |p: &std::path::Path| {
             p.extension()
                 .and_then(|e| e.to_str())
@@ -145,6 +147,13 @@ pub async fn start_watching(
                     _ => {}
                 }
             }
+        }
+        }));
+        if let Err(e) = result {
+            let msg = e.downcast_ref::<&str>().copied()
+                .or_else(|| e.downcast_ref::<String>().map(|s| s.as_str()))
+                .unwrap_or("不明なエラー");
+            log::error!("[watcher] イベント処理スレッドがパニックしました (path={}): {msg}", canonical_for_log);
         }
     });
 

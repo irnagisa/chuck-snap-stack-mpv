@@ -183,7 +183,10 @@ fn build_where_clause(
         if cat_id == -1 {
             conditions.push("v.category_id IS NULL".to_string());
         } else {
-            let ids = get_category_descendants(conn, cat_id).unwrap_or_else(|_| vec![cat_id]);
+            let ids = get_category_descendants(conn, cat_id).unwrap_or_else(|e| {
+                log::warn!("[build_where_clause] カテゴリ子孫取得失敗 (cat_id={cat_id}): {e}");
+                vec![cat_id]
+            });
             let ph = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
             conditions.push(format!("v.category_id IN ({ph})"));
             for id in ids {
@@ -578,11 +581,22 @@ pub async fn db_update_video_path(
     let Some(video_id) = video_id else {
         return Ok(());
     };
-    // Remove conflicting entries
-    remove_conflicting_videos(&conn, &new_path, video_id)?;
-    conn.execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    // remove_conflicting_videos + UPDATE を単一トランザクションで実行して不整合を防ぐ
+    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+    let result: Result<(), String> = (|| {
+        remove_conflicting_videos(&conn, &new_path, video_id)?;
+        conn.execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if result.is_ok() {
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    } else {
+        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+            log::error!("[db_update_video_path] ROLLBACK 失敗: {rb_err}");
+        }
+    }
+    result
 }
 
 #[tauri::command]
@@ -592,10 +606,22 @@ pub async fn db_rename_video_file(
     new_path: String,
 ) -> Result<(), String> {
     let conn = state.conn()?;
-    remove_conflicting_videos(&conn, &new_path, video_id)?;
-    conn.execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    // remove_conflicting_videos + UPDATE を単一トランザクションで実行して不整合を防ぐ
+    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+    let result: Result<(), String> = (|| {
+        remove_conflicting_videos(&conn, &new_path, video_id)?;
+        conn.execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if result.is_ok() {
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    } else {
+        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+            log::error!("[db_rename_video_file] ROLLBACK 失敗: {rb_err}");
+        }
+    }
+    result
 }
 
 #[tauri::command]
@@ -605,8 +631,13 @@ pub async fn db_move_video_file_db(
     new_path: String,
 ) -> Result<(), String> {
     let conn = state.conn()?;
-    conn.execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
+    let rows_affected = conn
+        .execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
         .map_err(|e| e.to_string())?;
+    if rows_affected == 0 {
+        log::warn!("[db_move_video_file_db] video_id={video_id} がデータベースに存在しません");
+        return Err(format!("動画 (id={video_id}) がデータベースに存在しません"));
+    }
     Ok(())
 }
 

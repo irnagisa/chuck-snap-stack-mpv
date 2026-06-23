@@ -647,7 +647,10 @@ pub async fn scan_subtitle_files(video_path: String) -> Result<Vec<SubtitleFile>
         let dir = dir.to_path_buf();
         let stem = stem.clone();
         move || -> Vec<SubtitleFile> {
-            let Ok(read_dir) = std::fs::read_dir(&dir) else { return vec![] };
+            let Ok(read_dir) = std::fs::read_dir(&dir) else {
+                log::warn!("[scan_subtitle_files] ディレクトリの読み取りに失敗しました: {}", dir.display());
+                return vec![];
+            };
             let mut result = Vec::new();
             for entry in read_dir.flatten() {
                 let entry_path = entry.path();

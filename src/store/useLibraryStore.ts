@@ -465,20 +465,28 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           const withoutThumb = results.filter((r): r is VideoUpdate => r !== null && r.thumbnail === undefined);
 
           if (withThumb.length > 0) {
-            await invoke('db_update_thumbnails_batch', {
-              updates: withThumb.map((r) => ({
-                id: r.id,
-                thumbnail: r.thumbnail ?? null,
-                duration: r.duration ?? null,
-                hasAudio: r.hasAudio,
-              })),
-            });
+            try {
+              await invoke('db_update_thumbnails_batch', {
+                updates: withThumb.map((r) => ({
+                  id: r.id,
+                  thumbnail: r.thumbnail ?? null,
+                  duration: r.duration ?? null,
+                  hasAudio: r.hasAudio,
+                })),
+              });
+            } catch (e) {
+              console.error('[generateThumbnails] サムネイルバッチDB更新失敗:', e);
+            }
           }
 
           if (withoutThumb.length > 0) {
-            await invoke('db_update_audio_only_batch', {
-              updates: withoutThumb.map((r) => ({ id: r.id, hasAudio: r.hasAudio })),
-            });
+            try {
+              await invoke('db_update_audio_only_batch', {
+                updates: withoutThumb.map((r) => ({ id: r.id, hasAudio: r.hasAudio })),
+              });
+            } catch (e) {
+              console.error('[generateThumbnails] 音声情報バッチDB更新失敗:', e);
+            }
           }
 
           // processVideoData が null を返したアイテムを「処理試行済み」としてDBに記録し、
@@ -488,14 +496,22 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
             const failedNoThumb = failedBatch.filter((v) => !v.thumbnail);
             const failedHasThumb = failedBatch.filter((v) => !!v.thumbnail);
             if (failedNoThumb.length > 0) {
-              await invoke('db_update_thumbnails_batch', {
-                updates: failedNoThumb.map((v) => ({ id: v.id, thumbnail: '', duration: null, hasAudio: 0 })),
-              });
+              try {
+                await invoke('db_update_thumbnails_batch', {
+                  updates: failedNoThumb.map((v) => ({ id: v.id, thumbnail: '', duration: null, hasAudio: 0 })),
+                });
+              } catch (e) {
+                console.error('[generateThumbnails] 失敗レコードのDB記録に失敗:', e);
+              }
             }
             if (failedHasThumb.length > 0) {
-              await invoke('db_update_audio_only_batch', {
-                updates: failedHasThumb.map((v) => ({ id: v.id, hasAudio: 0 })),
-              });
+              try {
+                await invoke('db_update_audio_only_batch', {
+                  updates: failedHasThumb.map((v) => ({ id: v.id, hasAudio: 0 })),
+                });
+              } catch (e) {
+                console.error('[generateThumbnails] 失敗レコードの音声情報DB記録に失敗:', e);
+              }
             }
           }
 
@@ -753,7 +769,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         sourcePath: video.path,
         destDir,
       });
-      await invoke('db_move_video_file_db', { videoId, newPath });
+      try {
+        await invoke('db_move_video_file_db', { videoId, newPath });
+      } catch (dbErr) {
+        // ファイルは移動済みだがDB更新が失敗した場合: ユーザーに再スキャンを促す
+        const dbMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+        console.error('[moveVideoFile] DB更新失敗 (ファイルは移動済み):', dbMsg);
+        toast.error(
+          `ファイルは移動しましたがデータベースの更新に失敗しました。\nライブラリを再スキャンしてください。\n詳細: ${dbMsg}`,
+          8000
+        );
+        return null;
+      }
       set((state) => ({
         videos: state.videos.map((v) => v.id === videoId ? { ...v, path: newPath } : v),
       }));

@@ -25,7 +25,7 @@ pub async fn enter_mini_player(
     // 現在のサイズを論理ピクセルで保存
     let physical = window.inner_size().map_err(|e| e.to_string())?;
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
-    *state.prev_size.lock().unwrap() = Some((
+    *state.prev_size.lock().map_err(|e| e.to_string())? = Some((
         physical.width as f64 / scale,
         physical.height as f64 / scale,
     ));
@@ -55,7 +55,7 @@ pub async fn exit_mini_player(
         .set_always_on_top(false)
         .map_err(|e| e.to_string())?;
 
-    let prev = state.prev_size.lock().unwrap().take();
+    let prev = state.prev_size.lock().map_err(|e| e.to_string())?.take();
     let (w, h) = prev.unwrap_or((1200.0, 800.0));
 
     // 元の最小サイズに戻してからリサイズ

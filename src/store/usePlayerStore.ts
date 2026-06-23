@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import type { Video, Chapter } from '../types';
 import { useLibraryStore } from './useLibraryStore';
 import { useSettingsStore } from './useSettingsStore';
+import { toast } from './useToastStore';
 
 interface PlayerState {
   currentVideo: Video | null;
@@ -159,7 +160,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       useLibraryStore.getState().incrementWatchCount(video.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: video.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     playWithQueue: async (videos: Video[], startIndex = 0) => {
@@ -203,7 +204,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       useLibraryStore.getState().incrementWatchCount(queue[idx].id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: queue[idx].path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     playNext: async () => {
@@ -224,7 +225,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       useLibraryStore.getState().incrementWatchCount(nextVideo.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: nextVideo.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     playPrev: async () => {
@@ -245,7 +246,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       useLibraryStore.getState().incrementWatchCount(prevVideo.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: prevVideo.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     quit: async () => {
@@ -305,11 +306,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     toggleMiniPlayer: () => {
       const next = !get().isMiniPlayer;
       set({ isMiniPlayer: next });
-      if (next) {
-        invoke('enter_mini_player').catch(console.error);
-      } else {
-        invoke('exit_mini_player').catch(console.error);
-      }
+      const cmd = next ? 'enter_mini_player' : 'exit_mini_player';
+      invoke(cmd).catch((e: unknown) => {
+        console.error(`[toggleMiniPlayer] ${cmd} 失敗:`, e);
+        // invoke 失敗時はステートを元に戻す
+        set({ isMiniPlayer: !next });
+      });
     },
 
     toggleShuffle: () => {
@@ -346,34 +348,40 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     },
 
     playShuffleAll: async () => {
-      const { isLooping } = get();
-      const allVideos = (await useLibraryStore.getState().fetchAllForShuffle())
-        .filter((v) => v.media_type !== 'image');
-      if (allVideos.length === 0) return;
+      try {
+        const { isLooping } = get();
+        const allVideos = (await useLibraryStore.getState().fetchAllForShuffle())
+          .filter((v) => v.media_type !== 'image');
+        if (allVideos.length === 0) return;
 
-      const shuffled = [...allVideos];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
+        const shuffled = [...allVideos];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
 
-      set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
-      await invokePlay(shuffled[0]);
-      if (isLooping) {
-        try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
+        set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
+        await invokePlay(shuffled[0]);
+        if (isLooping) {
+          try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
+        }
+        set({
+          currentVideo: shuffled[0],
+          isPaused: false,
+          isShuffle: true,
+          originalQueue: [],
+          queue: shuffled,
+          queueIndex: 0,
+        });
+        useLibraryStore.getState().incrementWatchCount(shuffled[0].id).catch(() => {});
+        invoke<Chapter[]>('get_chapters', { videoPath: shuffled[0].path })
+          .then((chapters) => set({ chapters }))
+          .catch(() => { set({ chapters: [] }); });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('[playShuffleAll] エラー:', e);
+        toast.error(`シャッフル再生に失敗しました: ${msg}`);
       }
-      set({
-        currentVideo: shuffled[0],
-        isPaused: false,
-        isShuffle: true,
-        originalQueue: [],
-        queue: shuffled,
-        queueIndex: 0,
-      });
-      useLibraryStore.getState().incrementWatchCount(shuffled[0].id).catch(() => {});
-      invoke<Chapter[]>('get_chapters', { videoPath: shuffled[0].path })
-        .then((chapters) => set({ chapters }))
-        .catch(() => {});
     },
 
     setSpeed: async (speed: number) => {
@@ -446,7 +454,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       useLibraryStore.getState().incrementWatchCount(video.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: video.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
   };
 });
