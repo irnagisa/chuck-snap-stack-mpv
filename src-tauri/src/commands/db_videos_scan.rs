@@ -180,6 +180,13 @@ pub async fn db_scan_and_import(
     path: String,
     use_dir_as_category: bool,
 ) -> Result<ScanImportResult, String> {
+    // パス検証: 絶対パス・パストラバーサル禁止・最低深度チェック
+    super::utils::validate_path(&path)?;
+    if std::path::Path::new(&path).components().count() < 3 {
+        return Err(
+            "ルートや最上位ディレクトリはスキャン対象に指定できません".to_string(),
+        );
+    }
     // Step 1: Scan files (blocking I/O, don't hold DB lock)
     let path_clone = path.clone();
     let scan = tokio::task::spawn_blocking(move || scan_dir_core(&path_clone))

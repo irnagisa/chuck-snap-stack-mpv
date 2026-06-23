@@ -5,6 +5,7 @@ use std::fs;
 
 use super::settings::SharedAppSettings;
 use super::utils::{resolve_unique_path, validate_image_output_path, validate_media_path, validate_path, validate_text_path, validate_video_path};
+use crate::db::DbState;
 
 #[derive(Serialize)]
 pub struct Chapter {
@@ -393,9 +394,24 @@ pub async fn get_video_dimensions(
 }
 
 /// 動画ファイルをファイルシステムから削除する。ファイルが既に存在しない場合は成功として扱う。
+/// ライブラリに登録されていないパスへの削除を防ぐため、DB に存在することを事前に確認する。
 #[tauri::command]
-pub async fn delete_video_file(path: String) -> Result<(), String> {
+pub async fn delete_video_file(
+    db_state: tauri::State<'_, DbState>,
+    path: String,
+) -> Result<(), String> {
     validate_media_path(&path)?;
+    {
+        let conn = db_state.conn()?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM videos WHERE path = ?1", [&path], |r| r.get(0))
+            .map_err(|e| format!("DB照会失敗: {e}"))?;
+        if count == 0 {
+            return Err(format!(
+                "ライブラリに登録されていないファイルは削除できません: {path}"
+            ));
+        }
+    }
     match fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -443,7 +459,21 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
     tokio::fs::create_dir_all(&dest_dir).await.map_err(|e| e.to_string())?;
 
     // rename が失敗する場合 (クロスデバイス) は copy + サイズ検証 + delete にフォールバック
-    if tokio::fs::rename(&source, &dest_path).await.is_err() {
+    // rename 成功後も canonicalize で宛先がディレクトリ外に逸脱していないか確認する。
+    if tokio::fs::rename(&source, &dest_path).await.is_ok() {
+        let canonical_dest = tokio::fs::canonicalize(&dest_path)
+            .await
+            .map_err(|e| format!("移動先の正規化失敗: {e}"))?;
+        if let Ok(canon_base) = dest_base.canonicalize() {
+            if !canonical_dest.starts_with(&canon_base) {
+                log::error!("[move_video_file] rename 後に移動先がディレクトリ外と判明: {:?}", canonical_dest);
+                return Err("移動先がディレクトリ外に解決されました".to_string());
+            }
+        }
+        return Ok(canonical_dest.to_string_lossy().into_owned());
+    }
+    // rename に失敗 (クロスデバイス) → copy + サイズ検証 + delete にフォールバック
+    if true {
         let src_size = tokio::fs::metadata(&source)
             .await
             .map_err(|e| format!("元ファイルのメタデータ取得失敗: {e}"))?
@@ -534,13 +564,42 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
 }
 
 /// 複数の動画ファイルを一括削除する。各ファイルの削除成否を (path, success) の配列で返す。
+/// ライブラリに登録されているパスのみ削除を許可する。
 #[tauri::command]
-pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(String, bool)>, String> {
+pub async fn delete_multiple_video_files(
+    db_state: tauri::State<'_, DbState>,
+    paths: Vec<String>,
+) -> Result<Vec<(String, bool)>, String> {
+    if paths.is_empty() {
+        return Ok(vec![]);
+    }
+    // DB に登録済みのパスを一括照会して許可リストを作成する
+    let registered: std::collections::HashSet<String> = {
+        let conn = db_state.conn()?;
+        let mut set = std::collections::HashSet::new();
+        for chunk in paths.chunks(400) {
+            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let params: Vec<rusqlite::types::Value> =
+                chunk.iter().map(|p| rusqlite::types::Value::Text(p.clone())).collect();
+            let mut stmt = conn
+                .prepare(&format!("SELECT path FROM videos WHERE path IN ({ph})"))
+                .map_err(|e| e.to_string())?;
+            let iter = stmt
+                .query_map(rusqlite::params_from_iter(params.iter()), |r| {
+                    r.get::<_, String>(0)
+                })
+                .map_err(|e| e.to_string())?;
+            for p in iter {
+                set.insert(p.map_err(|e| e.to_string())?);
+            }
+        }
+        set
+    };
     let results = paths
         .into_iter()
         .map(|path| {
-            // 動画パス検証に失敗した場合は削除せず false を返す
-            if validate_media_path(&path).is_err() {
+            // パス検証失敗または DB 未登録の場合は削除せず false を返す
+            if validate_media_path(&path).is_err() || !registered.contains(&path) {
                 return (path, false);
             }
             let ok = fs::remove_file(&path).is_ok();
@@ -553,9 +612,24 @@ pub async fn delete_multiple_video_files(paths: Vec<String>) -> Result<Vec<(Stri
 /// 動画ファイルを OS のゴミ箱に移動する。
 /// macOS では NSFileManager.trashItemAtURL を使用し、外部ストレージでは
 /// ボリューム直下の /.Trashes/<uid>/ に移動するため、クロスデバイスでも安全。
+/// ライブラリに登録されていないパスへの操作を防ぐため、DB に存在することを事前に確認する。
 #[tauri::command]
-pub async fn trash_video_file(path: String) -> Result<(), String> {
+pub async fn trash_video_file(
+    db_state: tauri::State<'_, DbState>,
+    path: String,
+) -> Result<(), String> {
     validate_media_path(&path)?;
+    {
+        let conn = db_state.conn()?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM videos WHERE path = ?1", [&path], |r| r.get(0))
+            .map_err(|e| format!("DB照会失敗: {e}"))?;
+        if count == 0 {
+            return Err(format!(
+                "ライブラリに登録されていないファイルはゴミ箱に移動できません: {path}"
+            ));
+        }
+    }
     tokio::task::spawn_blocking(move || {
         trash::delete(&path).map_err(|e| format!("ゴミ箱への移動に失敗しました: {e}"))
     })
@@ -565,15 +639,43 @@ pub async fn trash_video_file(path: String) -> Result<(), String> {
 
 /// 複数の動画ファイルを OS のゴミ箱に移動する。
 /// 各ファイルの成否を (path, success) の配列で返す。
+/// ライブラリに登録されているパスのみ操作を許可する。
 #[tauri::command]
 pub async fn trash_multiple_video_files(
+    db_state: tauri::State<'_, DbState>,
     paths: Vec<String>,
 ) -> Result<Vec<(String, bool)>, String> {
+    if paths.is_empty() {
+        return Ok(vec![]);
+    }
+    // DB に登録済みのパスを一括照会して許可リストを作成する (spawn_blocking に渡す前に確認)
+    let registered: std::collections::HashSet<String> = {
+        let conn = db_state.conn()?;
+        let mut set = std::collections::HashSet::new();
+        for chunk in paths.chunks(400) {
+            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let params: Vec<rusqlite::types::Value> =
+                chunk.iter().map(|p| rusqlite::types::Value::Text(p.clone())).collect();
+            let mut stmt = conn
+                .prepare(&format!("SELECT path FROM videos WHERE path IN ({ph})"))
+                .map_err(|e| e.to_string())?;
+            let iter = stmt
+                .query_map(rusqlite::params_from_iter(params.iter()), |r| {
+                    r.get::<_, String>(0)
+                })
+                .map_err(|e| e.to_string())?;
+            for p in iter {
+                set.insert(p.map_err(|e| e.to_string())?);
+            }
+        }
+        set
+    };
     tokio::task::spawn_blocking(move || {
         paths
             .into_iter()
             .map(|path| {
-                if validate_media_path(&path).is_err() {
+                // パス検証失敗または DB 未登録の場合はゴミ箱移動せず false を返す
+                if validate_media_path(&path).is_err() || !registered.contains(&path) {
                     return (path, false);
                 }
                 let ok = trash::delete(&path).is_ok();
@@ -740,26 +842,31 @@ pub async fn rename_video_file(old_path: String, new_name: String) -> Result<Str
         return Err("ファイル名にパス区切り文字が含まれています".to_string());
     }
 
-    // create_new で排他的にプレースホルダーを作成し、同名ファイルの存在確認を実質アトミックにする
-    // (exists() チェック + rename の TOCTOU を縮小: exists()→create_new に変更)
+    // create_new で排他的にプレースホルダーを作成し、new_path の「予約」を確保する。
+    // プレースホルダーを保持したまま rename を呼び出すことで、
+    // 「delete → rename」間に外部プロセスがファイルを作成できる TOCTOU ウィンドウを排除する。
+    // rename は new_path (= プレースホルダー) をアトミックに入力ファイルの内容で置き換える。
+    // rename 後、_placeholder の fd は unlink 済みの空 inode を指し、
+    // スコープ終了時に OS が自動解放する。
     match tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&new_path)
         .await
     {
-        Ok(placeholder) => {
-            drop(placeholder);
-            // プレースホルダーを削除してから rename (この間隔は極めて短い)
-            let _ = tokio::fs::remove_file(&new_path).await;
+        Ok(_placeholder) => {
+            // プレースホルダーを保持したまま rename を実行する。
+            // rename が失敗した場合はプレースホルダーを除去して元の状態に戻す。
+            if let Err(e) = tokio::fs::rename(&old, &new_path).await {
+                let _ = tokio::fs::remove_file(&new_path).await;
+                return Err(e.to_string());
+            }
         }
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             return Err(format!("同名のファイルがすでに存在します: {}", trimmed));
         }
         Err(e) => return Err(e.to_string()),
     }
-
-    tokio::fs::rename(&old, &new_path).await.map_err(|e| e.to_string())?;
 
     Ok(new_path.to_string_lossy().into_owned())
 }

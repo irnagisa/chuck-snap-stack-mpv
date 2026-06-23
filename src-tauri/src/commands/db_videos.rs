@@ -691,6 +691,17 @@ pub async fn db_add_watch_dir(
     path: String,
     use_dir_as_category: bool,
 ) -> Result<(), String> {
+    // パス検証: 絶対パス・パストラバーサル禁止
+    super::utils::validate_path(&path)?;
+    // ルートや最上位ディレクトリ (/Volumes, /Users 等) の登録を拒否する。
+    // escape_like_dir("/") が空文字になるとウォッチ削除時に全動画が消えるため、
+    // パスコンポーネント数が 3 未満 (例: "/" や "/Users") は受け付けない。
+    let depth = std::path::Path::new(&path).components().count();
+    if depth < 3 {
+        return Err(
+            "ルートや最上位ディレクトリはウォッチディレクトリに登録できません (少なくとも /a/b/ 以上の深さが必要です)".to_string(),
+        );
+    }
     let conn = state.conn()?;
     conn.execute(
         "INSERT OR REPLACE INTO watch_dirs (path, use_dir_as_category) VALUES (?1, ?2)",
@@ -707,6 +718,11 @@ pub async fn db_remove_watch_dir(
 ) -> Result<(), String> {
     let conn = state.conn()?;
     let escaped = escape_like_dir(&path);
+    // escape_like_dir("/") は空文字になり LIKE '/%' が全パスにマッチするため、
+    // 空文字の場合は即座にエラーとして全動画誤削除を防ぐ。
+    if escaped.is_empty() {
+        return Err("無効なウォッチディレクトリパスです (ルートパスは指定できません)".to_string());
+    }
     // Find all videos under this dir
     let mut stmt_v = conn
         .prepare("SELECT id FROM videos WHERE path LIKE ? ESCAPE '!'")

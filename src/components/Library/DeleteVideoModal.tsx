@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 
 interface Props {
   video: Video;
@@ -33,13 +34,10 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
       await removeVideo(video.id);
       onRemoved();
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       console.error('ゴミ箱移動失敗:', e);
-      try {
-        await removeVideo(video.id);
-      } catch (dbErr) {
-        console.error('DB削除失敗:', dbErr);
-      }
-      onRemoved();
+      // ファイルがまだ存在するため DB エントリは保持し、エラーのみ表示する
+      toast.error(`ゴミ箱への移動に失敗しました: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -52,13 +50,10 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
       await removeVideo(video.id);
       onRemoved();
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       console.error('ファイル削除失敗:', e);
-      try {
-        await removeVideo(video.id);
-      } catch (dbErr) {
-        console.error('DB削除失敗:', dbErr);
-      }
-      onRemoved();
+      // ファイルがまだ存在するため DB エントリは保持し、エラーのみ表示する
+      toast.error(`ファイルの削除に失敗しました: ${msg}`);
     } finally {
       setLoading(false);
     }

@@ -2,6 +2,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { useState, useEffect } from 'react';
 import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
 
 interface VideoWithSize extends Video {
@@ -97,10 +98,26 @@ export function DuplicatesModal({ onClose }: Props) {
     setProcessing((prev) => new Set(prev).add(groupIndex));
     try {
       if (deleteFiles) {
-        await invoke('delete_multiple_video_files', { paths: toRemove.map((v) => v.path) });
+        // 返り値 [path, success][] を確認し、成功したファイルの ID のみ DB から削除する
+        const results = await invoke<[string, boolean][]>('delete_multiple_video_files', {
+          paths: toRemove.map((v) => v.path),
+        });
+        const deletedPaths = new Set(results.filter(([, ok]) => ok).map(([p]) => p));
+        const deletedIds = toRemove.filter((v) => deletedPaths.has(v.path)).map((v) => v.id);
+        const failCount = toRemove.length - deletedIds.length;
+        if (deletedIds.length > 0) {
+          await removeMultiple(deletedIds);
+        }
+        if (failCount > 0) {
+          toast.error(`${failCount} 件のファイル削除に失敗しました`);
+        }
+      } else {
+        await removeMultiple(toRemove.map((v) => v.id));
       }
-      await removeMultiple(toRemove.map((v) => v.id));
       setResolvedGroups((prev) => new Set(prev).add(groupIndex));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`処理に失敗しました: ${msg}`);
     } finally {
       setProcessing((prev) => {
         const next = new Set(prev);

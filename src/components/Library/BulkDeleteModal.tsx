@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 
 interface Props {
   videos: Video[];
@@ -29,9 +30,23 @@ export function BulkDeleteModal({ videos, onClose, onDone }: Props) {
   const handleTrashFiles = async () => {
     setLoading(true);
     try {
-      await invoke('trash_multiple_video_files', { paths: videos.map((v) => v.path) });
-      await removeMultiple(videos.map((v) => v.id));
+      // 返り値 [path, success][] を確認し、成功したファイルの ID のみ DB から削除する
+      const results = await invoke<[string, boolean][]>('trash_multiple_video_files', {
+        paths: videos.map((v) => v.path),
+      });
+      const trashedPaths = new Set(results.filter(([, ok]) => ok).map(([p]) => p));
+      const trashedIds = videos.filter((v) => trashedPaths.has(v.path)).map((v) => v.id);
+      const failCount = results.filter(([, ok]) => !ok).length;
+      if (trashedIds.length > 0) {
+        await removeMultiple(trashedIds);
+      }
+      if (failCount > 0) {
+        toast.error(`${failCount} 件のゴミ箱移動に失敗しました`);
+      }
       onDone();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`ゴミ箱への移動に失敗しました: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -40,9 +55,23 @@ export function BulkDeleteModal({ videos, onClose, onDone }: Props) {
   const handleDeleteFiles = async () => {
     setLoading(true);
     try {
-      await invoke('delete_multiple_video_files', { paths: videos.map((v) => v.path) });
-      await removeMultiple(videos.map((v) => v.id));
+      // 返り値 [path, success][] を確認し、成功したファイルの ID のみ DB から削除する
+      const results = await invoke<[string, boolean][]>('delete_multiple_video_files', {
+        paths: videos.map((v) => v.path),
+      });
+      const deletedPaths = new Set(results.filter(([, ok]) => ok).map(([p]) => p));
+      const deletedIds = videos.filter((v) => deletedPaths.has(v.path)).map((v) => v.id);
+      const failCount = results.filter(([, ok]) => !ok).length;
+      if (deletedIds.length > 0) {
+        await removeMultiple(deletedIds);
+      }
+      if (failCount > 0) {
+        toast.error(`${failCount} 件のファイル削除に失敗しました`);
+      }
       onDone();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`ファイルの削除に失敗しました: ${msg}`);
     } finally {
       setLoading(false);
     }
