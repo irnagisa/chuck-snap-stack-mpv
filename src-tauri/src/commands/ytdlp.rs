@@ -226,7 +226,20 @@ pub async fn download_with_ytdlp(
         return Err("ダウンロードされたファイルのパスを取得できませんでした".to_string());
     }
 
-    Ok(output_path)
+    // yt-dlp が出力したパスが save_dir 内にあることを確認する
+    // 不正なバイナリ・バグ・シンボリックリンク攻撃でディレクトリ外に書き込まれていないか検証
+    let canon_save = std::fs::canonicalize(&save_dir)
+        .map_err(|e| format!("保存先ディレクトリの正規化失敗: {e}"))?;
+    let canon_output = std::fs::canonicalize(&output_path)
+        .map_err(|e| format!("ダウンロードファイルパスの正規化失敗: {e}"))?;
+    if !canon_output.starts_with(&canon_save) {
+        return Err(format!(
+            "yt-dlp が保存先ディレクトリ外にファイルを出力しました: {}",
+            canon_output.display()
+        ));
+    }
+
+    Ok(canon_output.to_string_lossy().into_owned())
 }
 
 /// yt-dlp ダウンロードをキャンセルする。

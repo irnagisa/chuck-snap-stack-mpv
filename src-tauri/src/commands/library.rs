@@ -458,9 +458,26 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
 
     tokio::fs::create_dir_all(&dest_dir).await.map_err(|e| e.to_string())?;
 
-    // rename が失敗する場合 (クロスデバイス) は copy + サイズ検証 + delete にフォールバック
-    // rename 成功後も canonicalize で宛先がディレクトリ外に逸脱していないか確認する。
+    // dest_path をアトミックに確保する (TOCTOU 防止 & 既存ファイル上書き防止)
+    // resolve_unique_path と rename/copy の間に別プロセスがファイルを作成しても
+    // AlreadyExists エラーで即時終了し、既存ファイルを絶対に上書きしない。
+    let placeholder = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&dest_path)
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                format!("移動先に同名ファイルが既に存在します: {}", dest_path.display())
+            } else {
+                e.to_string()
+            }
+        })?;
+
+    // rename を試みる (同一デバイス): プレースホルダーをアトミックに置換する
     if tokio::fs::rename(&source, &dest_path).await.is_ok() {
+        // rename 成功: placeholder fd は置換済みの旧 inode を指す (drop で OS が解放)
+        drop(placeholder);
         let canonical_dest = tokio::fs::canonicalize(&dest_path)
             .await
             .map_err(|e| format!("移動先の正規化失敗: {e}"))?;
@@ -472,28 +489,36 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
         }
         return Ok(canonical_dest.to_string_lossy().into_owned());
     }
-    // rename に失敗 (クロスデバイス) → copy + サイズ検証 + delete にフォールバック
-    if true {
+
+    // rename 失敗 (クロスデバイス) → placeholder fd を保持したまま直接書き込む
+    // fd を保持し続けることで dest_path の専有を維持し TOCTOU を排除する
+    {
         let src_size = tokio::fs::metadata(&source)
             .await
             .map_err(|e| format!("元ファイルのメタデータ取得失敗: {e}"))?
             .len();
-        tokio::fs::copy(&source, &dest_path)
+        let mut src_file = tokio::fs::File::open(&source)
             .await
-            .map_err(|e| format!("クロスデバイスコピー失敗: {e}"))?;
+            .map_err(|e| format!("元ファイルのオープン失敗: {e}"))?;
+        let mut dest_file = placeholder;
+        if let Err(e) = tokio::io::copy(&mut src_file, &mut dest_file).await {
+            drop(dest_file);
+            let _ = tokio::fs::remove_file(&dest_path).await;
+            return Err(format!("クロスデバイスコピー失敗: {e}"));
+        }
+        drop(dest_file);
         let dst_size = tokio::fs::metadata(&dest_path)
             .await
             .map_err(|e| format!("コピー先のメタデータ取得失敗: {e}"))?
             .len();
         if src_size != dst_size {
-            // コピーが不完全: コピー先を削除して元ファイルを保護する
             let _ = tokio::fs::remove_file(&dest_path).await;
             return Err(
                 "クロスデバイス移動でコピーが不完全でした。元ファイルは保持されています。"
                     .to_string(),
             );
         }
-        // クロスデバイスコピー後: symlink 置換 TOCTOU でコピー先がディレクトリ外に逸脱していないか再確認
+        // コピー後: symlink 置換 TOCTOU でコピー先がディレクトリ外に逸脱していないか再確認
         let canonical_dest = tokio::fs::canonicalize(&dest_path)
             .await
             .map_err(|e| format!("コピー先の正規化失敗: {e}"))?;
@@ -503,13 +528,11 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
                 return Err("移動先がディレクトリ外に解決されました".to_string());
             }
         }
-
         tokio::fs::remove_file(&source)
             .await
             .map_err(|e| format!("元ファイルの削除失敗 (コピー先にデータは存在します): {e}"))?;
+        return Ok(canonical_dest.to_string_lossy().into_owned());
     }
-
-    Ok(dest_path.to_string_lossy().into_owned())
 }
 
 /// 動画ファイルを指定ディレクトリへコピーし、新しいパスを返す。
@@ -546,9 +569,33 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
     tokio::fs::create_dir_all(&dest_dir)
         .await
         .map_err(|e| e.to_string())?;
-    tokio::fs::copy(&source, &dest_path)
+
+    // dest_path をアトミックに確保する (TOCTOU 防止 & 既存ファイル上書き防止)
+    // resolve_unique_path と copy の間に別プロセスがファイルを作成しても
+    // AlreadyExists エラーで即時終了し、既存ファイルを絶対に上書きしない。
+    let mut dest_file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&dest_path)
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                format!("コピー先に同名ファイルが既に存在します: {}", dest_path.display())
+            } else {
+                e.to_string()
+            }
+        })?;
+
+    // placeholder fd を保持したまま書き込む (fd 保持中は dest_path を専有)
+    let mut src_file = tokio::fs::File::open(&source)
         .await
         .map_err(|e| e.to_string())?;
+    if let Err(e) = tokio::io::copy(&mut src_file, &mut dest_file).await {
+        drop(dest_file);
+        let _ = tokio::fs::remove_file(&dest_path).await;
+        return Err(e.to_string());
+    }
+    drop(dest_file);
 
     // コピー後に正規化し、symlink 置換 TOCTOU でコピー先がディレクトリ外に逸脱していないか再確認
     let canonical = tokio::fs::canonicalize(&dest_path)
