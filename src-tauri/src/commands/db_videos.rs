@@ -467,7 +467,9 @@ pub async fn db_remove_video(state: State<'_, DbState>, video_id: i64) -> Result
     if result.is_ok() {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
     } else {
-        let _ = conn.execute_batch("ROLLBACK");
+        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+            log::error!("[db_remove_video] ROLLBACK 失敗: {rb_err}");
+        }
     }
     result
 }
@@ -510,7 +512,9 @@ pub async fn db_remove_multiple(
     if result.is_ok() {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
     } else {
-        let _ = conn.execute_batch("ROLLBACK");
+        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+            log::error!("[db_remove_multiple] ROLLBACK 失敗: {rb_err}");
+        }
     }
     result
 }
@@ -560,7 +564,9 @@ pub async fn db_remove_video_by_path(
         if result.is_ok() {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
         } else {
-            let _ = conn.execute_batch("ROLLBACK");
+            if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+                log::error!("[db_remove_video_by_path] ROLLBACK 失敗: {rb_err}");
+            }
         }
         return result;
     }
@@ -740,7 +746,9 @@ pub async fn db_remove_watch_dir(
         if result.is_ok() {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
         } else {
-            let _ = conn.execute_batch("ROLLBACK");
+            if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+                log::error!("[db_remove_watch_dir] ROLLBACK 失敗: {rb_err}");
+            }
             return result;
         }
     }

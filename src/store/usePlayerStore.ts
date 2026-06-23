@@ -298,8 +298,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       set({ isLooping: next });
       try {
         await invoke('set_loop', { enabled: next });
-      } catch {
-        // 無視
+      } catch (e) {
+        // invoke 失敗時はステートを元に戻す
+        set({ isLooping: !next });
+        console.error('[toggleLoop] set_loop 失敗:', e);
       }
     },
 
@@ -385,10 +387,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     },
 
     setSpeed: async (speed: number) => {
+      const prevSpeed = get().speed;
       set({ speed });
       try {
         await invoke('set_playback_speed', { speed });
-      } catch { /* 無視 */ }
+      } catch (e) {
+        // invoke 失敗時はステートを元に戻す
+        set({ speed: prevSpeed });
+        console.error('[setSpeed] set_playback_speed 失敗:', e);
+      }
     },
 
     setAbLoopA: async () => {

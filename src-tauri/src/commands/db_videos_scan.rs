@@ -271,7 +271,9 @@ pub async fn db_scan_and_import(
     if result.is_ok() {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
     } else {
-        let _ = conn.execute_batch("ROLLBACK");
+        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+            log::error!("[db_scan_and_import] ROLLBACK 失敗: {rb_err}");
+        }
         return Err(result.unwrap_err());
     }
 

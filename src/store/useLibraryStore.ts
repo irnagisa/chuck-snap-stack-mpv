@@ -152,6 +152,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       for (const dir of canonicalDirs) {
         invoke('start_watching', { path: dir }).catch((e: unknown) => {
           console.error(`[initDb] フォルダ監視の開始に失敗しました (${dir}):`, e);
+          toast.error(`フォルダ監視の開始に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
         });
       }
       get().generateThumbnails().catch((e: unknown) => {

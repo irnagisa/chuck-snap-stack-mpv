@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useLibraryStore } from '../store/useLibraryStore';
+import { toast } from '../store/useToastStore';
 
 type WatcherBatch = {
   creates: { path: string; title: string }[];
@@ -55,6 +56,7 @@ export function useWatcher() {
         if (cancelled) { u1?.(); u2?.(); u3?.(); }
       } catch (e) {
         console.error('[useWatcher] ファイル変更イベントのリスナー登録に失敗しました:', e);
+        toast.error('フォルダ監視の初期化に失敗しました。アプリを再起動してください。');
       }
     })();
 
