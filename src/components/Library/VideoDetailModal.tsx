@@ -315,20 +315,23 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
               </div>
             )}
             <div className="flex gap-2">
-              <button
-                type="button"
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                onClick={handlePlay}
-              >
-                {video.media_type === 'image' ? t('detail.viewImage') : t('detail.play')}
-              </button>
-              {video.media_type === 'image' && onViewImage && (
+              {video.media_type === 'image' ? (
+                onViewImage && (
+                  <button
+                    type="button"
+                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                    onClick={() => onViewImage(video)}
+                  >
+                    {t('detail.viewer')}
+                  </button>
+                )
+              ) : (
                 <button
                   type="button"
-                  className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
-                  onClick={() => onViewImage(video)}
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                  onClick={handlePlay}
                 >
-                  {t('detail.viewer')}
+                  {t('detail.play')}
                 </button>
               )}
               <button
