@@ -16,6 +16,8 @@ interface ModalStore {
   activePlaylist: Playlist | null;
   addToPlaylistVideo: Video | null;
   bulkModal: BulkModal;
+  dndPendingFiles: string[] | null;
+  dndOnSelect: ((dir: string | null) => void) | null;
 
   openSettings: () => void;
   closeSettings: () => void;
@@ -41,6 +43,8 @@ interface ModalStore {
   closeAddToPlaylist: () => void;
   openBulkModal: (modal: Exclude<BulkModal, null>) => void;
   closeBulkModal: () => void;
+  openDndDestDir: (files: string[], onSelect: (dir: string | null) => void) => void;
+  closeDndDestDir: () => void;
   closeAll: () => void;
 }
 
@@ -57,6 +61,8 @@ export const useModalStore = create<ModalStore>((set) => ({
   activePlaylist: null,
   addToPlaylistVideo: null,
   bulkModal: null,
+  dndPendingFiles: null,
+  dndOnSelect: null,
 
   openSettings: () => set({ showSettings: true }),
   closeSettings: () => set({ showSettings: false }),
@@ -82,6 +88,8 @@ export const useModalStore = create<ModalStore>((set) => ({
   closeAddToPlaylist: () => set({ addToPlaylistVideo: null }),
   openBulkModal: (modal) => set({ bulkModal: modal }),
   closeBulkModal: () => set({ bulkModal: null }),
+  openDndDestDir: (files, onSelect) => set({ dndPendingFiles: files, dndOnSelect: onSelect }),
+  closeDndDestDir: () => set({ dndPendingFiles: null, dndOnSelect: null }),
   closeAll: () => set({
     showSettings: false,
     showDownload: false,
@@ -95,5 +103,7 @@ export const useModalStore = create<ModalStore>((set) => ({
     activePlaylist: null,
     addToPlaylistVideo: null,
     bulkModal: null,
+    dndPendingFiles: null,
+    dndOnSelect: null,
   }),
 }));

@@ -13,6 +13,7 @@ import { MissingFilesModal } from './Library/MissingFilesModal';
 import { StatsModal } from './Library/StatsModal';
 import { ExportModal } from './Library/ExportModal';
 import { SmartPlaylistModal } from './Library/SmartPlaylistModal';
+import { DndDestDirModal } from './Library/DndDestDirModal';
 import { QueuePanel } from './Player/QueuePanel';
 import type { Video } from '../types';
 
@@ -52,6 +53,8 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {showExport && <ExportModal onClose={closeExport} />}
 
       {showSmartPlaylist && <SmartPlaylistModal onClose={closeSmartPlaylist} />}
+
+      <DndDestDirModal />
 
       <QueuePanel />
 

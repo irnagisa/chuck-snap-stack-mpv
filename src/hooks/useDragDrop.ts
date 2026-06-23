@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useToastStore } from '../store/useToastStore';
+import { useModalStore } from '../store/useModalStore';
 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv', 'media']);
 
@@ -40,6 +41,11 @@ export function useDragDrop() {
   useEffect(() => { addVideoFromPathRef.current = addVideoFromPath; }, [addVideoFromPath]);
   useEffect(() => { addToastRef.current = addToast; }, [addToast]);
 
+  const pickDestDir = (files: string[]): Promise<string | null> =>
+    new Promise((resolve) => {
+      useModalStore.getState().openDndDestDir(files, resolve);
+    });
+
   useEffect(() => {
     let cancelled = false;
     let unlistenFn: (() => void) | null = null;
@@ -68,12 +74,27 @@ export function useDragDrop() {
             return;
           }
 
-          const destDir = downloadDirRef.current || dirs[0];
+          // watchDir 外のファイルがあるかチェック
+          const normalizedDirsForCheck = dirs.map((dir) => dir.replace(/\\/g, '/').replace(/\/$/, ''));
+          const outsideFiles = dropped.filter((path) => {
+            const normPath = path.replace(/\\/g, '/');
+            return !normalizedDirsForCheck.some((d) => normPath.startsWith(d + '/'));
+          });
+
+          // watchDir 外ファイルがあり watchDirs が複数の場合はユーザーにコピー先を選ばせる
+          let destDir: string;
+          if (outsideFiles.length > 0 && dirs.length > 1) {
+            const picked = await pickDestDir(outsideFiles);
+            if (picked === null) return;
+            destDir = picked;
+          } else {
+            destDir = downloadDirRef.current || dirs[0];
+          }
+
           let imported = 0;
           const errors: string[] = [];
 
-          // watch ディレクトリの正規化をループ外で一度だけ実行
-          const normalizedDirs = dirs.map((dir) => dir.replace(/\\/g, '/').replace(/\/$/, ''));
+          const normalizedDirs = normalizedDirsForCheck;
 
           for (const path of dropped) {
             const normPath = path.replace(/\\/g, '/');
