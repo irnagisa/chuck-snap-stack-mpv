@@ -4,7 +4,7 @@ use std::path::Path;
 use std::fs;
 
 use super::settings::SharedAppSettings;
-use super::utils::{validate_image_output_path, validate_media_path, validate_path, validate_video_path};
+use super::utils::{resolve_unique_path, validate_image_output_path, validate_media_path, validate_path, validate_video_path};
 
 #[derive(Serialize)]
 pub struct Chapter {
@@ -420,21 +420,7 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
     }
 
     let dest_base = std::path::Path::new(&dest_dir);
-    let mut dest_path = dest_base.join(&*filename_str);
-
-    // 同名ファイルが存在する場合は連番サフィックスを付与
-    if dest_path.exists() {
-        let stem = dest_path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-        let ext = dest_path.extension()
-            .map(|e| format!(".{}", e.to_string_lossy()))
-            .unwrap_or_default();
-        let mut i = 2u32;
-        loop {
-            dest_path = dest_base.join(format!("{}_{}{}", stem, i, ext));
-            if !dest_path.exists() { break; }
-            i += 1;
-        }
-    }
+    let dest_path = resolve_unique_path(&dest_base.join(&*filename_str));
 
     // 最終的な移動先が dest_base の配下にあることを確認 (パストラバーサル対策)
     if let Ok(canon_base) = dest_base.canonicalize() {
@@ -447,10 +433,30 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
 
     tokio::fs::create_dir_all(&dest_dir).await.map_err(|e| e.to_string())?;
 
-    // rename が失敗する場合 (クロスデバイス) は copy + delete にフォールバック
+    // rename が失敗する場合 (クロスデバイス) は copy + サイズ検証 + delete にフォールバック
     if tokio::fs::rename(&source, &dest_path).await.is_err() {
-        tokio::fs::copy(&source, &dest_path).await.map_err(|e| e.to_string())?;
-        tokio::fs::remove_file(&source).await.map_err(|e| e.to_string())?;
+        let src_size = tokio::fs::metadata(&source)
+            .await
+            .map_err(|e| format!("元ファイルのメタデータ取得失敗: {e}"))?
+            .len();
+        tokio::fs::copy(&source, &dest_path)
+            .await
+            .map_err(|e| format!("クロスデバイスコピー失敗: {e}"))?;
+        let dst_size = tokio::fs::metadata(&dest_path)
+            .await
+            .map_err(|e| format!("コピー先のメタデータ取得失敗: {e}"))?
+            .len();
+        if src_size != dst_size {
+            // コピーが不完全: コピー先を削除して元ファイルを保護する
+            let _ = tokio::fs::remove_file(&dest_path).await;
+            return Err(
+                "クロスデバイス移動でコピーが不完全でした。元ファイルは保持されています。"
+                    .to_string(),
+            );
+        }
+        tokio::fs::remove_file(&source)
+            .await
+            .map_err(|e| format!("元ファイルの削除失敗 (コピー先にデータは存在します): {e}"))?;
     }
 
     Ok(dest_path.to_string_lossy().into_owned())
@@ -476,28 +482,7 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
     }
 
     let dest_base = std::path::Path::new(&dest_dir);
-    let mut dest_path = dest_base.join(&*filename_str);
-
-    // 同名ファイルが存在する場合は連番サフィックスを付与
-    if dest_path.exists() {
-        let stem = dest_path
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        let ext = dest_path
-            .extension()
-            .map(|e| format!(".{}", e.to_string_lossy()))
-            .unwrap_or_default();
-        let mut i = 2u32;
-        loop {
-            dest_path = dest_base.join(format!("{}_{}{}", stem, i, ext));
-            if !dest_path.exists() {
-                break;
-            }
-            i += 1;
-        }
-    }
+    let dest_path = resolve_unique_path(&dest_base.join(&*filename_str));
 
     // 最終的なコピー先が dest_base の配下にあることを確認 (パストラバーサル対策)
     if let Ok(canon_base) = dest_base.canonicalize() {

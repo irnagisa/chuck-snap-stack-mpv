@@ -67,6 +67,33 @@ pub fn validate_image_output_path(path: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
+/// 指定パスに同名ファイルが存在する場合、連番サフィックス (_2, _3, ...) を付与した
+/// 一意なパスを返す。存在しない場合は元のパスをそのまま返す。
+///
+/// # 例
+/// - `foo.mp4` が存在しない → `foo.mp4`
+/// - `foo.mp4` が存在する → `foo_2.mp4`
+/// - `foo.mp4`, `foo_2.mp4` が存在する → `foo_3.mp4`
+pub fn resolve_unique_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let ext = path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let mut i = 2u32;
+    loop {
+        let candidate = dir.join(format!("{stem}_{i}{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        i += 1;
+    }
+}
+
 /// ダウンロード URL を検証する (スキーム検証 + プライベート IP ブロック + 危険ポートブロック)。
 pub fn validate_download_url(url: &str) -> Result<(), String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
