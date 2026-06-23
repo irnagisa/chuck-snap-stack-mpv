@@ -55,7 +55,9 @@ fn delete_video_ids_tx(conn: &rusqlite::Connection, ids: &[i64]) -> Result<(), S
     if result.is_ok() {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
     } else {
-        let _ = conn.execute_batch("ROLLBACK");
+        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+            log::error!("[DB] delete_video_ids_tx ROLLBACK 失敗: {rb_err}");
+        }
     }
     result
 }
@@ -162,7 +164,9 @@ fn assign_categories_for_ids(
     if result.is_ok() {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
     } else {
-        let _ = conn.execute_batch("ROLLBACK");
+        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+            log::error!("[DB] assign_categories_for_ids ROLLBACK 失敗: {rb_err}");
+        }
         return Err(result.unwrap_err());
     }
     Ok(assigned)
@@ -373,7 +377,9 @@ pub async fn db_rescan_all_dirs(
         if insert_result.is_ok() {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
         } else {
-            let _ = conn.execute_batch("ROLLBACK");
+            if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+                log::error!("[DB] db_rescan_all_dirs INSERT ROLLBACK 失敗: {rb_err}");
+            }
             return Err(insert_result.unwrap_err());
         }
         total_new_count += dir_new_count;

@@ -39,19 +39,23 @@ export function useWatcher() {
     };
 
     (async () => {
-      u1 = await listen<{ path: string; title: string }>(
-        'video-file-created',
-        (e) => { batch.creates.push(e.payload); schedule(); }
-      );
-      u2 = await listen<string>(
-        'video-file-removed',
-        (e) => { batch.removes.push(e.payload); schedule(); }
-      );
-      u3 = await listen<{ old_path: string; new_path: string; title: string }>(
-        'video-file-renamed',
-        (e) => { batch.renames.push(e.payload); schedule(); }
-      );
-      if (cancelled) { u1?.(); u2?.(); u3?.(); }
+      try {
+        u1 = await listen<{ path: string; title: string }>(
+          'video-file-created',
+          (e) => { batch.creates.push(e.payload); schedule(); }
+        );
+        u2 = await listen<string>(
+          'video-file-removed',
+          (e) => { batch.removes.push(e.payload); schedule(); }
+        );
+        u3 = await listen<{ old_path: string; new_path: string; title: string }>(
+          'video-file-renamed',
+          (e) => { batch.renames.push(e.payload); schedule(); }
+        );
+        if (cancelled) { u1?.(); u2?.(); u3?.(); }
+      } catch (e) {
+        console.error('[useWatcher] ファイル変更イベントのリスナー登録に失敗しました:', e);
+      }
     })();
 
     return () => {

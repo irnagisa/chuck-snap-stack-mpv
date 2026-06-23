@@ -39,16 +39,22 @@ async function processNext() {
     ),
   }));
 
-  const unlisten = await listen<{ downloaded: number; total: number; percent: number }>(
-    'download://progress',
-    (event) => {
-      useDownloadStore.setState((s) => ({
-        jobs: s.jobs.map((j) =>
-          j.id === next.id ? { ...j, progress: event.payload } : j
-        ),
-      }));
-    }
-  );
+  // リスナー登録失敗時はプログレス更新なしで続行する
+  let unlisten: (() => void) | null = null;
+  try {
+    unlisten = await listen<{ downloaded: number; total: number; percent: number }>(
+      'download://progress',
+      (event) => {
+        useDownloadStore.setState((s) => ({
+          jobs: s.jobs.map((j) =>
+            j.id === next.id ? { ...j, progress: event.payload } : j
+          ),
+        }));
+      }
+    );
+  } catch (e) {
+    console.error('[processNext] download://progress リスナー登録失敗 (プログレス表示なしで続行):', e);
+  }
 
   try {
     let resultPath: string;
@@ -66,7 +72,7 @@ async function processNext() {
       });
     }
 
-    unlisten();
+    unlisten?.();
 
     let title: string;
     try {
@@ -90,7 +96,7 @@ async function processNext() {
       }));
     }, 5000);
   } catch (e) {
-    unlisten();
+    unlisten?.();
     const msg = e instanceof Error ? e.message : String(e);
     const phase: DownloadJob['phase'] =
       msg === 'キャンセルされました' ? 'cancelled' : 'error';

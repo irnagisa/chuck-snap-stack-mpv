@@ -49,10 +49,14 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => ({
   async start({ videoPath, videoName, durationSecs, inputSizeBytes, crf, preset, onSuccess }) {
     if (get().isRunning) return;
 
-    if (_unlisten) _unlisten();
-    _unlisten = await listen<TranscodeProgressPayload>('transcode://progress', (e) => {
-      set({ progress: e.payload });
-    });
+    if (_unlisten) { _unlisten(); _unlisten = null; }
+    try {
+      _unlisten = await listen<TranscodeProgressPayload>('transcode://progress', (e) => {
+        set({ progress: e.payload });
+      });
+    } catch (e) {
+      console.error('[transcode] progress リスナー登録失敗 (プログレス表示なしで続行):', e);
+    }
 
     set({ isRunning: true, isDone: false, error: null, progress: null, videoName, outputPath: null, inputSizeBytes, outputSizeBytes: null });
 
@@ -84,7 +88,9 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => ({
   },
 
   async cancel() {
-    await invoke('cancel_transcode').catch(() => {});
+    await invoke('cancel_transcode').catch((e: unknown) => {
+      console.error('[transcode] キャンセル命令の送信に失敗しました:', e);
+    });
   },
 
   dismiss() {

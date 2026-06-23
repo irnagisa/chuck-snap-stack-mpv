@@ -150,9 +150,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
       set({ watchDirs: canonicalDirs });
       for (const dir of canonicalDirs) {
-        invoke('start_watching', { path: dir }).catch(() => {});
+        invoke('start_watching', { path: dir }).catch((e: unknown) => {
+          console.error(`[initDb] フォルダ監視の開始に失敗しました (${dir}):`, e);
+        });
       }
-      get().generateThumbnails().catch(() => {});
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[initDb] サムネイル生成エラー:', e);
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('initDb failed:', msg);
@@ -293,7 +297,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           ? state.watchDirs
           : [...state.watchDirs, canonicalPath],
       }));
-      invoke('start_watching', { path: canonicalPath }).catch(() => {});
+      invoke('start_watching', { path: canonicalPath }).catch((e: unknown) => {
+        console.error(`[scanAndImport] フォルダ監視の開始に失敗しました (${canonicalPath}):`, e);
+        toast.error(`フォルダ監視の開始に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      });
 
       const result = await invoke<ScanResult>('db_scan_and_import', {
         path: canonicalPath,
@@ -305,7 +312,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       set({ currentPage: 1 });
       await get().fetchVideos();
       await useTagStore.getState().fetchCategories();
-      get().generateThumbnails().catch(() => {});
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[scanAndImport] サムネイル生成エラー:', e);
+      });
     } finally {
       set({ isScanning: false });
     }
@@ -324,7 +333,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
       set({ currentPage: 1 });
       await get().fetchVideos();
-      get().generateThumbnails().catch(() => {});
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[rescanAllDirs] サムネイル生成エラー:', e);
+      });
     } catch (e) {
       console.error('rescanAllDirs failed:', e);
       toast.error(`スキャン中にエラーが発生しました: ${String(e)}`, 8000);
@@ -335,7 +346,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   removeWatchDir: async (path: string) => {
     await invoke('db_remove_watch_dir', { path });
-    await invoke('stop_watching', { path }).catch(() => {});
+    await invoke('stop_watching', { path }).catch((e: unknown) => {
+      console.error(`[removeWatchDir] ウォッチャー停止に失敗しました (${path}):`, e);
+    });
     set((state) => ({
       watchDirs: state.watchDirs.filter((d) => d !== path),
       filterWatchDir: state.filterWatchDir === path ? null : state.filterWatchDir,
@@ -709,7 +722,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       sourceUrl: sourceUrl ?? null,
     });
     await get().fetchVideos();
-    get().generateThumbnails().catch(() => {});
+    get().generateThumbnails().catch((e: unknown) => {
+      console.error('[addVideoFromPath] サムネイル生成エラー:', e);
+    });
     return newId;
   },
 
@@ -725,7 +740,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       renames: renames.map((r) => ({ oldPath: r.old_path, newPath: r.new_path, title: r.title })),
     });
     await get().fetchVideos();
-    get().generateThumbnails().catch(() => {});
+    get().generateThumbnails().catch((e: unknown) => {
+      console.error('[batchWatcherUpdate] サムネイル生成エラー:', e);
+    });
   },
 
   moveVideoFile: async (videoId: number, destDir: string) => {
@@ -742,7 +759,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }));
       return newPath;
     } catch (e) {
-      console.error('Failed to move video file:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[moveVideoFile] ファイル移動に失敗しました:', msg);
+      toast.error(`ファイルの移動に失敗しました: ${msg}`);
       return null;
     }
   },

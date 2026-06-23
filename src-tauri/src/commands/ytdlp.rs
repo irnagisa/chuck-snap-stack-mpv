@@ -128,12 +128,26 @@ pub async fn download_with_ytdlp(
     let mut child = cmd.spawn()
         .map_err(|e| format!("yt-dlp の起動に失敗しました: {e}"))?;
 
-    let stdout = child.stdout.take().ok_or("stdout の取得に失敗")?;
-    let stderr = child.stderr.take().ok_or("stderr の取得に失敗")?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    if stdout.is_none() || stderr.is_none() {
+        // Stdio::piped() を指定したので通常は発生しないが、念のためプロセスを終了させる
+        child.kill().await.ok();
+        return Err("yt-dlp の stdout/stderr の取得に失敗しました".to_string());
+    }
+    let stdout = stdout.unwrap();
+    let stderr = stderr.unwrap();
 
     // Child を状態に保持（cancel_ytdlp_download で kill するため）
+    // mutex が毒状態の場合は回復して続行する（回復しないと child が孤立する）
     {
-        let mut guard = state.child.lock().map_err(|e| e.to_string())?;
+        let mut guard = match state.child.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                log::error!("[ytdlp] child mutex が毒状態です。ロックを回復して続行します: {e}");
+                e.into_inner()
+            }
+        };
         *guard = Some(child);
     }
 

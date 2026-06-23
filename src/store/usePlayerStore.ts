@@ -56,21 +56,30 @@ function initListeners(
   if (listenersInitialized) return;
   listenersInitialized = true;
 
+  // listen() 失敗時はログを出してノーオペレーションを返す
+  const safeListen = <T>(event: string, handler: Parameters<typeof listen<T>>[1]) => {
+    const p = listen<T>(event, handler).catch((e: unknown) => {
+      console.error(`[initListeners] "${event}" リスナー登録失敗:`, e);
+      return () => {};
+    });
+    unlistenFns.push(p);
+  };
+
   // mpv のプロパティ変化をリアルタイムで受信
-  unlistenFns.push(listen<number>('mpv://playback-time', (e) => {
+  safeListen<number>('mpv://playback-time', (e) => {
     set({ playbackTime: e.payload });
-  }));
+  });
 
-  unlistenFns.push(listen<boolean>('mpv://pause', (e) => {
+  safeListen<boolean>('mpv://pause', (e) => {
     set({ isPaused: e.payload });
-  }));
+  });
 
-  unlistenFns.push(listen<number>('mpv://duration', (e) => {
+  safeListen<number>('mpv://duration', (e) => {
     set({ duration: e.payload });
-  }));
+  });
 
   // ファイルが自然終了した場合 → ループ中はスキップ、自動再生ON かつキューがあれば次へ進む
-  unlistenFns.push(listen<string>('mpv://end-file', async (e) => {
+  safeListen<string>('mpv://end-file', async (e) => {
     if (e.payload !== 'eof') return;
     const { queue, queueIndex, isLooping } = get();
     if (isLooping) return;
@@ -78,10 +87,10 @@ function initListeners(
     if (autoPlayNext && queue.length > 0 && queueIndex < queue.length - 1) {
       await get().playNext();
     }
-  }));
+  });
 
   // mpv プロセスが終了した場合 → 進捗を保存してステートをリセット
-  unlistenFns.push(listen('mpv://closed', async () => {
+  safeListen('mpv://closed', async () => {
     const { currentVideo, playbackTime, isMiniPlayer } = get();
     if (currentVideo && playbackTime > 0) {
       await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
@@ -102,7 +111,7 @@ function initListeners(
       abLoopB: null,
       chapters: [],
     });
-  }));
+  });
 }
 
 async function invokePlay(video: Video) {

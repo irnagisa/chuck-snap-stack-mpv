@@ -271,15 +271,16 @@ fn connect_and_start_reader(
 /// スレッドが新しい mpv に誤ったスケールを適用しないようにする。
 fn apply_window_size_constraints(gen_counter: Arc<AtomicU32>, current_gen: u32) {
     // ディスプレイ寸法は起動中に変わらないため一度だけ取得する
-    let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
-        .ok()
-        .and_then(|v| v["data"].as_f64())
-        .unwrap_or(0.0);
-    let disp_h = send_ipc(json!({"command": ["get_property", "display-height"]}))
-        .ok()
-        .and_then(|v| v["data"].as_f64())
-        .unwrap_or(0.0);
+    let disp_w = match send_ipc(json!({"command": ["get_property", "display-width"]})) {
+        Ok(v) => v["data"].as_f64().unwrap_or(0.0),
+        Err(e) => { log::warn!("[window-constraints] display-width 取得失敗: {e}"); 0.0 }
+    };
+    let disp_h = match send_ipc(json!({"command": ["get_property", "display-height"]})) {
+        Ok(v) => v["data"].as_f64().unwrap_or(0.0),
+        Err(e) => { log::warn!("[window-constraints] display-height 取得失敗: {e}"); 0.0 }
+    };
     if disp_w <= 0.0 || disp_h <= 0.0 {
+        log::warn!("[window-constraints] ディスプレイ寸法が取得できません (w={disp_w}, h={disp_h}) → スキップ");
         return;
     }
 
@@ -427,6 +428,14 @@ pub async fn play(
             break;
         }
     }
+    if !std::path::Path::new(&mpv_socket_path()).exists() {
+        log::error!("[play] ソケット待機タイムアウト (3秒): mpv が起動しましたがソケットが生成されません");
+        return Err(
+            "mpv が起動しましたが IPC ソケットの準備がタイムアウトしました。\
+             mpv が正しくインストールされているか確認してください。"
+                .to_string(),
+        );
+    }
 
     // IPC 接続・プロパティ購読・リーダースレッド起動
     let state_arc = Arc::clone(state.inner());
@@ -437,7 +446,7 @@ pub async fn play(
     })
     .await
     .map_err(|e| e.to_string())
-    .and_then(|r| r.map_err(|e| { log::debug!("[play] IPC 接続失敗: {e}"); e }))?;
+    .and_then(|r| r.map_err(|e| { log::error!("[play] IPC 接続失敗: {e}"); e }))?;
 
     log::debug!("[play] IPC 接続成功 gen={current_gen}");
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
