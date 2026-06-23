@@ -533,6 +533,15 @@ pub async fn db_add_video_from_path(
         rusqlite::params![path, title, media_type, source_url],
     )
     .map_err(|e| e.to_string())?;
+    // ウォッチャーが先に行を挿入していた場合、INSERT OR IGNORE は無視されるため
+    // source_url が指定されていれば UPDATE で確実に保存する
+    if let Some(ref url) = source_url {
+        conn.execute(
+            "UPDATE videos SET source_url = ?1 WHERE path = ?2",
+            rusqlite::params![url, path],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     let id: Option<i64> = conn
         .query_row("SELECT id FROM videos WHERE path = ?1", [&path], |r| r.get(0))
         .optional()
