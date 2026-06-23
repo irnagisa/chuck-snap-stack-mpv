@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 interface Props {
   message: string;
   onConfirm: () => void;
@@ -7,6 +9,7 @@ interface Props {
 }
 
 export function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = 'OK', confirmDanger = false }: Props) {
+  const { t } = useTranslation();
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -23,7 +26,7 @@ export function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = 'OK'
             className="px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
             onClick={onCancel}
           >
-            キャンセル
+            {t('confirm.cancel')}
           </button>
           <button
             type="button"

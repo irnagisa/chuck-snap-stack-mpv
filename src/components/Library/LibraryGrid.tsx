@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { TagBadge } from './TagBadge';
@@ -35,6 +36,7 @@ const VideoCard = memo(function VideoCard({
   onDelete,
   onCheckbox,
 }: VideoCardProps) {
+  const { t } = useTranslation();
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
   const handlePrimaryClick = () => onShowDetail(v);
@@ -88,7 +90,7 @@ const VideoCard = memo(function VideoCard({
       {fileMissing && (
         <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
           <span className="bg-red-600/80 text-white text-xs font-semibold px-2 py-0.5 rounded shadow">
-            ファイルなし
+            {t('library.noFile')}
           </span>
         </div>
       )}
@@ -116,7 +118,7 @@ const VideoCard = memo(function VideoCard({
         {/* メディアタイプバッジ */}
         {(isImage || isAudio) && (
           <div className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded pointer-events-none">
-            {isImage ? '画像' : '音声'}
+            {isImage ? t('library.imageType') : t('library.audioType')}
           </div>
         )}
 
@@ -149,7 +151,7 @@ const VideoCard = memo(function VideoCard({
 
         {isPlaying && (
           <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
-            再生中
+            {t('library.playing')}
           </div>
         )}
         <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
@@ -158,7 +160,7 @@ const VideoCard = memo(function VideoCard({
               type="button"
               className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
               onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
-              title="プレイリストに追加"
+              title={t('library.addToPlaylist')}
             >
               +
             </button>
@@ -167,7 +169,7 @@ const VideoCard = memo(function VideoCard({
             type="button"
             className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
             onClick={(e) => { e.stopPropagation(); onPlay(v); }}
-            title="再生"
+            title={t('library.play')}
           >
             ▶
           </button>
@@ -175,7 +177,7 @@ const VideoCard = memo(function VideoCard({
             type="button"
             className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
             onClick={(e) => { e.stopPropagation(); onDelete(v); }}
-            title="動画を削除"
+            title={t('library.deleteVideo')}
           >
             削除
           </button>

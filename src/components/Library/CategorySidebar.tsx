@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryDescendantIds } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { Select } from '../common/Select';
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props) {
+  const { t } = useTranslation();
   const {
     categories, tags, tagCategories,
     createCategory, updateCategory, deleteCategory,
@@ -24,42 +26,35 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   } = useTagStore();
   const { fetchVideos } = useLibraryStore();
 
-  // カテゴリ追加フォーム状態
-  const [addingParentId, setAddingParentId] = useState<number | null | undefined>(undefined); // undefined=非表示
+  const [addingParentId, setAddingParentId] = useState<number | null | undefined>(undefined);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(COLORS[5]);
   const [newParentId, setNewParentId] = useState<number | null>(null);
   const [newIcon, setNewIcon] = useState<string | null>('folder');
 
-  // カテゴリ編集状態
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState(COLORS[5]);
   const [editParentId, setEditParentId] = useState<number | null>(null);
   const [editIcon, setEditIcon] = useState<string | null>('folder');
 
-  // タグ編集状態
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [editTagName, setEditTagName] = useState('');
   const [editTagColor, setEditTagColor] = useState(COLORS[5]);
   const [editTagCategoryId, setEditTagCategoryId] = useState<number | null>(null);
   const [editTagIcon, setEditTagIcon] = useState<string | null>('tag');
 
-  // タグカテゴリ追加状態
   const [isAddingTagCat, setIsAddingTagCat] = useState(false);
   const [newTagCatName, setNewTagCatName] = useState('');
 
-  // タグカテゴリ編集状態
   const [editingTagCatId, setEditingTagCatId] = useState<number | null>(null);
   const [editTagCatName, setEditTagCatName] = useState('');
 
-  // フリーワード検索
   const [search, setSearch] = useState('');
   const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const [collapsedTagCatIds, setCollapsedTagCatIds] = useState<Set<number>>(new Set());
   const collapsedInitialized = useRef(false);
 
-  // 初回ロード時に子を持つカテゴリをすべて折りたたむ
   useEffect(() => {
     if (!collapsedInitialized.current && categories.length > 0) {
       collapsedInitialized.current = true;
@@ -74,25 +69,21 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
 
   const searchLower = search.toLowerCase();
 
-  // ツリー構築
   const categoryTree = useMemo(() => buildCategoryTree(categories), [categories]);
   const flatCategories = useMemo(() => flattenCategoryTree(categoryTree), [categoryTree]);
 
-  // 編集フォームの親選択肢（自身と子孫を除外）
   const editParentOptions = useMemo(() => {
     if (editingId === null) return flatCategories;
     const excluded = new Set(getCategoryDescendantIds(editingId, categories));
     return flatCategories.filter(({ category }) => !excluded.has(category.id));
   }, [editingId, flatCategories, categories]);
 
-  // 検索フィルター（名前一致 + 親も表示）
   const visibleCategoryIds = useMemo(() => {
-    if (!searchLower) return null; // null = 全表示
+    if (!searchLower) return null;
     const matched = new Set<number>();
     for (const cat of categories) {
       if (cat.name.toLowerCase().includes(searchLower)) {
         matched.add(cat.id);
-        // 祖先を追加
         let pid = cat.parent_id;
         while (pid !== null) {
           matched.add(pid);
@@ -168,12 +159,12 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     await deleteTagCategory(id);
   };
 
-  // タグをカテゴリ別にグループ化
+  // タグをカテゴリ別にグループ化 (tag → item でシャドーイング回避)
   const tagsByCategory = tagCategories.map((tc) => ({
     category: tc,
-    tags: tags.filter((t) => t.tag_category_id === tc.id),
+    tags: tags.filter((item) => item.tag_category_id === tc.id),
   }));
-  const uncategorizedTags = tags.filter((t) => t.tag_category_id === null);
+  const uncategorizedTags = tags.filter((item) => item.tag_category_id === null);
 
   const filteredTagsByCategory = searchLower
     ? tagsByCategory
@@ -181,7 +172,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
           const catMatches = category.name.toLowerCase().includes(searchLower);
           const filteredTags = catMatches
             ? groupTags
-            : groupTags.filter((t) => t.name.toLowerCase().includes(searchLower));
+            : groupTags.filter((item) => item.name.toLowerCase().includes(searchLower));
           return { category, tags: filteredTags };
         })
         .filter(({ category, tags: groupTags }) =>
@@ -190,7 +181,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     : tagsByCategory;
 
   const filteredUncategorizedTags = searchLower
-    ? uncategorizedTags.filter((t) => t.name.toLowerCase().includes(searchLower))
+    ? uncategorizedTags.filter((item) => item.name.toLowerCase().includes(searchLower))
     : uncategorizedTags;
 
   const renderTagRow = (tag: typeof tags[0]) => (
@@ -226,7 +217,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             value={editTagCategoryId ?? ''}
             onChange={(e) => setEditTagCategoryId(e.target.value === '' ? null : Number(e.target.value))}
           >
-            <option value="">カテゴリなし</option>
+            <option value="">{t('category.none')}</option>
             {tagCategories.map((tc) => (
               <option key={tc.id} value={tc.id}>{tc.name}</option>
             ))}
@@ -244,7 +235,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               onClick={() => setEditingTagId(null)}
             >
-              キャンセル
+              {t('category.cancel')}
             </button>
           </div>
         </div>
@@ -260,7 +251,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             type="button"
             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
             onClick={() => startEditTag(tag.id, tag.name, tag.color, tag.tag_category_id, tag.icon)}
-            title="編集"
+            title={t('category.edit')}
           >
             ✎
           </button>
@@ -268,7 +259,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             type="button"
             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
             onClick={() => handleDeleteTag(tag.id)}
-            title="削除"
+            title={t('category.delete')}
           >
             ×
           </button>
@@ -277,13 +268,11 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
     </div>
   );
 
-  // カテゴリツリーの各行をレンダリング
   const renderCategoryRows = () => {
     const rows: React.ReactNode[] = [];
     const subtreeHiddenIds = new Set<number>();
 
     for (const { category: cat, depth } of flatCategories) {
-      // 祖先が折りたたまれている場合はスキップ
       if (cat.parent_id !== null && subtreeHiddenIds.has(cat.parent_id)) {
         subtreeHiddenIds.add(cat.id);
         continue;
@@ -328,7 +317,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               value={editParentId ?? ''}
               onChange={(e) => setEditParentId(e.target.value === '' ? null : Number(e.target.value))}
             >
-              <option value="">親なし（ルート）</option>
+              <option value="">{t('category.rootParent')}</option>
               {editParentOptions.map(({ category: opt, depth: d }) => (
                 <option key={opt.id} value={opt.id}>
                   {'　'.repeat(d)}{opt.name}
@@ -348,7 +337,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                 className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                 onClick={() => setEditingId(null)}
               >
-                キャンセル
+                {t('category.cancel')}
               </button>
             </div>
           </div>
@@ -365,7 +354,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                   if (next.has(cat.id)) next.delete(cat.id); else next.add(cat.id);
                   return next;
                 })}
-                title={isCollapsed ? '展開' : '折りたたむ'}
+                title={isCollapsed ? t('category.expand') : t('category.collapse')}
               >
                 <svg className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -405,7 +394,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                 setNewColor(COLORS[5]);
                 setNewIcon('folder');
               }}
-              title="子カテゴリを追加"
+              title={t('category.addChild')}
             >
               +
             </button>
@@ -413,7 +402,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               type="button"
               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
               onClick={() => startEdit(cat.id, cat.name, cat.color, cat.parent_id, cat.icon)}
-              title="編集"
+              title={t('category.edit')}
             >
               ✎
             </button>
@@ -421,7 +410,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               type="button"
               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
               onClick={() => handleDelete(cat.id)}
-              title="削除"
+              title={t('category.delete')}
             >
               ×
             </button>
@@ -429,14 +418,13 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         );
       }
 
-      // 子カテゴリとして追加フォームをここに挿入
       if (addingParentId === cat.id && !isCollapsed) {
         rows.push(
           <div key={`add-child-${cat.id}`} style={{ paddingLeft: indent + 12 }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
             <input
               autoFocus
               className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-              placeholder="サブカテゴリ名"
+              placeholder={t('category.subnamePlaceholder')}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
@@ -464,14 +452,14 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                 className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
                 onClick={handleAdd}
               >
-                追加
+                {t('category.add')}
               </button>
               <button
                 type="button"
                 className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                 onClick={() => { setAddingParentId(undefined); setNewName(''); }}
               >
-                キャンセル
+                {t('category.cancel')}
               </button>
             </div>
           </div>
@@ -483,7 +471,6 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
 
   return (
     <aside className="flex flex-col gap-0.5 w-full min-w-0">
-      {/* フリーワード検索 */}
       <div className="relative mb-2">
         <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
@@ -491,7 +478,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         <input
           type="text"
           className="w-full pl-6 pr-6 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="検索..."
+          placeholder={t('category.searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -513,7 +500,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
           <MediaIcon icon="folder" className="w-3.5 h-3.5" />
         </span>
         <h2 className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex-1 tracking-wide">
-          カテゴリ
+          {t('category.title')}
         </h2>
         {categories.length > 0 && (
           <span className="text-[10px] font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full tabular-nums leading-none">
@@ -534,7 +521,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         {selectedCategoryId === null && (
           <span className="absolute left-0 inset-y-1 w-0.5 rounded-r bg-blue-400 dark:bg-blue-500" />
         )}
-        すべて
+        {t('category.all')}
       </button>
 
       <button
@@ -549,18 +536,17 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         {selectedCategoryId === -1 && (
           <span className="absolute left-0 inset-y-1 w-0.5 rounded-r bg-blue-400 dark:bg-blue-500" />
         )}
-        未設定
+        {t('category.uncategorized')}
       </button>
 
       {renderCategoryRows()}
 
-      {/* ルートカテゴリ追加フォーム */}
       {addingParentId === null ? (
         <div className="mt-1 flex flex-col gap-1.5 px-1">
           <input
             autoFocus
             className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-            placeholder="カテゴリ名"
+            placeholder={t('category.namePlaceholder')}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -588,14 +574,14 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
               onClick={handleAdd}
             >
-              追加
+              {t('category.add')}
             </button>
             <button
               type="button"
               className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               onClick={() => { setAddingParentId(undefined); setNewName(''); }}
             >
-              キャンセル
+              {t('category.cancel')}
             </button>
           </div>
         </div>
@@ -605,11 +591,11 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
           className="text-left px-2 py-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           onClick={() => { setAddingParentId(null); setNewParentId(null); setNewName(''); setNewColor(COLORS[5]); setNewIcon('folder'); }}
         >
-          + 追加
+          + {t('category.add')}
         </button>
       ) : null}
 
-      {/* タグ管理 (カテゴリ別グループ表示) */}
+      {/* タグ管理 */}
       {(tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0) ? (
         <>
           <div className="mt-3 mb-2 border-t border-gray-200 dark:border-gray-700" />
@@ -618,7 +604,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               <MediaIcon icon="tag" className="w-3.5 h-3.5" />
             </span>
             <h2 className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex-1 tracking-wide">
-              タグ
+              {t('category.tagsTitle')}
             </h2>
             {tags.length > 0 && (
               <span className="text-[10px] font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full tabular-nums leading-none">
@@ -628,10 +614,10 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             <button
               type="button"
               className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 leading-none"
-              title="タググループを追加"
+              title={t('category.addGroup')}
               onClick={() => setIsAddingTagCat(true)}
             >
-              + グループ
+              {t('category.addGroup')}
             </button>
           </div>
 
@@ -640,7 +626,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               <input
                 autoFocus
                 className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                placeholder="グループ名"
+                placeholder={t('category.groupNamePlaceholder')}
                 value={newTagCatName}
                 onChange={(e) => setNewTagCatName(e.target.value)}
                 onKeyDown={(e) => {
@@ -654,20 +640,19 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                   className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
                   onClick={handleAddTagCat}
                 >
-                  追加
+                  {t('category.add')}
                 </button>
                 <button
                   type="button"
                   className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                   onClick={() => { setIsAddingTagCat(false); setNewTagCatName(''); }}
                 >
-                  キャンセル
+                  {t('category.cancel')}
                 </button>
               </div>
             </div>
           )}
 
-          {/* カテゴリ別タググループ */}
           {filteredTagsByCategory.map(({ category, tags: groupTags }) => (
             <div key={category.id} className="mb-1">
               <div className="group flex items-center gap-0.5 px-1">
@@ -685,7 +670,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                     />
                     <div className="flex gap-1">
                       <button type="button" className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded" onClick={handleEditTagCatSave}>保存</button>
-                      <button type="button" className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" onClick={() => setEditingTagCatId(null)}>キャンセル</button>
+                      <button type="button" className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" onClick={() => setEditingTagCatId(null)}>{t('category.cancel')}</button>
                     </div>
                   </div>
                 ) : (
@@ -698,7 +683,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                         if (next.has(category.id)) next.delete(category.id); else next.add(category.id);
                         return next;
                       })}
-                      title={collapsedTagCatIds.has(category.id) ? '展開' : '折りたたむ'}
+                      title={collapsedTagCatIds.has(category.id) ? t('category.expand') : t('category.collapse')}
                     >
                       <svg className={`w-3 h-3 transition-transform ${collapsedTagCatIds.has(category.id) ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -712,7 +697,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                       type="button"
                       className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
                       onClick={() => { setEditingTagCatId(category.id); setEditTagCatName(category.name); }}
-                      title="グループ名を編集"
+                      title={t('category.editGroup')}
                     >
                       ✎
                     </button>
@@ -720,7 +705,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
                       type="button"
                       className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
                       onClick={() => handleDeleteTagCat(category.id)}
-                      title="グループを削除"
+                      title={t('category.deleteGroup')}
                     >
                       ×
                     </button>
@@ -730,7 +715,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               {!collapsedTagCatIds.has(category.id) && (
                 <div className="pl-2">
                   {groupTags.length === 0 ? (
-                    <span className="text-xs text-gray-400 dark:text-gray-600 px-2 py-0.5 block">タグなし</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-600 px-2 py-0.5 block">{t('category.noTags')}</span>
                   ) : (
                     groupTags.map(renderTagRow)
                   )}
@@ -739,12 +724,11 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
             </div>
           ))}
 
-          {/* カテゴリなしのタグ */}
           {filteredUncategorizedTags.length > 0 && (
             <div className="mb-1">
               {tagCategories.length > 0 && (
                 <div className="px-1 mb-0.5">
-                  <span className="text-xs font-medium text-gray-400 dark:text-gray-500">その他</span>
+                  <span className="text-xs font-medium text-gray-400 dark:text-gray-500">{t('category.others')}</span>
                 </div>
               )}
               <div className={tagCategories.length > 0 ? 'pl-2' : ''}>

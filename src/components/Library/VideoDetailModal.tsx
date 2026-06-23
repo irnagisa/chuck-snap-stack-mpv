@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -46,6 +47,7 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
 }
 
 export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
+  const { t } = useTranslation();
   const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
     useTagStore();
   const { fetchVideos, updateVideo, watchDirs, moveVideoFile, rescanVideo } = useLibraryStore();
@@ -98,22 +100,22 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const tagUsageCounts = useMemo(() => {
     const counts: Record<number, number> = {};
     for (const vtags of Object.values(videoTags)) {
-      for (const t of vtags) {
-        counts[t.id] = (counts[t.id] ?? 0) + 1;
+      for (const tag of vtags) {
+        counts[tag.id] = (counts[tag.id] ?? 0) + 1;
       }
     }
     return counts;
   }, [videoTags]);
 
   const filteredSuggestions = useMemo(() => {
-    const unassigned = tags.filter((t) => !currentTags.some((ct) => ct.id === t.id));
+    const unassigned = tags.filter((tag) => !currentTags.some((ct) => ct.id === tag.id));
     const filtered = tagInput
-      ? unassigned.filter((t) => t.name.toLowerCase().includes(tagInput.toLowerCase()))
+      ? unassigned.filter((tag) => tag.name.toLowerCase().includes(tagInput.toLowerCase()))
       : unassigned;
     return filtered.sort((a, b) => (tagUsageCounts[b.id] ?? 0) - (tagUsageCounts[a.id] ?? 0));
   }, [tags, currentTags, tagInput, tagUsageCounts]);
 
-  const exactMatch = tags.some((t) => t.name.toLowerCase() === tagInput.toLowerCase());
+  const exactMatch = tags.some((tag) => tag.name.toLowerCase() === tagInput.toLowerCase());
   const showSuggestions = tagInputFocused || tagInput.length > 0;
 
   const handleTitleSave = async () => {
@@ -271,7 +273,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">詳細</h2>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('detail.title')}</h2>
           <button
             type="button"
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
@@ -312,7 +314,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
                 onClick={handlePlay}
               >
-                {video.media_type === 'image' ? '🔍 拡大表示' : '▶ 再生'}
+                {video.media_type === 'image' ? t('detail.viewImage') : t('detail.play')}
               </button>
               {video.media_type === 'image' && onViewImage && (
                 <button
@@ -320,7 +322,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
                   onClick={() => onViewImage(video)}
                 >
-                  ビューア
+                  {t('detail.viewer')}
                 </button>
               )}
               <button
@@ -328,9 +330,9 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium disabled:opacity-50"
                 onClick={handleRescan}
                 disabled={isRescanning}
-                title="メディアタイプ・サムネイル・再生時間を再取得"
+                title={t('detail.rescanTitle')}
               >
-                {isRescanning ? '再スキャン中...' : '再スキャン'}
+                {isRescanning ? t('detail.rescanning') : t('detail.rescan')}
               </button>
               {video.media_type !== 'image' && (
                 <button
@@ -349,7 +351,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             <div className="pb-4 flex flex-col gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  タイトル
+                  {t('detail.titleField')}
                 </label>
                 <input
                   ref={titleRef}
@@ -366,35 +368,35 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                     onChange={(e) => setRenameFile(e.target.checked)}
                     className="w-3.5 h-3.5 accent-blue-500"
                   />
-                  <span className="text-xs text-gray-400 dark:text-gray-500">ファイル名も変更する</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.renameFile')}</span>
                 </label>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-                    パス
+                    {t('detail.path')}
                   </label>
                   <button
                     type="button"
                     className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
                     onClick={() => revealItemInDir(video.path).catch(() => {})}
-                    title="Finderで表示"
+                    title={t('detail.openFinder')}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                     </svg>
-                    Finderで表示
+                    {t('detail.openFinder')}
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">{video.path}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                  URL
+                  {t('detail.url')}
                 </label>
                 <input
                   className="w-full px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg outline-none transition-colors"
-                  placeholder="https://..."
+                  placeholder={t('detail.urlPlaceholder')}
                   value={localSourceUrl}
                   onChange={(e) => setLocalSourceUrl(e.target.value)}
                   onBlur={handleSourceUrlSave}
@@ -417,7 +419,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             <div className="py-4 flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  評価
+                  {t('detail.rating')}
                 </label>
                 <div className="flex gap-1">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -439,14 +441,14 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
 
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  カテゴリ
+                  {t('detail.category')}
                 </label>
                 <Select
                   fullWidth
                   value={categoryId}
                   onChange={(e) => handleCategoryChange(e.target.value)}
                 >
-                  <option value="">なし</option>
+                  <option value="">{t('detail.categoryNone')}</option>
                   {flattenCategoryTree(buildCategoryTree(categories)).map(({ category: cat, depth }) => (
                     <option key={cat.id} value={cat.id}>
                       {'　'.repeat(depth)}{cat.name}
@@ -460,13 +462,13 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                     onChange={(e) => setMoveFile(e.target.checked)}
                     className="accent-blue-600"
                   />
-                  <span className="text-xs text-gray-500 dark:text-gray-400">ファイルも移動</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{t('detail.moveFile')}</span>
                 </label>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  タグ
+                  {t('detail.tags')}
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2.5 min-h-6">
                   {currentTags.length > 0 ? (
@@ -474,13 +476,13 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                       <TagBadge key={tag.id} tag={tag} onRemove={() => handleRemoveTag(tag.id)} />
                     ))
                   ) : (
-                    <span className="text-xs text-gray-400 dark:text-gray-500">タグなし</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.noTags')}</span>
                   )}
                 </div>
                 <div className="relative">
                   <input
                     className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                    placeholder="タグを検索 / 新規作成..."
+                    placeholder={t('detail.tagSearchPlaceholder')}
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
                     onFocus={() => setTagInputFocused(true)}
@@ -493,7 +495,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   {showSuggestions && (
                     <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto">
                       {filteredSuggestions.length === 0 && !tagInput && (
-                        <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">タグがありません</p>
+                        <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">{t('detail.noTagsAvailable')}</p>
                       )}
                       {filteredSuggestions.map((tag) => (
                         <button
@@ -540,7 +542,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                             className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline"
                             onClick={handleCreateAndAdd}
                           >
-                            「{tagInput}」を新規作成して追加
+                            {t('detail.createTag', { tag: tagInput })}
                           </button>
                         </div>
                       )}
@@ -555,21 +557,21 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    メディアタイプ
+                    {t('detail.mediaType')}
                   </label>
                   <Select
                     value={localMediaType}
                     onChange={(e) => handleMediaTypeChange(e.target.value)}
                   >
-                    <option value="video">動画</option>
-                    <option value="audio">音声</option>
-                    <option value="image">画像</option>
+                    <option value="video">{t('detail.mediaVideo')}</option>
+                    <option value="audio">{t('detail.mediaAudio')}</option>
+                    <option value="image">{t('detail.mediaImage')}</option>
                   </Select>
                 </div>
                 {video.duration != null && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      再生時間
+                      {t('detail.duration')}
                     </label>
                     <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.duration)}</p>
                   </div>
@@ -577,14 +579,14 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 {video.progress > 0 && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      視聴位置
+                      {t('detail.watchProgress')}
                     </label>
                     <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.progress)}</p>
                   </div>
                 )}
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    ファイルサイズ
+                    {t('detail.fileSize')}
                   </label>
                   <p className="text-sm text-gray-800 dark:text-gray-200">
                     {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
@@ -593,7 +595,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 {dimensions && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      解像度
+                      {t('detail.resolution')}
                     </label>
                     <p className="text-sm text-gray-800 dark:text-gray-200">
                       {dimensions.width} × {dimensions.height}
@@ -602,18 +604,18 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 )}
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    追加日時
+                    {t('detail.createdAt')}
                   </label>
                   <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {new Date(video.created_at).toLocaleDateString('ja-JP')}
+                    {new Date(video.created_at).toLocaleDateString()}
                   </p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    再生回数
+                    {t('detail.playCount')}
                   </label>
                   <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {(video.watch_count ?? 0)}回
+                    {(video.watch_count ?? 0)}{t('detail.playCountUnit')}
                   </p>
                 </div>
               </div>
@@ -622,7 +624,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             {/* カスタムサムネイル */}
             <div className="pt-4 pb-4 flex flex-col gap-2">
               <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-                サムネイルを変更
+                {t('detail.thumbnail')}
               </label>
               <div className="flex items-center gap-2 flex-wrap">
                 <input
@@ -632,16 +634,15 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   value={thumbTimestamp}
                   onChange={(e) => setThumbTimestamp(e.target.value)}
-                  placeholder="秒"
                 />
-                <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">秒のフレーム</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('detail.captureAt')}</span>
                 <button
                   type="button"
                   onClick={handleCaptureThumb}
                   disabled={isCapturingThumb}
                   className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
                 >
-                  {isCapturingThumb ? '処理中...' : 'キャプチャ'}
+                  {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
                 </button>
               </div>
             </div>
@@ -650,7 +651,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             <div className="pt-4 pb-4 flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
-                  字幕ファイル
+                  {t('detail.subtitle')}
                 </label>
                 <button
                   type="button"
@@ -658,12 +659,12 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   disabled={isScanningSubs}
                   className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
                 >
-                  {isScanningSubs ? '検索中...' : '検索'}
+                  {isScanningSubs ? t('detail.searchingSubtitle') : t('detail.searchSubtitle')}
                 </button>
               </div>
               {subtitles.length === 0 && !isScanningSubs && (
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  「検索」で同フォルダの字幕ファイルを探します
+                  {t('detail.subtitleHelp')}
                 </p>
               )}
               {subtitles.length > 0 && (
@@ -681,7 +682,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                             : 'bg-blue-600 hover:bg-blue-700 text-white'
                         }`}
                       >
-                        {loadedSubtitle === sub.path ? 'ロード済' : 'ロード'}
+                        {loadedSubtitle === sub.path ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
                       </button>
                     </div>
                   ))}

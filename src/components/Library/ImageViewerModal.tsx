@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function ImageViewerModal({ video, allImages, onClose, onNavigate }: Props) {
+  const { t } = useTranslation();
   const idx = allImages.findIndex((v) => v.id === video.id);
 
   const goPrev = useCallback(() => {
@@ -51,7 +53,7 @@ export function ImageViewerModal({ video, allImages, onClose, onNavigate }: Prop
           </span>
           {allImages.length > 1 && (
             <span className="text-white/40 text-xs tabular-nums shrink-0">
-              {idx + 1} / {allImages.length}
+              {t('imageViewer.counter', { current: idx + 1, total: allImages.length })}
             </span>
           )}
         </div>
@@ -63,7 +65,7 @@ export function ImageViewerModal({ video, allImages, onClose, onNavigate }: Prop
           type="button"
           className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-3xl leading-none bg-black/30 rounded-full w-10 h-10 flex items-center justify-center"
           onClick={(e) => { e.stopPropagation(); goPrev(); }}
-          title="前の画像 (←)"
+          title={t('imageViewer.prev')}
         >
           ‹
         </button>
@@ -75,7 +77,7 @@ export function ImageViewerModal({ video, allImages, onClose, onNavigate }: Prop
           type="button"
           className="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-3xl leading-none bg-black/30 rounded-full w-10 h-10 flex items-center justify-center"
           onClick={(e) => { e.stopPropagation(); goNext(); }}
-          title="次の画像 (→)"
+          title={t('imageViewer.next')}
         >
           ›
         </button>
@@ -85,7 +87,7 @@ export function ImageViewerModal({ video, allImages, onClose, onNavigate }: Prop
         type="button"
         className="absolute top-4 right-4 text-white/60 hover:text-white text-xl leading-none bg-black/30 rounded-full w-8 h-8 flex items-center justify-center"
         onClick={onClose}
-        title="閉じる (Esc)"
+        title={t('imageViewer.close')}
       >
         ✕
       </button>

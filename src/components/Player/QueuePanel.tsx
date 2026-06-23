@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useShallow } from 'zustand/shallow';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { usePlayerStore } from '../../store/usePlayerStore';
@@ -17,6 +18,7 @@ function formatTime(sec: number | null): string {
 const PLAYER_HEIGHT = 84;
 
 export function QueuePanel() {
+  const { t } = useTranslation();
   const { queue, queueIndex, jumpToQueue, removeFromQueue } = usePlayerStore(
     useShallow((s) => ({
       queue: s.queue,
@@ -40,12 +42,12 @@ export function QueuePanel() {
       style={{ bottom: PLAYER_HEIGHT, top: 0, width: 280 }}
     >
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0">
-        <span className="text-sm font-medium text-gray-200">キュー ({queue.length}件)</span>
+        <span className="text-sm font-medium text-gray-200">{t('queue.title', { count: queue.length })}</span>
         <button
           type="button"
           onClick={closeQueuePanel}
           className="text-gray-400 hover:text-gray-200 text-lg leading-none"
-          title="閉じる"
+          title={t('queue.close')}
         >
           ×
         </button>
@@ -96,7 +98,7 @@ export function QueuePanel() {
                     removeFromQueue(video.id);
                   }}
                   className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 text-sm shrink-0 transition-opacity"
-                  title="キューから削除"
+                  title={t('queue.remove')}
                 >
                   ×
                 </button>

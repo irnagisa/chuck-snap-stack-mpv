@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
 import type { Video } from '../../types';
 
@@ -67,6 +68,7 @@ function computeNewName(
 }
 
 export function BulkRenameModal({ videos, onClose, onDone }: Props) {
+  const { t } = useTranslation();
   const { renameVideoFile } = useLibraryStore();
 
   const [mode, setMode] = useState<RenameMode>('replace');
@@ -154,7 +156,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
         {/* ヘッダー */}
         <div className="px-5 pt-5 pb-3 shrink-0">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {videos.length} 件の動画を一括リネーム
+            {t('bulkRename.title', { count: videos.length })}
           </h2>
         </div>
 
@@ -171,7 +173,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
               }`}
               onClick={() => setMode(m)}
             >
-              {m === 'replace' ? '検索・置換' : m === 'prefix' ? 'プレフィックス' : m === 'suffix' ? 'サフィックス' : '連番'}
+              {m === 'replace' ? t('bulkRename.modeReplace') : m === 'prefix' ? t('bulkRename.modePrefix') : m === 'suffix' ? t('bulkRename.modeSuffix') : t('bulkRename.modeSequential')}
             </button>
           ))}
         </div>
@@ -181,50 +183,50 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
           {mode === 'replace' && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 w-12 shrink-0">検索</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 w-12 shrink-0">{t('bulkRename.searchLabel')}</label>
                 <input
                   className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="検索する文字列"
+                  placeholder={t('bulkRename.searchPlaceholder')}
                   autoFocus
                 />
                 <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0 cursor-pointer">
                   <input type="checkbox" checked={useRegex} onChange={(e) => setUseRegex(e.target.checked)} />
-                  正規表現
+                  {t('bulkRename.useRegex')}
                 </label>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 w-12 shrink-0">置換</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 w-12 shrink-0">{t('bulkRename.replaceLabel')}</label>
                 <input
                   className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={replace}
                   onChange={(e) => setReplace(e.target.value)}
-                  placeholder="置換後の文字列 (空欄で削除)"
+                  placeholder={t('bulkRename.replacePlaceholder')}
                 />
               </div>
             </div>
           )}
           {mode === 'prefix' && (
             <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">追加するプレフィックス</label>
+              <label className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">{t('bulkRename.prefixLabel')}</label>
               <input
                 className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 value={prefix}
                 onChange={(e) => setPrefix(e.target.value)}
-                placeholder="例: 2024_"
+                placeholder={t('bulkRename.prefixPlaceholder')}
                 autoFocus
               />
             </div>
           )}
           {mode === 'suffix' && (
             <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">追加するサフィックス</label>
+              <label className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">{t('bulkRename.suffixLabel')}</label>
               <input
                 className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 value={suffix}
                 onChange={(e) => setSuffix(e.target.value)}
-                placeholder="例: _完了"
+                placeholder={t('bulkRename.suffixPlaceholder')}
                 autoFocus
               />
             </div>
@@ -232,7 +234,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
           {mode === 'number' && (
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
-                <label className="text-xs text-gray-500 dark:text-gray-400">開始番号</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.startNumLabel')}</label>
                 <input
                   type="number"
                   className="w-16 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
@@ -242,7 +244,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
                 />
               </div>
               <div className="flex items-center gap-1.5">
-                <label className="text-xs text-gray-500 dark:text-gray-400">桁数</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.digitsLabel')}</label>
                 <input
                   type="number"
                   className="w-14 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
@@ -253,7 +255,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
                 />
               </div>
               <div className="flex items-center gap-1.5">
-                <label className="text-xs text-gray-500 dark:text-gray-400">区切り</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.separatorLabel')}</label>
                 <input
                   className="w-12 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={numSep}
@@ -261,14 +263,14 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
                 />
               </div>
               <div className="flex items-center gap-1.5">
-                <label className="text-xs text-gray-500 dark:text-gray-400">位置</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.positionLabel')}</label>
                 <select
                   className="border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={numPosition}
                   onChange={(e) => setNumPosition(e.target.value as 'prefix' | 'suffix')}
                 >
-                  <option value="prefix">先頭</option>
-                  <option value="suffix">末尾</option>
+                  <option value="prefix">{t('bulkRename.positionPrepend')}</option>
+                  <option value="suffix">{t('bulkRename.positionAppend')}</option>
                 </select>
               </div>
             </div>
@@ -280,8 +282,8 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
               <tr>
-                <th className="text-left px-2 py-1.5 text-gray-500 dark:text-gray-400 font-medium">変更前</th>
-                <th className="text-left px-2 py-1.5 text-gray-500 dark:text-gray-400 font-medium">変更後</th>
+                <th className="text-left px-2 py-1.5 text-gray-500 dark:text-gray-400 font-medium">{t('bulkRename.before')}</th>
+                <th className="text-left px-2 py-1.5 text-gray-500 dark:text-gray-400 font-medium">{t('bulkRename.after')}</th>
               </tr>
             </thead>
             <tbody>
@@ -300,7 +302,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
                         : 'text-green-700 dark:text-green-400'
                     }`}>
                       {newName}
-                      {conflict && <span className="ml-1 text-red-500 font-normal">(重複)</span>}
+                      {conflict && <span className="ml-1 text-red-500 font-normal">{t('bulkRename.duplicate')}</span>}
                     </td>
                   </tr>
                 );
@@ -324,8 +326,8 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
         {/* フッターボタン */}
         <div className="px-5 pb-5 flex items-center justify-between shrink-0">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            {unchangedCount > 0 && `${unchangedCount} 件は変更なし`}
-            {hasConflict && <span className="text-red-500 ml-2">重複あり</span>}
+            {unchangedCount > 0 && t('bulkRename.unchanged', { count: unchangedCount })}
+            {hasConflict && <span className="text-red-500 ml-2">{t('bulkRename.hasDuplicate')}</span>}
           </p>
           <div className="flex gap-2">
             <button
@@ -333,7 +335,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
               className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               onClick={results ? onDone : onClose}
             >
-              {results ? '閉じる' : 'キャンセル'}
+              {results ? t('bulkRename.close') : t('bulkRename.cancel')}
             </button>
             {!results && (
               <button
@@ -342,7 +344,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
                 className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
                 onClick={handleApply}
               >
-                {loading ? 'リネーム中...' : `${previews.filter(({ video, newName }) => getFileParts(video.path).basename !== newName).length} 件リネーム`}
+                {loading ? t('bulkRename.renaming') : t('bulkRename.rename', { count: previews.filter(({ video, newName }) => getFileParts(video.path).basename !== newName).length })}
               </button>
             )}
           </div>

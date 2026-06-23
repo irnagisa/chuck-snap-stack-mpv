@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useShallow } from 'zustand/shallow';
 
@@ -11,6 +12,7 @@ function basename(path: string): string {
 }
 
 export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
+  const { t } = useTranslation();
   const { watchDirs, isScanning, isThumbnailGenerating, removeWatchDir, rescanAllDirs } = useLibraryStore(
     useShallow((s) => ({
       watchDirs: s.watchDirs,
@@ -25,11 +27,11 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
     <aside className="flex flex-col gap-0.5 w-full min-w-0">
       <div className="flex items-center justify-between mb-1 px-2">
         <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-          フォルダ
+          {t('watchDir.title')}
         </h2>
         <button
           type="button"
-          title="全フォルダを再スキャン"
+          title={t('watchDir.rescanAll')}
           disabled={isScanning || isThumbnailGenerating || watchDirs.length === 0}
           onClick={() => rescanAllDirs()}
           className="text-xs text-gray-400 hover:text-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -47,12 +49,12 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
         }`}
         onClick={() => onSelectDir(null)}
       >
-        すべて
+        {t('watchDir.all')}
       </button>
 
       {watchDirs.length === 0 && (
         <p className="px-2 py-1 text-xs text-gray-400 dark:text-gray-600">
-          フォルダ未登録
+          {t('watchDir.empty')}
         </p>
       )}
 
@@ -73,7 +75,7 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
           </button>
           <button
             type="button"
-            title="再スキャン"
+            title={t('watchDir.rescan')}
             disabled={isScanning || isThumbnailGenerating}
             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 disabled:opacity-30 text-xs px-0.5 shrink-0 transition-colors"
             onClick={() => rescanAllDirs(dir)}
@@ -82,7 +84,7 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
           </button>
           <button
             type="button"
-            title="監視解除"
+            title={t('watchDir.unwatch')}
             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
             onClick={() => removeWatchDir(dir)}
           >

@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import {
   useSettingsStore, type AppSettings, type KeyAction, type Theme,
-  KEY_ACTION_LABELS, DEFAULT_KEYBINDINGS,
+  KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
 } from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { LANGUAGE_LABELS, type Language } from "../../i18n";
 
 interface Props {
   onClose: () => void;
@@ -27,10 +29,11 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 ];
 
 export function SettingsPanel({ onClose }: Props) {
-  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, saveSettings, saveKeybindings } = useSettingsStore();
+  const { t } = useTranslation();
+  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, saveSettings, saveKeybindings } = useSettingsStore();
   const { watchDirs, scanAndImport, removeWatchDir, isScanning, isThumbnailGenerating } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
@@ -162,7 +165,7 @@ export function SettingsPanel({ onClose }: Props) {
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">設定</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('settings.title')}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -176,14 +179,14 @@ export function SettingsPanel({ onClose }: Props) {
         <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
           {/* 外観 */}
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            外観
+            {t('settings.sectionAppearance')}
           </p>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              テーマ
+              {t('settings.theme')}
             </label>
             <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
-              {([['light', 'ライト'], ['dark', 'ダーク'], ['auto', '自動']] as [Theme, string][]).map(([value, label]) => (
+              {([['light', t('settings.themeLight')], ['dark', t('settings.themeDark')], ['auto', t('settings.themeAuto')]] as [Theme, string][]).map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
@@ -200,17 +203,40 @@ export function SettingsPanel({ onClose }: Props) {
             </div>
           </div>
 
+          {/* 言語 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              {t('settings.language')}
+            </label>
+            <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
+              {(Object.entries(LANGUAGE_LABELS) as [Language, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`px-4 py-1 rounded-md text-sm font-medium transition-all ${
+                    local.language === value
+                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                  onClick={() => setLocal((prev) => ({ ...prev, language: value }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <hr className="border-gray-200 dark:border-gray-700" />
 
           {/* 再生 */}
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            再生
+            {t('settings.sectionPlayback')}
           </p>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">自動再生</p>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.autoPlayNext')}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                キュー内の動画が終了したとき、次の動画を自動的に再生する
+                {t('settings.autoPlayNextDesc')}
               </p>
             </div>
             <button
@@ -233,13 +259,13 @@ export function SettingsPanel({ onClose }: Props) {
           <hr className="border-gray-200 dark:border-gray-700" />
 
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            実行ファイル
+            {t('settings.sectionExecutable')}
           </p>
 
           {/* mpv パス */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              mpv パス
+              {t('settings.mpvPath')}
             </label>
             <div className="flex gap-2">
               <input
@@ -247,14 +273,14 @@ export function SettingsPanel({ onClose }: Props) {
                 value={local.mpvPath}
                 onChange={(e) => setLocal((prev) => ({ ...prev, mpvPath: e.target.value }))}
                 className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-                placeholder="/opt/homebrew/bin/mpv"
+                placeholder={t('settings.mpvPathPlaceholder')}
               />
               <button
                 type="button"
                 onClick={handlePickMpv}
                 className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
               >
-                参照
+                {t('settings.browse')}
               </button>
             </div>
           </div>
@@ -262,38 +288,38 @@ export function SettingsPanel({ onClose }: Props) {
           {/* ffmpeg パス */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              ffmpeg パス
+              {t('settings.ffmpegPath')}
             </label>
             <input
               type="text"
               value={local.ffmpegPath}
               onChange={(e) => setLocal((prev) => ({ ...prev, ffmpegPath: e.target.value }))}
               className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-              placeholder="ffmpeg"
+              placeholder={t('settings.ffmpegPlaceholder')}
             />
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              PATH が通っている場合はコマンド名のみでも可
+              {t('settings.ffmpegHelp')}
             </p>
           </div>
 
           {/* ffprobe パス */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              ffprobe パス
+              {t('settings.ffprobePath')}
             </label>
             <input
               type="text"
               value={local.ffprobePath}
               onChange={(e) => setLocal((prev) => ({ ...prev, ffprobePath: e.target.value }))}
               className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-              placeholder="ffprobe"
+              placeholder={t('settings.ffprobePlaceholder')}
             />
           </div>
 
           {/* yt-dlp パス */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              yt-dlp パス
+              {t('settings.ytdlpPath')}
             </label>
             <div className="flex gap-2">
               <input
@@ -301,25 +327,25 @@ export function SettingsPanel({ onClose }: Props) {
                 value={local.ytdlpPath}
                 onChange={(e) => setLocal((prev) => ({ ...prev, ytdlpPath: e.target.value }))}
                 className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-                placeholder="/opt/homebrew/bin/yt-dlp"
+                placeholder={t('settings.ytdlpPlaceholder')}
               />
               <button
                 type="button"
                 onClick={handlePickYtdlp}
                 className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
               >
-                参照
+                {t('settings.browse')}
               </button>
               <button
                 type="button"
                 onClick={handleDetectYtdlp}
                 className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
               >
-                自動検出
+                {t('settings.autoDetect')}
               </button>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              空の場合はバンドルバイナリまたは PATH 上の yt-dlp を使用
+              {t('settings.ytdlpHelp')}
             </p>
           </div>
 
@@ -327,19 +353,19 @@ export function SettingsPanel({ onClose }: Props) {
 
           {/* ダウンロード / スクリーンショット */}
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            ダウンロード / スクリーンショット
+            {t('settings.sectionDownload')}
           </p>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              ダウンロード先フォルダ
+              {t('settings.downloadDir')}
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
                 readOnly
                 value={local.downloadDir}
-                placeholder="未設定（システムの Downloads フォルダを使用）"
+                placeholder={t('settings.downloadDirPlaceholder')}
                 className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
               />
               <button
@@ -347,14 +373,14 @@ export function SettingsPanel({ onClose }: Props) {
                 onClick={handlePickDownloadDir}
                 className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
               >
-                参照
+                {t('settings.browse')}
               </button>
               {local.downloadDir && (
                 <button
                   type="button"
                   onClick={() => setLocal((prev) => ({ ...prev, downloadDir: "" }))}
                   className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
-                  title="リセット"
+                  title={t('settings.reset')}
                 >
                   ✕
                 </button>
@@ -364,14 +390,14 @@ export function SettingsPanel({ onClose }: Props) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              スクリーンショット保存先
+              {t('settings.screenshotDir')}
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
                 readOnly
                 value={local.screenshotDir}
-                placeholder="未設定（ダウンロード先フォルダを使用）"
+                placeholder={t('settings.screenshotDirPlaceholder')}
                 className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
               />
               <button
@@ -379,14 +405,14 @@ export function SettingsPanel({ onClose }: Props) {
                 onClick={handlePickScreenshotDir}
                 className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
               >
-                参照
+                {t('settings.browse')}
               </button>
               {local.screenshotDir && (
                 <button
                   type="button"
                   onClick={() => setLocal((prev) => ({ ...prev, screenshotDir: "" }))}
                   className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
-                  title="リセット"
+                  title={t('settings.reset')}
                 >
                   ✕
                 </button>
@@ -398,13 +424,13 @@ export function SettingsPanel({ onClose }: Props) {
 
           {/* スキャンパス */}
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            スキャンパス
+            {t('settings.sectionScanPaths')}
           </p>
 
           <div className="space-y-1">
             {watchDirs.length === 0 ? (
               <p className="text-xs text-gray-400 dark:text-gray-500 py-1">
-                スキャン対象フォルダがありません
+                {t('settings.noScanPaths')}
               </p>
             ) : (
               watchDirs.map((dir) => (
@@ -420,7 +446,7 @@ export function SettingsPanel({ onClose }: Props) {
                     disabled={removingPath === dir}
                     onClick={() => handleRemoveScanPath(dir)}
                     className="shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-xs px-1 disabled:opacity-40"
-                    title="このパスを削除"
+                    title={t('settings.removePath')}
                   >
                     {removingPath === dir ? "…" : "✕"}
                   </button>
@@ -435,23 +461,23 @@ export function SettingsPanel({ onClose }: Props) {
             onClick={handleAddScanPath}
             className="w-full py-1.5 text-sm border border-dashed border-gray-300 dark:border-gray-600 rounded text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 disabled:opacity-40 transition-colors"
           >
-            {isScanning || isThumbnailGenerating ? "スキャン中..." : "+ フォルダを追加"}
+            {isScanning || isThumbnailGenerating ? t('app.scanning') : t('settings.addFolder')}
           </button>
 
           <hr className="border-gray-200 dark:border-gray-700" />
 
           {/* ウェブサーバー */}
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            ウェブサーバー
+            {t('settings.sectionWebServer')}
           </p>
 
           <div className="space-y-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              LAN 内の他デバイス（スマホ・PC）からブラウザでライブラリを閲覧・再生できます。
+              {t('settings.webServerDesc')}
             </p>
 
             <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-700 dark:text-gray-300 shrink-0">ポート</label>
+              <label className="text-sm text-gray-700 dark:text-gray-300 shrink-0">{t('settings.port')}</label>
               <input
                 type="number"
                 min={1024}
@@ -468,7 +494,7 @@ export function SettingsPanel({ onClose }: Props) {
                   onClick={handleStopWs}
                   className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
                 >
-                  {wsLoading ? '停止中...' : '停止'}
+                  {wsLoading ? t('settings.serverStopping') : t('settings.serverStop')}
                 </button>
               ) : (
                 <button
@@ -477,19 +503,19 @@ export function SettingsPanel({ onClose }: Props) {
                   onClick={handleStartWs}
                   className="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
                 >
-                  {wsLoading ? '起動中...' : '起動'}
+                  {wsLoading ? t('settings.serverStarting') : t('settings.serverStart')}
                 </button>
               )}
             </div>
 
             {wsRunning && (
               <div className="rounded bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 px-3 py-2 text-xs space-y-1">
-                <p className="font-medium text-green-700 dark:text-green-400">サーバー稼働中</p>
+                <p className="font-medium text-green-700 dark:text-green-400">{t('settings.serverRunning')}</p>
                 <p className="font-mono text-green-600 dark:text-green-500">
                   http://{localIp ?? '???'}:{wsPort}
                 </p>
                 <p className="text-green-600 dark:text-green-600">
-                  エンドポイント: /api/videos &nbsp;|&nbsp; /api/stream/:id &nbsp;|&nbsp; /api/thumbnails/:filename
+                  /api/videos &nbsp;|&nbsp; /api/stream/:id &nbsp;|&nbsp; /api/thumbnails/:filename
                 </p>
               </div>
             )}
@@ -499,18 +525,18 @@ export function SettingsPanel({ onClose }: Props) {
 
           {/* キーボードショートカット */}
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            キーボードショートカット
+            {t('settings.sectionKeybindings')}
           </p>
 
           {capturingAction && (
             <div className="px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-300 dark:border-blue-700 rounded text-xs text-blue-700 dark:text-blue-300 text-center">
-              「{KEY_ACTION_LABELS[capturingAction]}」に割り当てるキーを押してください...
+              {t('settings.keybindingCapture', { action: t(KEY_ACTION_KEYS[capturingAction]) })}
               <button
                 type="button"
                 className="ml-2 text-blue-500 hover:text-blue-700 dark:hover:text-blue-200 underline"
                 onClick={() => setCapturingAction(null)}
               >
-                キャンセル
+                {t('settings.keybindingCancel')}
               </button>
             </div>
           )}
@@ -519,7 +545,7 @@ export function SettingsPanel({ onClose }: Props) {
             {KEY_ACTION_ORDER.map((action) => (
               <div key={action} className="flex items-center gap-2 py-0.5">
                 <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
-                  {KEY_ACTION_LABELS[action]}
+                  {t(KEY_ACTION_KEYS[action])}
                 </span>
                 <kbd className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-gray-700 dark:text-gray-300 min-w-[3.5rem] text-center">
                   {formatKey(local.keybindings[action])}
@@ -557,7 +583,7 @@ export function SettingsPanel({ onClose }: Props) {
             className="text-xs text-gray-400 dark:text-gray-500 hover:text-orange-500 dark:hover:text-orange-400"
             onClick={() => setLocal((prev) => ({ ...prev, keybindings: DEFAULT_KEYBINDINGS }))}
           >
-            すべてデフォルトに戻す
+            {t('settings.keybindingReset')}
           </button>
         </div>
 
@@ -568,7 +594,7 @@ export function SettingsPanel({ onClose }: Props) {
             onClick={onClose}
             className="px-4 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
           >
-            キャンセル
+            {t('confirm.cancel')}
           </button>
           <button
             type="button"
@@ -576,7 +602,7 @@ export function SettingsPanel({ onClose }: Props) {
             disabled={isSaving}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded disabled:opacity-50"
           >
-            {isSaving ? "保存中..." : "保存"}
+            {isSaving ? t('smartPlaylist.saving') : t('smartPlaylist.save')}
           </button>
         </div>
       </div>

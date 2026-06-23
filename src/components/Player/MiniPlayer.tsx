@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from "react-i18next";
 import { useShallow } from 'zustand/shallow';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { formatTime } from '../../utils/time';
 
 export function MiniPlayer() {
+  const { t } = useTranslation();
   const {
     currentVideo, playbackTime, duration, isPaused,
     queue, queueIndex, isMiniPlayer,
@@ -38,7 +40,7 @@ export function MiniPlayer() {
   const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
   const title = currentVideo
     ? (currentVideo.title ?? currentVideo.path.split('/').pop() ?? '')
-    : '再生中の動画なし';
+    : t('player.noVideo');
 
   return (
     <div className="flex flex-col h-screen w-screen bg-gray-900 text-white overflow-hidden select-none">
@@ -51,7 +53,7 @@ export function MiniPlayer() {
           type="button"
           onClick={toggleMiniPlayer}
           className="text-gray-400 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-gray-700 shrink-0"
-          title="通常表示に戻す"
+          title={t('player.backToNormal')}
         >
           ⇲
         </button>
@@ -103,7 +105,7 @@ export function MiniPlayer() {
           onClick={playPrev}
           disabled={!hasPrev}
           className="p-1.5 rounded hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300"
-          title="前の動画 (P)"
+          title={t('player.prevVideo')}
         >
           ⏮
         </button>
@@ -111,7 +113,7 @@ export function MiniPlayer() {
           type="button"
           onClick={pauseResume}
           className="p-1.5 rounded hover:bg-gray-700 text-white w-9 text-center"
-          title={isPaused ? '再生 (Space)' : '一時停止 (Space)'}
+          title={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
         >
           {isPaused ? '▶' : '⏸'}
         </button>
@@ -120,7 +122,7 @@ export function MiniPlayer() {
           onClick={playNext}
           disabled={!hasNext}
           className="p-1.5 rounded hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300"
-          title="次の動画 (N)"
+          title={t('player.nextVideo')}
         >
           ⏭
         </button>
@@ -129,7 +131,7 @@ export function MiniPlayer() {
 
         {queue.length > 0 && (
           <span className="text-[10px] text-gray-500 tabular-nums">
-            {queueIndex + 1}/{queue.length}
+            {t('player.queuePosition', { current: queueIndex + 1, total: queue.length })}
           </span>
         )}
 
@@ -137,7 +139,7 @@ export function MiniPlayer() {
           type="button"
           onClick={quit}
           className="p-1.5 rounded hover:bg-red-700 text-gray-400 hover:text-white text-xs ml-1"
-          title="再生終了"
+          title={t('player.endPlayback')}
         >
           ✕
         </button>

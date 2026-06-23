@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
 
 interface Props {
@@ -14,6 +15,7 @@ interface MissingVideo {
 }
 
 export function MissingFilesModal({ onClose }: Props) {
+  const { t } = useTranslation();
   const { fetchAllForShuffle, removeMultiple } = useLibraryStore();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<MissingVideo[]>([]);
@@ -82,6 +84,7 @@ export function MissingFilesModal({ onClose }: Props) {
 
   const missingCount = items.filter((m) => m.reason === 'missing').length;
   const emptyCount = items.filter((m) => m.reason === 'empty').length;
+  const selectedCount = selected.size;
 
   return (
     <div
@@ -95,7 +98,7 @@ export function MissingFilesModal({ onClose }: Props) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            欠損・破損ファイルの検出
+            {t('missingFiles.title')}
           </h2>
           <button
             type="button"
@@ -111,13 +114,13 @@ export function MissingFilesModal({ onClose }: Props) {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-sm text-gray-400 dark:text-gray-500">
               <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
-              ファイルの存在を確認中...
+              {t('missingFiles.loading')}
             </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2">
               <span className="text-3xl">{done ? '✓' : '✓'}</span>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {done ? 'ライブラリから除外しました' : '欠損・破損ファイルは見つかりませんでした'}
+                {done ? t('missingFiles.removed') : t('missingFiles.empty')}
               </p>
             </div>
           ) : (
@@ -126,12 +129,12 @@ export function MissingFilesModal({ onClose }: Props) {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   {missingCount > 0 && (
                     <span className="mr-3">
-                      <span className="font-medium text-red-600 dark:text-red-400">{missingCount} 件</span> が見つかりません
+                      <span className="font-medium text-red-600 dark:text-red-400">{t('missingFiles.missingCount', { count: missingCount })}</span>
                     </span>
                   )}
                   {emptyCount > 0 && (
                     <span>
-                      <span className="font-medium text-orange-500 dark:text-orange-400">{emptyCount} 件</span> が空ファイル (0 バイト)
+                      <span className="font-medium text-orange-500 dark:text-orange-400">{t('missingFiles.emptyCount', { count: emptyCount })}</span>
                     </span>
                   )}
                 </p>
@@ -140,7 +143,7 @@ export function MissingFilesModal({ onClose }: Props) {
                   className="text-xs text-blue-500 dark:text-blue-400 hover:underline"
                   onClick={toggleAll}
                 >
-                  {selected.size === items.length ? 'すべて解除' : 'すべて選択'}
+                  {selected.size === items.length ? t('missingFiles.deselectAll') : t('missingFiles.selectAll')}
                 </button>
               </div>
 
@@ -176,7 +179,7 @@ export function MissingFilesModal({ onClose }: Props) {
                             : 'bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400'
                         }`}
                       >
-                        {item.reason === 'missing' ? 'ファイルなし' : '空ファイル'}
+                        {item.reason === 'missing' ? t('missingFiles.badgeMissing') : t('missingFiles.badgeEmpty')}
                       </span>
                     </label>
                   ))}
@@ -194,7 +197,7 @@ export function MissingFilesModal({ onClose }: Props) {
             onClick={detect}
             disabled={loading || removing}
           >
-            再検出
+            {t('missingFiles.redetect')}
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -202,7 +205,7 @@ export function MissingFilesModal({ onClose }: Props) {
               className="px-4 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
               onClick={onClose}
             >
-              閉じる
+              {t('missingFiles.close')}
             </button>
             {items.length > 0 && (
               <button
@@ -211,7 +214,7 @@ export function MissingFilesModal({ onClose }: Props) {
                 className="px-4 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
                 onClick={handleRemove}
               >
-                {removing ? '処理中...' : `選択した ${selected.size} 件をライブラリから除外`}
+                {removing ? t('duplicates.processing') : t('missingFiles.removeSelected', { count: selectedCount })}
               </button>
             )}
           </div>

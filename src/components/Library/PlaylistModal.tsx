@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { useTranslation } from "react-i18next";
 import {
   DndContext,
   closestCenter,
@@ -27,6 +28,7 @@ interface SortableItemProps {
 }
 
 function SortableItem({ video, index, onPlay, onRemove }: SortableItemProps) {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: video.id,
   });
@@ -49,7 +51,7 @@ function SortableItem({ video, index, onPlay, onRemove }: SortableItemProps) {
         className="text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 touch-none"
         {...attributes}
         {...listeners}
-        title="ドラッグして並び替え"
+        title={t('playlist.dragToReorder')}
       >
         ⠿
       </button>
@@ -95,7 +97,7 @@ function SortableItem({ video, index, onPlay, onRemove }: SortableItemProps) {
         type="button"
         className="opacity-0 group-hover:opacity-100 text-xs text-red-500 hover:text-red-400 shrink-0 transition-opacity"
         onClick={() => onRemove(video.id)}
-        title="プレイリストから削除"
+        title={t('playlist.removeFromPlaylist')}
       >
         ×
       </button>
@@ -109,6 +111,7 @@ interface Props {
 }
 
 export function PlaylistModal({ playlist, onClose }: Props) {
+  const { t } = useTranslation();
   const { fetchPlaylistVideos, removeVideoFromPlaylist, reorderPlaylistItems } = usePlaylistStore();
   const { playWithQueue } = usePlayerStore();
   const [videos, setVideos] = useState<Video[]>([]);
@@ -173,7 +176,7 @@ export function PlaylistModal({ playlist, onClose }: Props) {
             className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded shrink-0"
             onClick={handlePlayAll}
           >
-            ▶ すべて再生
+            {t('playlist.playAll')}
           </button>
           <button
             type="button"
@@ -187,11 +190,11 @@ export function PlaylistModal({ playlist, onClose }: Props) {
         {/* 動画リスト */}
         <div className="flex-1 overflow-y-auto">
           {loading && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 p-4">読み込み中...</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 p-4">{t('playlist.loading')}</p>
           )}
           {!loading && videos.length === 0 && (
             <p className="text-xs text-gray-400 dark:text-gray-500 p-4">
-              動画がありません。ライブラリから追加してください。
+              {t('playlist.noVideos')}
             </p>
           )}
           {!loading && videos.length > 0 && (
@@ -220,7 +223,7 @@ export function PlaylistModal({ playlist, onClose }: Props) {
 
         {!loading && (
           <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500">
-            {videos.length} 件
+            {videos.length} {t('playlist.countSuffix')}
           </div>
         )}
       </div>

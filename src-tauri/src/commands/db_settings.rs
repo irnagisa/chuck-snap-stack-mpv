@@ -12,7 +12,7 @@ pub async fn db_load_settings(state: State<'_, DbState>) -> Result<HashMap<Strin
         .prepare(
             "SELECT key, value FROM settings WHERE key IN (
               'mpv_path','ffmpeg_path','ffprobe_path','ytdlp_path',
-              'download_dir','screenshot_dir','keybindings','theme','auto_play_next'
+              'download_dir','screenshot_dir','keybindings','theme','auto_play_next','language'
             )",
         )
         .map_err(|e| e.to_string())?;
@@ -38,6 +38,7 @@ pub async fn db_save_settings(
     screenshot_dir: String,
     theme: String,
     auto_play_next: bool,
+    language: String,
 ) -> Result<(), String> {
     let conn = state.conn()?;
     let entries = [
@@ -49,6 +50,7 @@ pub async fn db_save_settings(
         ("screenshot_dir", screenshot_dir),
         ("theme", theme),
         ("auto_play_next", auto_play_next.to_string()),
+        ("language", language),
     ];
     for (k, v) in &entries {
         conn.execute(

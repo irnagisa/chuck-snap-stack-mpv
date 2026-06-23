@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from "react-i18next";
 
 interface Stats {
   totalVideos: number;
@@ -44,6 +45,7 @@ interface Props {
 }
 
 export function StatsModal({ onClose }: Props) {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -78,7 +80,7 @@ export function StatsModal({ onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">ライブラリ統計</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('stats.title')}</h2>
           <button
             type="button"
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
@@ -90,18 +92,18 @@ export function StatsModal({ onClose }: Props) {
 
         <div className="overflow-y-auto flex-1 px-6 py-5">
           {isLoading ? (
-            <div className="text-center py-10 text-gray-400">読み込み中...</div>
+            <div className="text-center py-10 text-gray-400">{t('stats.loading')}</div>
           ) : !stats ? (
-            <div className="text-center py-10 text-gray-400">統計情報の取得に失敗しました</div>
+            <div className="text-center py-10 text-gray-400">{t('stats.error')}</div>
           ) : (
             <div className="flex flex-col gap-6">
               {/* サマリーカード */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                  { label: '総動画数', value: `${stats.totalVideos}本` },
-                  { label: '総再生時間', value: formatDuration(stats.totalDurationSec) },
-                  { label: '視聴済み', value: `${stats.watchedCount}本 (${watchedPct}%)` },
-                  { label: '平均評価', value: stats.avgRating > 0 ? `★ ${stats.avgRating.toFixed(1)}` : '—' },
+                  { label: t('stats.totalVideos'), value: `${stats.totalVideos}${t('stats.totalVideosUnit')}` },
+                  { label: t('stats.totalDuration'), value: formatDuration(stats.totalDurationSec) },
+                  { label: t('stats.watched'), value: `${stats.watchedCount}${t('stats.watchedUnit')} (${watchedPct}%)` },
+                  { label: t('stats.avgRating'), value: stats.avgRating > 0 ? `★ ${stats.avgRating.toFixed(1)}` : '—' },
                 ].map((card) => (
                   <div key={card.label} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                     <p className="text-xs text-gray-400 dark:text-gray-500">{card.label}</p>
@@ -113,7 +115,7 @@ export function StatsModal({ onClose }: Props) {
               {/* 視聴進捗バー */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">視聴進捗</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{t('stats.watchProgress')}</span>
                   <span className="text-xs text-gray-600 dark:text-gray-300 tabular-nums">
                     {stats.watchedCount} / {stats.totalVideos}
                   </span>
@@ -130,7 +132,7 @@ export function StatsModal({ onClose }: Props) {
                 {/* カテゴリ別 */}
                 {stats.categoryStats.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">カテゴリ別動画数</h3>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">{t('stats.categoryStats')}</h3>
                     <BarChart
                       items={stats.categoryStats.map((c) => ({ label: c.name, value: c.count }))}
                       max={maxCatCount}
@@ -141,9 +143,9 @@ export function StatsModal({ onClose }: Props) {
                 {/* タグ使用数 */}
                 {stats.topTags.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">タグ使用数 Top10</h3>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">{t('stats.topTags')}</h3>
                     <BarChart
-                      items={stats.topTags.map((t) => ({ label: t.name, value: t.count }))}
+                      items={stats.topTags.map((tag) => ({ label: tag.name, value: tag.count }))}
                       max={maxTagCount}
                     />
                   </div>
@@ -154,7 +156,7 @@ export function StatsModal({ onClose }: Props) {
                 {/* 高評価 Top5 */}
                 {stats.topRated.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">高評価 Top5</h3>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('stats.topRated')}</h3>
                     <ol className="flex flex-col gap-1.5">
                       {stats.topRated.map((v, i) => (
                         <li key={i} className="flex items-center gap-1.5">
@@ -172,7 +174,7 @@ export function StatsModal({ onClose }: Props) {
                 {/* 最近視聴 */}
                 {stats.recentlyWatched.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">最近視聴</h3>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('stats.recentWatched')}</h3>
                     <ol className="flex flex-col gap-1.5">
                       {stats.recentlyWatched.map((v, i) => (
                         <li key={i} className="flex flex-col">
@@ -191,7 +193,7 @@ export function StatsModal({ onClose }: Props) {
                 {/* 再生回数 Top5 */}
                 {stats.topWatched.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">再生回数 Top5</h3>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('stats.topPlayed')}</h3>
                     <ol className="flex flex-col gap-1.5">
                       {stats.topWatched.map((v, i) => (
                         <li key={i} className="flex items-center gap-1.5">
@@ -199,7 +201,7 @@ export function StatsModal({ onClose }: Props) {
                           <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">
                             {v.title ?? v.path.split('/').pop()}
                           </span>
-                          <span className="text-xs text-gray-500 shrink-0 tabular-nums">{v.watchCount}回</span>
+                          <span className="text-xs text-gray-500 shrink-0 tabular-nums">{v.watchCount}{t('stats.playCountUnit')}</span>
                         </li>
                       ))}
                     </ol>

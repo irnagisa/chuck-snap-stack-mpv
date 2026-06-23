@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Video, ScanResult } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -30,6 +31,7 @@ import { ConfirmModal } from "./components/common/ConfirmModal";
 type SidebarTab = 'category' | 'playlist' | 'folder';
 
 function App() {
+  const { t } = useTranslation();
   // useShallow で1サブスクリプションにまとめ、個別セレクタ35個分のオーバーヘッドを削減
   const {
     videos, totalCount, currentPage, pageSize,
@@ -230,7 +232,7 @@ function App() {
           disabled={!isDbReady || isScanning || isThumbnailGenerating}
           onClick={handlePickDir}
         >
-          {isScanning || isThumbnailGenerating ? "スキャン中..." : "+ フォルダ追加"}
+          {isScanning || isThumbnailGenerating ? t('app.scanning') : t('app.addFolder')}
         </button>
         <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0 cursor-pointer select-none">
           <input
@@ -239,7 +241,7 @@ function App() {
             onChange={(e) => setUseDirAsCategory(e.target.checked)}
             className="accent-blue-600"
           />
-          フォルダ名をカテゴリに
+          {t('app.useDirAsCategory')}
         </label>
         <button
           type="button"
@@ -247,18 +249,18 @@ function App() {
           disabled={!isDbReady}
           onClick={openDownload}
         >
-          ↓ URL
+          {t('app.downloadUrl')}
         </button>
         <input
           className="flex-1 border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="動画を検索..."
+          placeholder={t('app.searchPlaceholder')}
           disabled={!isDbReady}
         />
         <button
           type="button"
-          title="統計ダッシュボード"
+          title={t('app.statsTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           disabled={!isDbReady}
           onClick={openStats}
@@ -267,7 +269,7 @@ function App() {
         </button>
         <button
           type="button"
-          title="エクスポート / インポート"
+          title={t('app.exportTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           disabled={!isDbReady}
           onClick={openExport}
@@ -276,25 +278,25 @@ function App() {
         </button>
         <button
           type="button"
-          title="重複動画を検出"
+          title={t('app.duplicatesTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           disabled={!isDbReady}
           onClick={openDuplicates}
         >
-          重複
+          {t('app.duplicatesButton')}
         </button>
         <button
           type="button"
-          title="欠損・破損ファイルを検出"
+          title={t('app.missingTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           disabled={!isDbReady}
           onClick={openMissingFiles}
         >
-          欠損
+          {t('app.missingButton')}
         </button>
         <button
           type="button"
-          title="設定"
+          title={t('app.settingsTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           onClick={openSettings}
         >
@@ -305,7 +307,7 @@ function App() {
       {isThumbnailGenerating && (
         <div className="px-4 py-1.5 flex items-center gap-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
           <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-            {isThumbnailPaused ? '一時停止中' : 'サムネイル生成中'}
+            {isThumbnailPaused ? t('app.thumbnailPaused') : t('app.thumbnailGenerating')}
             {thumbnailProgress && ` ${thumbnailProgress.done}/${thumbnailProgress.total}`}
           </span>
           <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
@@ -320,7 +322,7 @@ function App() {
               onClick={resumeThumbnails}
               className="text-xs px-2 py-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white shrink-0"
             >
-              再開
+              {t('app.thumbnailResume')}
             </button>
           ) : (
             <button
@@ -328,7 +330,7 @@ function App() {
               onClick={pauseThumbnails}
               className="text-xs px-2 py-0.5 rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0"
             >
-              一時停止
+              {t('app.thumbnailPause')}
             </button>
           )}
         </div>
@@ -352,7 +354,7 @@ function App() {
           {transcodeError ? (
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-xs font-medium text-red-700 dark:text-red-300 truncate">
-                {`変換失敗: ${transcodeVideoName}`}
+                {t('app.transcodeError', { name: transcodeVideoName })}
               </span>
               <span className="text-xs text-red-600 dark:text-red-400 line-clamp-2 break-all leading-tight mt-0.5">
                 {transcodeError}
@@ -363,8 +365,9 @@ function App() {
               isTranscodeDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'
             }`}>
               {isTranscodeDone
-                ? `変換完了: ${transcodeVideoName}`
-                : `AV1 変換中: ${transcodeVideoName}`}
+                ? t('app.transcodeSuccess', { name: transcodeVideoName })
+                : t('app.transcodeInProgress', { name: transcodeVideoName })
+              }
             </span>
           )}
 
@@ -401,7 +404,8 @@ function App() {
               <span className="text-xs text-blue-600 dark:text-blue-400 shrink-0 tabular-nums">
                 {transcodeProgress && transcodeProgress.percent > 0
                   ? `${transcodeProgress.percent.toFixed(1)}%`
-                  : '開始中...'}
+                  : t('app.transcodeStarting')
+                }
               </span>
               {transcodeProgress && transcodeProgress.speed && transcodeProgress.speed !== 'N/A' && (
                 <span className="text-xs text-blue-500 dark:text-blue-500 shrink-0">
@@ -413,7 +417,7 @@ function App() {
                 className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-300 shrink-0 ml-auto"
                 onClick={cancelTranscode}
               >
-                キャンセル
+                {t('app.transcodeCancel')}
               </button>
             </>
           )}
@@ -424,7 +428,7 @@ function App() {
               className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 ml-auto"
               onClick={dismissTranscode}
             >
-              ✕
+              {t('app.transcodeDismiss')}
             </button>
           )}
         </div>
@@ -446,7 +450,7 @@ function App() {
                 }`}
                 onClick={() => setSidebarTab('category')}
               >
-                カテゴリ
+                {t('sidebar.categoryTab')}
               </button>
               <button
                 type="button"
@@ -457,7 +461,7 @@ function App() {
                 }`}
                 onClick={() => setSidebarTab('folder')}
               >
-                フォルダ
+                {t('sidebar.folderTab')}
               </button>
               <button
                 type="button"
@@ -468,7 +472,7 @@ function App() {
                 }`}
                 onClick={() => setSidebarTab('playlist')}
               >
-                リスト
+                {t('sidebar.playlistTab')}
               </button>
             </div>
 
@@ -493,10 +497,10 @@ function App() {
         {/* メインコンテンツ */}
         <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           {!isDbReady && !dbError && (
-            <p className="text-gray-500 text-sm dark:text-gray-400">DB 初期化中...</p>
+            <p className="text-gray-500 text-sm dark:text-gray-400">{t('app.dbInitializing')}</p>
           )}
           {dbError && (
-            <p className="text-red-500 text-sm dark:text-red-400">DB エラー: {dbError}</p>
+            <p className="text-red-500 text-sm dark:text-red-400">{t('app.dbError', { error: dbError })}</p>
           )}
 
           {isDbReady && (
@@ -527,7 +531,7 @@ function App() {
                           <button
                             type="button"
                             className="px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            title={filterTagMode === 'and' ? 'AND: 選択タグをすべて含む動画 (クリックで OR に切替)' : 'OR: 選択タグのいずれかを含む動画 (クリックで AND に切替)'}
+                            title={filterTagMode === 'and' ? t('filters.tagFilterAnd') : t('filters.tagFilterOr')}
                             onClick={() => setTagMode(filterTagMode === 'and' ? 'or' : 'and')}
                           >
                             {filterTagMode === 'and' ? 'AND' : 'OR'}
@@ -539,7 +543,7 @@ function App() {
                             className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
                             onClick={() => clearTagFilters()}
                           >
-                            クリア
+                            {t('filters.tagClear')}
                           </button>
                         )}
                       </>
@@ -552,14 +556,14 @@ function App() {
                       value={filterSortBy}
                       onChange={(e) => setSort(e.target.value as typeof filterSortBy, filterSortOrder)}
                     >
-                      <option value="created_at">追加日</option>
-                      <option value="duration">長さ</option>
-                      <option value="rating">評価</option>
+                      <option value="created_at">{t('filters.sortByCreatedAt')}</option>
+                      <option value="duration">{t('filters.sortByDuration')}</option>
+                      <option value="rating">{t('filters.sortByRating')}</option>
                     </Select>
                     <button
                       type="button"
                       className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
-                      title={filterSortOrder === 'desc' ? '降順 (クリックで昇順)' : '昇順 (クリックで降順)'}
+                      title={filterSortOrder === 'desc' ? t('filters.sortDescTitle') : t('filters.sortAscTitle')}
                       onClick={() => setSort(filterSortBy, filterSortOrder === 'desc' ? 'asc' : 'desc')}
                     >
                       {filterSortOrder === 'desc' ? '↓' : '↑'}
@@ -568,19 +572,19 @@ function App() {
                       <button
                         type="button"
                         className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-700 dark:hover:text-purple-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors"
-                        title={`現在のフィルター全 ${totalCount.toLocaleString()} 件をシャッフル再生`}
+                        title={t('app.shuffleAllTitle', { count: totalCount.toLocaleString() })}
                         onClick={playShuffleAll}
                       >
-                        ⇄ 全件
+                        {t('app.shuffleAll')}
                       </button>
                     )}
                     <button
                       type="button"
                       className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-400 dark:hover:border-amber-600 transition-colors"
-                      title="現在のフィルター条件をスマートプレイリストとして保存"
+                      title={t('app.saveSmartPlaylistTitle')}
                       onClick={openSmartPlaylist}
                     >
-                      💾 保存
+                      {t('app.saveSmartPlaylist')}
                     </button>
                   </div>
                 </div>
@@ -593,13 +597,13 @@ function App() {
                     onChange={(e) => setMinRating(Number(e.target.value))}
                     title="評価フィルタ"
                   >
-                    <option value={0}>評価: すべて</option>
-                    <option value={-1}>未評価のみ</option>
-                    <option value={1}>★1以上</option>
-                    <option value={2}>★2以上</option>
-                    <option value={3}>★3以上</option>
-                    <option value={4}>★4以上</option>
-                    <option value={5}>★5のみ</option>
+                    <option value={0}>{t('filters.ratingAll')}</option>
+                    <option value={-1}>{t('filters.ratingUnrated')}</option>
+                    <option value={1}>{t('filters.ratingAbove1')}</option>
+                    <option value={2}>{t('filters.ratingAbove2')}</option>
+                    <option value={3}>{t('filters.ratingAbove3')}</option>
+                    <option value={4}>{t('filters.ratingAbove4')}</option>
+                    <option value={5}>{t('filters.ratingOnly5')}</option>
                   </Select>
 
                   <Select
@@ -611,9 +615,9 @@ function App() {
                     }}
                     title="音声フィルタ"
                   >
-                    <option value="">音声: すべて</option>
-                    <option value="1">音声あり</option>
-                    <option value="0">音声なし</option>
+                    <option value="">{t('filters.audioAll')}</option>
+                    <option value="1">{t('filters.audioYes')}</option>
+                    <option value="0">{t('filters.audioNo')}</option>
                   </Select>
 
                   <Select
@@ -622,9 +626,9 @@ function App() {
                     onChange={(e) => setWatchedStatus(e.target.value as WatchedStatus)}
                     title="視聴状態フィルタ"
                   >
-                    <option value="all">視聴: すべて</option>
-                    <option value="unwatched">未視聴</option>
-                    <option value="watched">視聴済み</option>
+                    <option value="all">{t('filters.watchedAll')}</option>
+                    <option value="unwatched">{t('filters.unwatched')}</option>
+                    <option value="watched">{t('filters.watched')}</option>
                   </Select>
 
                   <Select
@@ -633,10 +637,10 @@ function App() {
                     onChange={(e) => setMediaType(e.target.value as MediaTypeFilter)}
                     title="メディアタイプフィルタ"
                   >
-                    <option value="all">種別: すべて</option>
-                    <option value="video">動画</option>
-                    <option value="audio">音声</option>
-                    <option value="image">画像</option>
+                    <option value="all">{t('filters.mediaAll')}</option>
+                    <option value="video">{t('filters.mediaVideo')}</option>
+                    <option value="audio">{t('filters.mediaAudio')}</option>
+                    <option value="image">{t('filters.mediaImage')}</option>
                   </Select>
 
                   <div className="flex items-center gap-1">
@@ -645,11 +649,11 @@ function App() {
                       className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
                       value={durationInput}
                       onChange={(e) => setDurationInput(e.target.value)}
-                      placeholder="秒数"
+                      placeholder={t('filters.minDurationPlaceholder')}
                       min={0}
                       title="最小長さ (秒)"
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">秒以上</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('filters.minDurationSuffix')}</span>
                   </div>
                 </div>
               </div>
@@ -658,21 +662,21 @@ function App() {
               {selectedVideoIds.size > 0 && (
                 <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg shrink-0">
                   <span className="text-xs font-medium text-blue-700 dark:text-blue-300 shrink-0">
-                    {selectedVideoIds.size} 件選択中
+                    {t('batch.selectedCount', { count: selectedVideoIds.size })}
                   </span>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
                     onClick={() => openBulkModal('tag')}
                   >
-                    タグ設定
+                    {t('batch.setTag')}
                   </button>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
                     onClick={() => openBulkModal('category')}
                   >
-                    カテゴリ設定
+                    {t('batch.setCategory')}
                   </button>
                   <button
                     type="button"
@@ -682,21 +686,21 @@ function App() {
                       setSelectedVideoIds(new Set());
                     }}
                   >
-                    フォルダ名をカテゴリに
+                    {t('batch.assignDirCategory')}
                   </button>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded"
                     onClick={() => openBulkModal('rename')}
                   >
-                    リネーム
+                    {t('batch.rename')}
                   </button>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
                     onClick={() => openBulkModal('delete')}
                   >
-                    削除
+                    {t('batch.delete')}
                   </button>
                   <button
                     type="button"
@@ -707,14 +711,14 @@ function App() {
                       setSelectedVideoIds(new Set());
                     }}
                   >
-                    再スキャン
+                    {t('batch.rescan')}
                   </button>
                   <button
                     type="button"
                     className="ml-auto text-xs text-blue-500 dark:text-blue-400 hover:underline"
                     onClick={() => setSelectedVideoIds(new Set())}
                   >
-                    選択解除
+                    {t('batch.deselect')}
                   </button>
                 </div>
               )}
@@ -742,11 +746,11 @@ function App() {
                     disabled={currentPage <= 1}
                     onClick={() => handleSetPage(currentPage - 1)}
                   >
-                    ← 前
+                    {t('pagination.prev')}
                   </button>
                   <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
                     {currentPage} / {totalPages}
-                    <span className="ml-2 text-gray-400 dark:text-gray-500">({totalCount.toLocaleString()}件)</span>
+                    <span className="ml-2 text-gray-400 dark:text-gray-500">{t('pagination.count', { count: totalCount.toLocaleString() })}</span>
                   </span>
                   <button
                     type="button"
@@ -754,7 +758,7 @@ function App() {
                     disabled={currentPage >= totalPages}
                     onClick={() => handleSetPage(currentPage + 1)}
                   >
-                    次 →
+                    {t('pagination.next')}
                   </button>
                 </div>
               )}
@@ -805,8 +809,8 @@ function App() {
 
       {pendingImport && (
         <ConfirmModal
-          message={`${pendingImport.fileCount.toLocaleString()} 件のファイルが見つかりました。\nすべて追加しますか？`}
-          confirmLabel="追加"
+          message={t('app.confirmImport', { count: pendingImport.fileCount.toLocaleString() })}
+          confirmLabel={t('app.confirmImportButton')}
           onConfirm={() => {
             const { path, useDirAsCategory: udc } = pendingImport;
             setPendingImport(null);
@@ -823,10 +827,10 @@ function App() {
           <div className="relative flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed border-blue-500 dark:border-blue-400 bg-white/80 dark:bg-gray-900/80 shadow-2xl">
             <span className="text-4xl">🎬</span>
             <p className="text-lg font-semibold text-blue-700 dark:text-blue-300">
-              動画をドロップしてインポート
+              {t('app.dropImport')}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              mp4 / mkv / webm / avi / mov などに対応
+              {t('app.dropFormats')}
             </p>
           </div>
         </div>

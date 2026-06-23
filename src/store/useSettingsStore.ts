@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import i18n, { type Language } from "../i18n";
 
 export type KeyAction =
   | 'pause'
@@ -26,16 +27,17 @@ export const DEFAULT_KEYBINDINGS: KeyBindings = {
   escape: 'Escape',
 };
 
-export const KEY_ACTION_LABELS: Record<KeyAction, string> = {
-  pause: '一時停止/再開',
-  seekForward: '5秒進む',
-  seekBackward: '5秒戻る',
-  volumeUp: '音量+',
-  volumeDown: '音量-',
-  fullscreen: 'フルスクリーン',
-  next: '次の動画',
-  prev: '前の動画',
-  escape: 'モーダルを閉じる',
+/** i18n キーのみ残す（表示は t('keybindings.xxx') で行う） */
+export const KEY_ACTION_KEYS: Record<KeyAction, string> = {
+  pause: 'keybindings.pause',
+  seekForward: 'keybindings.seekForward',
+  seekBackward: 'keybindings.seekBackward',
+  volumeUp: 'keybindings.volumeUp',
+  volumeDown: 'keybindings.volumeDown',
+  fullscreen: 'keybindings.fullscreen',
+  next: 'keybindings.next',
+  prev: 'keybindings.prev',
+  escape: 'keybindings.escape',
 };
 
 export type Theme = 'light' | 'dark' | 'auto';
@@ -50,6 +52,7 @@ export interface AppSettings {
   keybindings: KeyBindings;
   theme: Theme;
   autoPlayNext: boolean;
+  language: Language;
 }
 
 const DEFAULTS: AppSettings = {
@@ -62,6 +65,7 @@ const DEFAULTS: AppSettings = {
   keybindings: DEFAULT_KEYBINDINGS,
   theme: "auto",
   autoPlayNext: false,
+  language: "ja",
 };
 
 interface SettingsStore extends AppSettings {
@@ -110,6 +114,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       } catch { /* use defaults */ }
     }
 
+    const language = (map["language"] as Language | undefined) ?? DEFAULTS.language;
+    await i18n.changeLanguage(language);
+
     const settings: AppSettings = {
       mpvPath: resolvedMpvPath,
       ffmpegPath: map["ffmpeg_path"] ?? DEFAULTS.ffmpegPath,
@@ -120,6 +127,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       keybindings,
       theme: (map["theme"] as Theme | undefined) ?? DEFAULTS.theme,
       autoPlayNext: map["auto_play_next"] === "true",
+      language,
     };
 
     set({ ...settings, isLoaded: true });
@@ -136,7 +144,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       screenshotDir: settings.screenshotDir,
       theme: settings.theme,
       autoPlayNext: settings.autoPlayNext,
+      language: settings.language,
     });
+    await i18n.changeLanguage(settings.language);
     set({ ...settings });
     await syncToRust(settings);
   },

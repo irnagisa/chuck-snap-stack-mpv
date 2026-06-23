@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTagStore } from '../../store/useTagStore';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
+  const { t } = useTranslation();
   const { tags, addTagToMultiple } = useTagStore();
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -41,14 +43,14 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-          一括タグ設定
+          {t('bulkTag.title')}
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          {videoIds.length} 件の動画に追加するタグを選択
+          {t('bulkTag.desc', { count: videoIds.length })}
         </p>
 
         {tags.length === 0 ? (
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">タグがありません</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{t('bulkTag.noTags')}</p>
         ) : (
           <div className="flex flex-col gap-1.5 mb-4 max-h-60 overflow-y-auto">
             {tags.map((tag) => (
@@ -79,7 +81,7 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
             className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
             onClick={handleApply}
           >
-            {loading ? '処理中...' : `適用 (${selectedTagIds.size}件のタグ)`}
+            {loading ? t('bulkTag.applying') : t('bulkTag.apply', { count: selectedTagIds.size })}
           </button>
           <button
             type="button"
@@ -87,7 +89,7 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
             className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
             onClick={onClose}
           >
-            キャンセル
+            {t('bulkTag.cancel')}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import { downloadDir as systemDownloadDir } from "@tauri-apps/api/path";
 import { useSettingsStore } from "../../store/useSettingsStore";
@@ -22,6 +23,7 @@ function fileNameFromUrl(url: string): string {
 }
 
 export function DownloadModal({ onClose }: Props) {
+  const { t } = useTranslation();
   const { downloadDir: settingsDownloadDir, ytdlpPath } = useSettingsStore();
   const { addJob } = useDownloadStore();
 
@@ -74,7 +76,7 @@ export function DownloadModal({ onClose }: Props) {
     >
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">URL からダウンロード</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('download.title')}</h2>
           <label className="flex items-center gap-1.5 cursor-pointer select-none">
             <span className="text-xs text-gray-500 dark:text-gray-400">yt-dlp</span>
             <div
@@ -90,7 +92,7 @@ export function DownloadModal({ onClose }: Props) {
 
         {useYtdlp && ytdlpPath === "" && (
           <p className="text-xs text-amber-600 dark:text-amber-400 -mt-2">
-            yt-dlp のパスが未設定です。PATH 上にある場合はそのまま使用されます。設定で明示的にパスを指定することもできます。
+            {t('download.ytdlpWarning')}
           </p>
         )}
 
@@ -98,7 +100,7 @@ export function DownloadModal({ onClose }: Props) {
           <label className="text-xs text-gray-500 dark:text-gray-400">URL</label>
           <input
             className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
-            placeholder={useYtdlp ? "https://www.youtube.com/watch?v=..." : "https://example.com/video.mp4"}
+            placeholder={useYtdlp ? t('download.urlPlaceholderYtdlp') : t('download.urlPlaceholderDirect')}
             value={url}
             onChange={(e) => handleUrlChange(e.target.value)}
             autoFocus
@@ -106,12 +108,12 @@ export function DownloadModal({ onClose }: Props) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">保存先フォルダ</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.saveDir')}</label>
           <div className="flex gap-2">
             <input
               readOnly
               className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 cursor-default min-w-0"
-              placeholder="フォルダを選択..."
+              placeholder={t('download.saveDirPlaceholder')}
               value={saveDir}
             />
             <button
@@ -119,14 +121,14 @@ export function DownloadModal({ onClose }: Props) {
               onClick={handlePickDir}
               className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0"
             >
-              選択
+              {t('download.selectDir')}
             </button>
           </div>
         </div>
 
         {!useYtdlp && (
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 dark:text-gray-400">ファイル名</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.filename')}</label>
             <input
               className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               value={filename}
@@ -137,7 +139,7 @@ export function DownloadModal({ onClose }: Props) {
 
         {useYtdlp && (
           <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
-            ファイル名は動画タイトルから自動決定されます
+            {t('download.filenameAuto')}
           </p>
         )}
 
@@ -147,7 +149,7 @@ export function DownloadModal({ onClose }: Props) {
             onClick={onClose}
             className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
-            キャンセル
+            {t('download.cancel')}
           </button>
           <button
             type="button"
@@ -155,7 +157,7 @@ export function DownloadModal({ onClose }: Props) {
             disabled={!canStart}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
           >
-            ダウンロード開始
+            {t('download.start')}
           </button>
         </div>
       </div>

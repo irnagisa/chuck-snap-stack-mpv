@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useDownloadStore, type DownloadJob } from '../../store/useDownloadStore';
 
 function formatBytes(n: number): string {
@@ -13,6 +14,7 @@ function JobCard({ job, onCancel, onDismiss }: {
   onCancel: () => void;
   onDismiss: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const label = job.title || (job.useYtdlp ? job.url : job.filename) || job.url;
   const shortLabel = label.length > 40 ? `${label.slice(0, 37)}...` : label;
 
@@ -47,7 +49,7 @@ function JobCard({ job, onCancel, onDismiss }: {
             className="shrink-0 text-red-300 hover:text-red-100"
             onClick={onCancel}
           >
-            キャンセル
+            {t('downloadQueue.cancel')}
           </button>
         )}
       </div>
@@ -67,7 +69,7 @@ function JobCard({ job, onCancel, onDismiss }: {
               {!job.useYtdlp && job.progress.total > 0
                 ? `${formatBytes(job.progress.downloaded)} / ${formatBytes(job.progress.total)}`
                 : job.useYtdlp
-                ? 'ダウンロード中...'
+                ? t('downloadQueue.downloading')
                 : formatBytes(job.progress.downloaded)}
             </span>
             {job.progress.percent > 0 && (
@@ -78,7 +80,7 @@ function JobCard({ job, onCancel, onDismiss }: {
       )}
 
       {job.phase === 'queued' && (
-        <span className="text-gray-400">待機中...</span>
+        <span className="text-gray-400">{t('downloadQueue.queued')}</span>
       )}
 
       {job.phase === 'error' && (
