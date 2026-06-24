@@ -78,13 +78,20 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [isScanningSubs, setIsScanningSubs] = useState(false);
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
   const [localSourceUrl, setLocalSourceUrl] = useState(video.source_url ?? '');
+  const [categoryInput, setCategoryInput] = useState('');
+  const [categoryInputFocused, setCategoryInputFocused] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const categoryInputRef = useRef<HTMLInputElement>(null);
 
   const currentTags = videoTags[video.id] ?? [];
 
   useEffect(() => {
     fetchVideoTags(video.id);
   }, [video.id]);
+
+  useEffect(() => {
+    if (categoryInputFocused) categoryInputRef.current?.focus();
+  }, [categoryInputFocused]);
 
   useEffect(() => {
     invoke<number>('get_file_size', { path: video.path })
@@ -109,6 +116,16 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     }
     return counts;
   }, [videoTags]);
+
+  const selectedCategory = categoryId ? (categories.find((c) => c.id === Number(categoryId)) ?? null) : null;
+  const flatCategories = useMemo(() => flattenCategoryTree(buildCategoryTree(categories)), [categories]);
+  const filteredCategories = useMemo(() => {
+    if (!categoryInput) return flatCategories;
+    return flatCategories.filter(({ category }) =>
+      category.name.toLowerCase().includes(categoryInput.toLowerCase())
+    );
+  }, [flatCategories, categoryInput]);
+  const showCategorySuggestions = categoryInputFocused || categoryInput.length > 0;
 
   const filteredSuggestions = useMemo(() => {
     const unassigned = tags.filter((tag) => !currentTags.some((ct) => ct.id === tag.id));
@@ -452,18 +469,83 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
                   {t('detail.category')}
                 </label>
-                <Select
-                  fullWidth
-                  value={categoryId}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                >
-                  <option value="">{t('detail.categoryNone')}</option>
-                  {flattenCategoryTree(buildCategoryTree(categories)).map(({ category: cat, depth }) => (
-                    <option key={cat.id} value={cat.id}>
-                      {'　'.repeat(depth)}{cat.name}
-                    </option>
-                  ))}
-                </Select>
+                <div className="relative">
+                  <div
+                    className={`w-full flex items-center gap-2 px-2.5 rounded-lg bg-white dark:bg-gray-800 cursor-pointer transition-colors ${
+                      categoryInputFocused
+                        ? 'border border-blue-500 dark:border-blue-400 ring-1 ring-blue-500/20 dark:ring-blue-400/20'
+                        : 'border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                    }`}
+                    onClick={() => setCategoryInputFocused(true)}
+                  >
+                    {selectedCategory && (
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: selectedCategory.color }}
+                      />
+                    )}
+                    {selectedCategory && !categoryInputFocused ? (
+                      <span className="flex-1 min-w-0 text-sm text-gray-900 dark:text-gray-100 py-1.5 truncate select-none">
+                        {selectedCategory.name}
+                      </span>
+                    ) : (
+                      <input
+                        ref={categoryInputRef}
+                        className="flex-1 min-w-0 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 bg-transparent outline-none py-1.5"
+                        placeholder={t('detail.categorySearchPlaceholder')}
+                        value={categoryInput}
+                        onChange={(e) => setCategoryInput(e.target.value)}
+                        onFocus={() => setCategoryInputFocused(true)}
+                        onBlur={() => setTimeout(() => { setCategoryInputFocused(false); setCategoryInput(''); }, 150)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') { setCategoryInput(''); setCategoryInputFocused(false); }
+                        }}
+                      />
+                    )}
+                    {selectedCategory && !categoryInputFocused && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 p-0.5 leading-none"
+                        onClick={(e) => { e.stopPropagation(); handleCategoryChange(''); }}
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                    <span className="pointer-events-none shrink-0 text-gray-400 dark:text-gray-500">
+                      <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                        <path d="M1 1l4 4 4-4" />
+                      </svg>
+                    </span>
+                  </div>
+                  {showCategorySuggestions && (
+                    <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto">
+                      {filteredCategories.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">{t('detail.noCategoryOptions')}</p>
+                      ) : (
+                        filteredCategories.map(({ category: cat, depth }) => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                            style={{ paddingLeft: `${12 + depth * 16}px` }}
+                            onClick={() => {
+                              handleCategoryChange(cat.id.toString());
+                              setCategoryInput('');
+                              setCategoryInputFocused(false);
+                            }}
+                          >
+                            <span className="shrink-0" style={{ color: cat.color }}>
+                              <MediaIcon icon={cat.icon ?? 'folder'} className="w-3.5 h-3.5" />
+                            </span>
+                            <span className="flex-1">{cat.name}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
                   {categoryMode === 'sync'
                     ? t('bulkCategory.syncModeNote')
