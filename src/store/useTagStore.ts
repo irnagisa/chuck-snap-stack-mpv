@@ -250,9 +250,11 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   addTagToMultiple: async (videoIds, tagId) => {
     if (videoIds.length === 0) return;
     await invoke('db_add_tag_to_multiple', { videoIds, tagId });
-    const currentIds = Object.keys(get().videoTags).map(Number);
-    if (currentIds.length > 0) {
-      await get().fetchVideoTagsForIds(currentIds);
+    const cachedIds = Object.keys(get().videoTags).map(Number);
+    // 対象IDをキャッシュ済みIDに合算してリフレッシュ（タグなしビデオが選択対象の場合にも更新されるようにする）
+    const allIds = [...new Set([...cachedIds, ...videoIds])];
+    if (allIds.length > 0) {
+      await get().fetchVideoTagsForIds(allIds);
     }
   },
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from '../../store/useToastStore';
 import { useTagStore } from '../../store/useTagStore';
 
 interface Props {
@@ -31,6 +32,8 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
         await addTagToMultiple(videoIds, tagId);
       }
       onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
