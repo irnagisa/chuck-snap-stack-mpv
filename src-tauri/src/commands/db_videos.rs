@@ -22,6 +22,8 @@ pub struct Video {
     pub created_at: String,
     pub media_type: Option<String>,
     pub source_url: Option<String>,
+    pub status: Option<String>,
+    pub source_type: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -138,6 +140,8 @@ pub fn video_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Video> {
         created_at: r.get(11)?,
         media_type: r.get(12)?,
         source_url: r.get(13)?,
+        status: r.get(14)?,
+        source_type: r.get(15)?,
     })
 }
 
@@ -301,7 +305,7 @@ pub async fn db_fetch_videos(
     let sql = format!(
         "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
                 v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                v.created_at, v.media_type, v.source_url
+                v.created_at, v.media_type, v.source_url, v.status, v.source_type
          FROM videos v {where_clause}
          ORDER BY {sort_col} {dir}
          LIMIT ? OFFSET ?"
@@ -338,7 +342,7 @@ pub async fn db_fetch_all_for_shuffle(
     let sql = format!(
         "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
                 v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                v.created_at, v.media_type, v.source_url
+                v.created_at, v.media_type, v.source_url, v.status, v.source_type
          FROM videos v {where_clause}
          ORDER BY {sort_col} {dir}"
     );
@@ -428,6 +432,103 @@ pub async fn db_update_video(
     Ok(())
 }
 
+// ── inbox ─────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxStats {
+    pub total: i64,
+    pub inbox_count: i64,
+    pub missing_category: i64,
+    pub missing_tags: i64,
+    pub missing_rating: i64,
+    pub almost_done: i64,
+}
+
+#[tauri::command]
+pub async fn db_get_inbox_videos(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
+    let conn = state.conn()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
+                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
+                    v.created_at, v.media_type, v.source_url, v.status, v.source_type
+             FROM videos v
+             WHERE v.status = 'inbox'
+             ORDER BY v.created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], video_from_row).map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn db_get_inbox_stats(state: State<'_, DbState>) -> Result<InboxStats, String> {
+    let conn = state.conn()?;
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let inbox_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM videos WHERE status = 'inbox'", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let missing_category: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos WHERE status = 'inbox' AND category_id IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let missing_tags: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos WHERE status = 'inbox'
+             AND id NOT IN (SELECT DISTINCT video_id FROM video_tags)",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let missing_rating: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos WHERE status = 'inbox' AND (rating IS NULL OR rating = 0)",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let almost_done: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos v WHERE v.status = 'inbox' AND (
+               CASE WHEN v.category_id IS NULL THEN 0 ELSE 1 END +
+               CASE WHEN v.id IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END +
+               CASE WHEN v.rating > 0 THEN 1 ELSE 0 END
+             ) = 2",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(InboxStats { total, inbox_count, missing_category, missing_tags, missing_rating, almost_done })
+}
+
+#[tauri::command]
+pub async fn db_graduate_from_inbox(
+    state: State<'_, DbState>,
+    video_ids: Vec<i64>,
+) -> Result<(), String> {
+    if video_ids.is_empty() {
+        return Ok(());
+    }
+    let conn = state.conn()?;
+    const BATCH: usize = 499;
+    for chunk in video_ids.chunks(BATCH) {
+        let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let params: Vec<rusqlite::types::Value> =
+            chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
+        conn.execute(
+            &format!("UPDATE videos SET status = NULL WHERE id IN ({ph})"),
+            rusqlite::params_from_iter(params.iter()),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 #[tauri::command]
 pub async fn db_update_video_thumbnail(
     state: State<'_, DbState>,
@@ -525,20 +626,22 @@ pub async fn db_add_video_from_path(
     path: String,
     title: String,
     source_url: Option<String>,
+    source_type: Option<String>,
 ) -> Result<Option<i64>, String> {
     let media_type = media_type_for_path(&path);
+    let st = source_type.as_deref().unwrap_or("download");
     let conn = state.conn()?;
     conn.execute(
-        "INSERT OR IGNORE INTO videos (path, title, media_type, source_url) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![path, title, media_type, source_url],
+        "INSERT OR IGNORE INTO videos (path, title, media_type, source_url, status, source_type) VALUES (?1, ?2, ?3, ?4, 'inbox', ?5)",
+        rusqlite::params![path, title, media_type, source_url, st],
     )
     .map_err(|e| e.to_string())?;
     // ウォッチャーが先に行を挿入していた場合、INSERT OR IGNORE は無視されるため
     // source_url が指定されていれば UPDATE で確実に保存する
     if let Some(ref url) = source_url {
         conn.execute(
-            "UPDATE videos SET source_url = ?1 WHERE path = ?2",
-            rusqlite::params![url, path],
+            "UPDATE videos SET source_url = ?1, status = COALESCE(status, 'inbox'), source_type = COALESCE(source_type, ?3) WHERE path = ?2",
+            rusqlite::params![url, path, st],
         )
         .map_err(|e| e.to_string())?;
     }

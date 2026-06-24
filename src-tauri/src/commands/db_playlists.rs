@@ -207,5 +207,7 @@ fn video_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Video> {
         created_at: r.get(11)?,
         media_type: r.get(12)?,
         source_url: r.get(13)?,
+        status: None,
+        source_type: None,
     })
 }

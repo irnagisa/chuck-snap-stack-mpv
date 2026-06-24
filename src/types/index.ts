@@ -13,6 +13,8 @@ export interface Video {
   created_at: string;
   media_type: 'video' | 'audio' | 'image' | null;
   source_url: string | null;
+  status: 'inbox' | null;
+  source_type: 'import' | 'download' | 'dragdrop' | 'watcher' | null;
 }
 
 export interface Chapter {

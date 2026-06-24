@@ -49,7 +49,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
           has_audio   INTEGER,
           watch_count INTEGER DEFAULT 0,
           media_type  TEXT DEFAULT 'video',
-          source_url  TEXT
+          source_url  TEXT,
+          status      TEXT,
+          source_type TEXT
         );
 
         CREATE TABLE IF NOT EXISTS playlists (
@@ -105,6 +107,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE videos ADD COLUMN watch_count INTEGER DEFAULT 0",
         "ALTER TABLE videos ADD COLUMN media_type TEXT DEFAULT 'video'",
         "ALTER TABLE videos ADD COLUMN source_url TEXT",
+        "ALTER TABLE videos ADD COLUMN status TEXT",
+        "ALTER TABLE videos ADD COLUMN source_type TEXT",
         "ALTER TABLE tags ADD COLUMN tag_category_id INTEGER REFERENCES tag_categories(id)",
         "ALTER TABLE tags ADD COLUMN icon TEXT DEFAULT NULL",
         "ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)",

@@ -79,7 +79,7 @@ interface LibraryActions {
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
   assignCategoryFromPath: (videoIds: number[]) => Promise<void>;
-  addVideoFromPath: (path: string, title: string, sourceUrl?: string) => Promise<number | null>;
+  addVideoFromPath: (path: string, title: string, sourceUrl?: string, sourceType?: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
   batchWatcherUpdate: (batch: { creates: { path: string; title: string }[]; removes: string[]; renames: { old_path: string; new_path: string; title: string }[] }) => Promise<void>;
   moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
@@ -732,11 +732,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }
   },
 
-  addVideoFromPath: async (path: string, title: string, sourceUrl?: string) => {
+  addVideoFromPath: async (path: string, title: string, sourceUrl?: string, sourceType?: string) => {
     const newId = await invoke<number | null>('db_add_video_from_path', {
       path,
       title,
       sourceUrl: sourceUrl ?? null,
+      sourceType: sourceType ?? null,
     });
     await get().fetchVideos();
     get().generateThumbnails().catch((e: unknown) => {

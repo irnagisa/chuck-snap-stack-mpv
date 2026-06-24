@@ -249,9 +249,9 @@ pub async fn db_scan_and_import(
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
     let result: Result<(), String> = (|| {
         for chunk in scan.files.chunks(INSERT_BATCH_4) {
-            let ph = chunk.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
+            let ph = chunk.iter().map(|_| "(?, ?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
             let sql =
-                format!("INSERT OR IGNORE INTO videos (path, title, category_id, media_type) VALUES {ph}");
+                format!("INSERT OR IGNORE INTO videos (path, title, category_id, media_type, status, source_type) VALUES {ph}");
             let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 4);
             for file in chunk {
                 let rel_path = if use_dir_as_category {
@@ -366,9 +366,9 @@ pub async fn db_rescan_all_dirs(
         conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
         let insert_result: Result<(), String> = (|| {
             for chunk in scan.files.chunks(INSERT_BATCH_3) {
-                let ph = chunk.iter().map(|_| "(?, ?, ?)").collect::<Vec<_>>().join(", ");
+                let ph = chunk.iter().map(|_| "(?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
                 let sql = format!(
-                    "INSERT OR IGNORE INTO videos (path, title, media_type) VALUES {ph}"
+                    "INSERT OR IGNORE INTO videos (path, title, media_type, status, source_type) VALUES {ph}"
                 );
                 let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 3);
                 for file in chunk {
@@ -587,9 +587,9 @@ pub async fn db_batch_watcher_update(
 
         const INSERT_BATCH: usize = 332;
         for chunk in all_creates.chunks(INSERT_BATCH) {
-            let ph = chunk.iter().map(|_| "(?, ?, ?)").collect::<Vec<_>>().join(", ");
+            let ph = chunk.iter().map(|_| "(?, ?, ?, 'inbox', 'watcher')").collect::<Vec<_>>().join(", ");
             let sql =
-                format!("INSERT OR IGNORE INTO videos (path, title, media_type) VALUES {ph}");
+                format!("INSERT OR IGNORE INTO videos (path, title, media_type, status, source_type) VALUES {ph}");
             let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 3);
             for f in chunk {
                 let media_type = media_type_for_path(&f.path);

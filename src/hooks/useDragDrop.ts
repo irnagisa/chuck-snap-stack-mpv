@@ -28,7 +28,7 @@ export function useDragDrop() {
   // watchDirs / actions を ref で保持して effect 再登録なしに最新値を参照
   const watchDirsRef = useRef<string[]>([]);
   const downloadDirRef = useRef<string>('');
-  const addVideoFromPathRef = useRef<(path: string, title: string) => Promise<number | null>>(async () => null);
+  const addVideoFromPathRef = useRef<(path: string, title: string, sourceUrl?: string, sourceType?: string) => Promise<number | null>>(async () => null);
   const addToastRef = useRef<(message: string, type?: 'success' | 'error' | 'info') => void>(() => {});
 
   const watchDirs = useLibraryStore((s) => s.watchDirs);
@@ -106,7 +106,7 @@ export function useDragDrop() {
               if (isAlreadyInWatchDir) {
                 // ウォッチ対象内にあるファイルは直接インポート (ウォッチャーは新規ファイルのみ検知)
                 const title = getFileStem(getBasename(path));
-                await addVideoFromPathRef.current(path, title);
+                await addVideoFromPathRef.current(path, title, undefined, 'dragdrop');
               } else {
                 // ウォッチ対象外はコピーしてから直接 DB 登録する。
                 // ウォッチャーのイベントは遅延・欠落することがあるため、
@@ -117,7 +117,7 @@ export function useDragDrop() {
                   destDir,
                 });
                 const title = getFileStem(getBasename(newPath));
-                await addVideoFromPathRef.current(newPath, title);
+                await addVideoFromPathRef.current(newPath, title, undefined, 'dragdrop');
               }
               imported++;
             } catch (e) {

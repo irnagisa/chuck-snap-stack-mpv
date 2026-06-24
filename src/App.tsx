@@ -27,8 +27,11 @@ import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { Select } from "./components/common/Select";
 import { ImageViewerModal } from "./components/Library/ImageViewerModal";
 import { ConfirmModal } from "./components/common/ConfirmModal";
+import InboxView from "./components/Inbox/InboxView";
+import { useInboxStore } from "./store/useInboxStore";
 
 type SidebarTab = 'category' | 'playlist' | 'folder';
+type MainView = 'library' | 'inbox';
 
 function App() {
   const { t } = useTranslation();
@@ -112,6 +115,9 @@ function App() {
   const theme = useSettingsStore((s) => s.theme);
   const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
 
+  const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
+
+  const [mainView, setMainView] = useState<MainView>('library');
   const [searchInput, setSearchInput] = useState(filterSearch);
   const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
@@ -226,6 +232,36 @@ function App() {
       {/* ヘッダー / ツールバー */}
       <div className="px-4 pt-4 pb-3 flex gap-2 items-center border-b border-gray-100 dark:border-gray-800">
         <h1 className="text-lg font-bold mr-2 shrink-0">Chuck Snap Stack</h1>
+        {/* メインビュー切替 */}
+        <div className="flex gap-0.5 text-xs shrink-0 mr-1">
+          <button
+            type="button"
+            className={`px-2.5 py-1.5 rounded-l font-medium transition-colors ${
+              mainView === 'library'
+                ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+            onClick={() => setMainView('library')}
+          >
+            ライブラリ
+          </button>
+          <button
+            type="button"
+            className={`px-2.5 py-1.5 rounded-r font-medium transition-colors relative ${
+              mainView === 'inbox'
+                ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+            onClick={() => setMainView('inbox')}
+          >
+            Inbox
+            {inboxCount > 0 && (
+              <span className="ml-1 px-1.5 py-0 rounded-full bg-amber-500 text-white text-[10px] leading-4">
+                {inboxCount > 999 ? '999+' : inboxCount}
+              </span>
+            )}
+          </button>
+        </div>
         <button
           type="button"
           className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 text-sm dark:bg-blue-500 dark:hover:bg-blue-600 shrink-0"
@@ -436,6 +472,11 @@ function App() {
 
       {/* ボディ: サイドバー + メインコンテンツ + 詳細パネル */}
       <div className="flex flex-1 min-h-0">
+      {mainView === 'inbox' ? (
+        <div className="flex flex-1 min-h-0">
+          <InboxView />
+        </div>
+      ) : (
       <div className="flex flex-1 px-4 pt-4 pb-10 gap-4 min-h-0">
         {/* サイドバー */}
         {isDbReady && (
@@ -767,6 +808,7 @@ function App() {
         </div>
 
       </div>
+      )}
 
       {/* 詳細パネル */}
       {detailVideo && (
