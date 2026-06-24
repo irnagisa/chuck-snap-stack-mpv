@@ -79,7 +79,7 @@ function initListeners(
     set({ duration: e.payload });
   });
 
-  // ファイルが自然終了した場合 → ループ中はスキップ、自動再生ON かつキューがあれば次へ進む
+  // ファイルが自然終了した場合 → ループ中はスキップ、自動再生ON かつキューがあれば次へ、なければ終了
   safeListen<string>('mpv://end-file', async (e) => {
     if (e.payload !== 'eof') return;
     const { queue, queueIndex, isLooping } = get();
@@ -87,6 +87,8 @@ function initListeners(
     const { autoPlayNext } = useSettingsStore.getState();
     if (autoPlayNext && queue.length > 0 && queueIndex < queue.length - 1) {
       await get().playNext();
+    } else {
+      await get().quit();
     }
   });
 
