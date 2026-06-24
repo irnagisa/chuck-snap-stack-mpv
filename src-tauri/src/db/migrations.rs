@@ -113,5 +113,24 @@ pub fn run_data_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // Migration 5: inbox_status_backfill_v2 — category_id の有無を問わず status が NULL のファイルを inbox に設定
+    let inbox_migrated_v2: bool = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'migration_inbox_status_backfill_v2'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    if !inbox_migrated_v2 {
+        conn.execute_batch(
+            "UPDATE videos SET status = 'inbox'
+               WHERE status IS NULL;
+             INSERT OR REPLACE INTO settings (key, value)
+               VALUES ('migration_inbox_status_backfill_v2', '1');",
+        )?;
+    }
+
     Ok(())
 }

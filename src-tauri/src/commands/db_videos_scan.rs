@@ -250,8 +250,10 @@ pub async fn db_scan_and_import(
     let result: Result<(), String> = (|| {
         for chunk in scan.files.chunks(INSERT_BATCH_4) {
             let ph = chunk.iter().map(|_| "(?, ?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
-            let sql =
-                format!("INSERT OR IGNORE INTO videos (path, title, category_id, media_type, status, source_type) VALUES {ph}");
+            let sql = format!(
+                "INSERT INTO videos (path, title, category_id, media_type, status, source_type) VALUES {ph} \
+                 ON CONFLICT(path) DO UPDATE SET status = COALESCE(status, 'inbox')"
+            );
             let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 4);
             for file in chunk {
                 let rel_path = if use_dir_as_category {
