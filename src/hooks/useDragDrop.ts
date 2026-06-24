@@ -86,9 +86,9 @@ export function useDragDrop() {
           if (outsideFiles.length > 0 && dirs.length > 1) {
             const picked = await pickDestDir(outsideFiles);
             if (picked === null) return;
-            destDir = picked;
+            destDir = picked + '/Inbox';
           } else {
-            destDir = downloadDirRef.current || dirs[0];
+            destDir = (downloadDirRef.current || dirs[0]) + '/Inbox';
           }
 
           let imported = 0;

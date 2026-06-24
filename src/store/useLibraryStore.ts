@@ -324,7 +324,31 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   rescanAllDirs: async (targetDir?: string) => {
     set({ isScanning: true });
     try {
-      const { downloadDir } = useSettingsStore.getState();
+      const { downloadDir, categoryMode } = useSettingsStore.getState();
+
+      // Sync モード: ルート直下ファイルを Inbox サブフォルダへ移行
+      if (categoryMode === 'sync') {
+        const dirsToMigrate = targetDir ? [targetDir] : get().watchDirs;
+        for (const dir of dirsToMigrate) {
+          try {
+            const migrateResult = await invoke<{ moved: number; skipped: number; errors: string[] }>(
+              'migrate_root_files_to_inbox',
+              { watchDir: dir }
+            );
+            if (migrateResult.moved > 0) {
+              toast.success(`${migrateResult.moved}件のファイルを Inbox に移動しました`);
+            }
+            for (const err of migrateResult.errors) {
+              console.error('[migrateRootToInbox]', err);
+              toast.error(`Inbox 移行エラー: ${err}`, 8000);
+            }
+          } catch (migrateErr) {
+            console.error('[migrateRootToInbox] 失敗:', migrateErr);
+            toast.error(`Inbox 移行に失敗しました: ${String(migrateErr)}`, 8000);
+          }
+        }
+      }
+
       const result = await invoke<ScanResult>('db_rescan_all_dirs', {
         targetDir: targetDir ?? null,
         downloadDir: downloadDir || null,

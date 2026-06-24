@@ -960,6 +960,231 @@ pub async fn capture_frame_at(
     }
 }
 
+/// Sync モード用: watchDir のルート直下にある動画ファイルを Inbox サブフォルダへ移動する。
+///
+/// 安全設計:
+///   - DB に登録された動画のみを対象とする (不審なファイルは移動しない)
+///   - 物理ファイルが存在する場合のみ移動 (存在しない DB エントリはスキップ)
+///   - アトミックなプレースホルダーで宛先の上書きを防止 (既存ファイルを絶対に上書きしない)
+///   - rename/コピー成功後にのみ DB パスを更新 (ファイルが移動していない状態で DB を壊さない)
+///   - クロスデバイス移動はコピー+サイズ検証+削除の順 (コピー失敗時は元ファイルを保持)
+///   - エラーが起きても残りのファイルを継続処理し、エラー一覧を返す
+#[derive(Serialize)]
+pub struct MigrateRootResult {
+    pub moved: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn migrate_root_files_to_inbox(
+    db_state: tauri::State<'_, DbState>,
+    watch_dir: String,
+) -> Result<MigrateRootResult, String> {
+    validate_path(&watch_dir)?;
+
+    // watchDir がディレクトリとして存在しない場合は何もしない
+    if !Path::new(&watch_dir).is_dir() {
+        return Ok(MigrateRootResult { moved: 0, skipped: 0, errors: vec![] });
+    }
+
+    let inbox_dir = Path::new(&watch_dir).join("Inbox");
+
+    // ── Step 1: DB からルート直下の動画を取得 (conn はブロック内でのみ保持) ──
+    let root_videos: Vec<(i64, String)> = {
+        let conn = db_state.conn()?;
+        let escaped = crate::commands::db_videos::escape_like_dir(&watch_dir);
+        let pattern_all    = format!("{escaped}/%");
+        let pattern_subdir = format!("{escaped}/%/%");
+        let sql = "SELECT id, path FROM videos \
+                   WHERE REPLACE(path, '\\', '/') LIKE ? ESCAPE '!' \
+                   AND   REPLACE(path, '\\', '/') NOT LIKE ? ESCAPE '!'";
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows: Vec<(i64, String)> = stmt.query_map([&pattern_all, &pattern_subdir], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())?;
+        rows
+    }; // conn を即座に解放
+
+    if root_videos.is_empty() {
+        return Ok(MigrateRootResult { moved: 0, skipped: 0, errors: vec![] });
+    }
+
+    // ── Step 2: Rust 側で正確なプレフィックス照合 ──
+    // LIKE は '/Videos2' も '/Videos/' として扱うため、Rust で厳密にフィルタリングする
+    let norm_watch = watch_dir.replace('\\', "/");
+    let norm_watch = norm_watch.trim_end_matches('/');
+    let prefix = format!("{norm_watch}/");
+    let root_videos: Vec<(i64, String)> = root_videos
+        .into_iter()
+        .filter(|(_, path)| {
+            let norm = path.replace('\\', "/");
+            match norm.strip_prefix(prefix.as_str()) {
+                Some(after) => !after.contains('/'), // ルート直下のみ (サブディレクトリを除外)
+                None => false,
+            }
+        })
+        .collect();
+
+    if root_videos.is_empty() {
+        return Ok(MigrateRootResult { moved: 0, skipped: 0, errors: vec![] });
+    }
+
+    // ── Step 3: Inbox ディレクトリを作成 ──
+    tokio::fs::create_dir_all(&inbox_dir)
+        .await
+        .map_err(|e| format!("Inbox ディレクトリの作成に失敗: {e}"))?;
+
+    let mut moved = 0usize;
+    let mut skipped = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    // ── Step 4: ファイルを 1 件ずつ移動・DB 更新 ──
+    for (video_id, old_path) in &root_videos {
+        let source = Path::new(old_path);
+
+        // 物理ファイルが存在しない場合はスキップ (rescan で DB から削除される)
+        if !source.exists() {
+            skipped += 1;
+            continue;
+        }
+
+        let filename = match source.file_name() {
+            Some(f) => f.to_string_lossy().into_owned(),
+            None => {
+                errors.push(format!("無効なファイル名: {old_path}"));
+                continue;
+            }
+        };
+
+        // パス区切り文字・NULL バイトの混入を確認 (パストラバーサル対策)
+        if filename.contains('/') || filename.contains('\\') || filename.contains('\0') {
+            errors.push(format!("ファイル名に不正な文字が含まれています: {old_path}"));
+            continue;
+        }
+
+        let dest_path = resolve_unique_path(&inbox_dir.join(&filename));
+
+        // ── アトミックなプレースホルダーを確保 (宛先の上書きを防止) ──
+        let placeholder = match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true) // 既存ファイルがあれば即エラー: 絶対に上書きしない
+            .open(&dest_path)
+            .await
+        {
+            Ok(f) => f,
+            Err(e) => {
+                let msg = if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    format!("移動先に同名ファイルが既に存在します: {}", dest_path.display())
+                } else {
+                    format!("移動先ファイルの確保に失敗 ({old_path}): {e}")
+                };
+                errors.push(msg);
+                continue;
+            }
+        };
+
+        // ── rename を試みる (同一デバイスなら高速・アトミック) ──
+        let new_path: String = if tokio::fs::rename(source, &dest_path).await.is_ok() {
+            drop(placeholder); // rename 成功: placeholder の inode は置換済み
+            match tokio::fs::canonicalize(&dest_path).await {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    errors.push(format!("移動後パスの正規化失敗 ({old_path}): {e}"));
+                    continue;
+                }
+            }
+        } else {
+            // ── クロスデバイス移動: コピー → サイズ検証 → 元ファイル削除 ──
+            let src_size = match tokio::fs::metadata(source).await {
+                Ok(m) => m.len(),
+                Err(e) => {
+                    drop(placeholder);
+                    let _ = tokio::fs::remove_file(&dest_path).await;
+                    errors.push(format!("元ファイルのメタデータ取得失敗 ({old_path}): {e}"));
+                    continue;
+                }
+            };
+
+            let mut src_file = match tokio::fs::File::open(source).await {
+                Ok(f) => f,
+                Err(e) => {
+                    drop(placeholder);
+                    let _ = tokio::fs::remove_file(&dest_path).await;
+                    errors.push(format!("元ファイルのオープン失敗 ({old_path}): {e}"));
+                    continue;
+                }
+            };
+
+            let mut dest_file = placeholder;
+            if let Err(e) = tokio::io::copy(&mut src_file, &mut dest_file).await {
+                drop(dest_file);
+                let _ = tokio::fs::remove_file(&dest_path).await;
+                errors.push(format!("コピー失敗。元ファイルは保持されています ({old_path}): {e}"));
+                continue;
+            }
+            drop(dest_file);
+
+            // コピーサイズを検証 (不完全なコピーを検出し元ファイルを保護)
+            let dst_size = match tokio::fs::metadata(&dest_path).await {
+                Ok(m) => m.len(),
+                Err(e) => {
+                    let _ = tokio::fs::remove_file(&dest_path).await;
+                    errors.push(format!("コピー先のサイズ確認失敗 ({old_path}): {e}"));
+                    continue;
+                }
+            };
+            if src_size != dst_size {
+                let _ = tokio::fs::remove_file(&dest_path).await;
+                errors.push(format!(
+                    "コピーが不完全です。元ファイルは保持されています: {old_path}"
+                ));
+                continue;
+            }
+
+            let canonical_dest = match tokio::fs::canonicalize(&dest_path).await {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    let _ = tokio::fs::remove_file(&dest_path).await;
+                    errors.push(format!("コピー先の正規化失敗 ({old_path}): {e}"));
+                    continue;
+                }
+            };
+
+            // コピー成功・サイズ一致確認後にのみ元ファイルを削除
+            if let Err(e) = tokio::fs::remove_file(source).await {
+                // 削除失敗: コピー先にデータは存在するが元ファイルが残る
+                // DB は新パスに更新して続行 (元ファイルの手動削除が必要)
+                errors.push(format!(
+                    "元ファイルの削除に失敗しました (コピー先にデータは存在します。手動で削除してください: {old_path}): {e}"
+                ));
+            }
+
+            canonical_dest
+        };
+
+        // ── ファイル移動成功後にのみ DB パスを更新 ──
+        {
+            let conn = db_state.conn()?;
+            if let Err(e) = conn.execute(
+                "UPDATE videos SET path = ?1 WHERE id = ?2",
+                rusqlite::params![new_path, video_id],
+            ) {
+                errors.push(format!(
+                    "DB 更新失敗 (ファイルは移動済みです。再スキャンで修正できます → {new_path}): {e}"
+                ));
+            }
+        } // conn を即座に解放
+
+        moved += 1;
+    }
+
+    Ok(MigrateRootResult { moved, skipped, errors })
+}
+
 /// パスを正規化 (シンボリックリンク解決) して返す。解決できない場合は元パスをそのまま返す。
 #[tauri::command]
 pub async fn canonicalize_path(path: String) -> String {

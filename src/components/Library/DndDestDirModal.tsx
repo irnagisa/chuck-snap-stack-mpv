@@ -36,7 +36,7 @@ export function DndDestDirModal() {
           コピー先フォルダを選択
         </p>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          {fileCount}件のファイルを選択したフォルダにコピーして登録します。
+          {fileCount}件のファイルを選択したフォルダの <code className="font-mono">Inbox</code> サブフォルダにコピーして登録します。
         </p>
         <div className="flex flex-col gap-1.5 mb-4">
           {watchDirs.map((dir) => (
@@ -48,8 +48,8 @@ export function DndDestDirModal() {
               onClick={() => handleSelect(dir)}
             >
               <span className="mr-2 text-gray-400">📁</span>
-              <span className="text-gray-800 dark:text-gray-100">{basename(dir)}</span>
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500 truncate">{dir}</span>
+              <span className="text-gray-800 dark:text-gray-100">{basename(dir)}/Inbox</span>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500 truncate">{dir}/Inbox</span>
             </button>
           ))}
         </div>

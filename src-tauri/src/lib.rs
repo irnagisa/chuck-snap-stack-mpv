@@ -160,6 +160,7 @@ pub fn run() {
             commands::db_videos::db_get_inbox_stats,
             commands::db_videos::db_graduate_from_inbox,
             commands::library::cleanup_jpg_thumbnails,
+            commands::library::migrate_root_files_to_inbox,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

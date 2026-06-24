@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
-import { downloadDir as systemDownloadDir } from "@tauri-apps/api/path";
+import { downloadDir as systemDownloadDir, join } from "@tauri-apps/api/path";
 import { useSettingsStore } from "../../store/useSettingsStore";
 import { useDownloadStore } from "../../store/useDownloadStore";
+import { useLibraryStore } from "../../store/useLibraryStore";
 
 interface Props {
   onClose: () => void;
@@ -26,6 +27,7 @@ export function DownloadModal({ onClose }: Props) {
   const { t } = useTranslation();
   const { downloadDir: settingsDownloadDir, ytdlpPath } = useSettingsStore();
   const { addJob } = useDownloadStore();
+  const watchDirs = useLibraryStore((s) => s.watchDirs);
 
   const [url, setUrl] = useState("");
   const [saveDir, setSaveDir] = useState("");
@@ -34,7 +36,9 @@ export function DownloadModal({ onClose }: Props) {
 
   useEffect(() => {
     const init = async () => {
-      if (settingsDownloadDir) {
+      if (watchDirs.length > 0) {
+        setSaveDir(await join(watchDirs[0], 'Inbox'));
+      } else if (settingsDownloadDir) {
         setSaveDir(settingsDownloadDir);
       } else {
         try {
@@ -45,7 +49,7 @@ export function DownloadModal({ onClose }: Props) {
       }
     };
     init();
-  }, [settingsDownloadDir]);
+  }, [watchDirs, settingsDownloadDir]);
 
   const handleUrlChange = (value: string) => {
     setUrl(value);
