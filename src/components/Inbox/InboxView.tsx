@@ -65,7 +65,7 @@ export default function InboxView() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
       {/* Inbox header + stats */}
       <div className="px-4 pt-3 pb-2 border-b border-gray-100 dark:border-gray-800 shrink-0">
         <div className="flex items-center gap-3 mb-2">

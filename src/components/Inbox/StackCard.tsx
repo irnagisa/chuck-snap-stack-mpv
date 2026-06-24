@@ -73,9 +73,11 @@ export default function StackCard({
           return (
             <div
               key={v.id}
-              className={`relative shrink-0 w-20 h-12 rounded overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-pointer group
-                ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+              className={`relative shrink-0 w-32 h-20 rounded overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-pointer group border-2 transition-all ${
+                isSelected ? 'border-blue-400 dark:border-blue-500' : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'
+              }`}
               onClick={() => onShowDetail(v)}
+              onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}
             >
               {v.thumbnail ? (
                 <img
@@ -88,25 +90,6 @@ export default function StackCard({
                   {v.media_type === 'image' ? '🖼' : v.media_type === 'audio' ? '♪' : '▶'}
                 </div>
               )}
-              {/* Hover overlay */}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1 transition-opacity">
-                <button
-                  type="button"
-                  className="text-white text-xs p-0.5 hover:text-blue-300"
-                  onClick={(e) => { e.stopPropagation(); onPlay(v); }}
-                  title="再生"
-                >
-                  ▶
-                </button>
-                <button
-                  type="button"
-                  className="text-white text-xs p-0.5 hover:text-blue-300"
-                  onClick={(e) => { e.stopPropagation(); onShowDetail(v); }}
-                  title="詳細"
-                >
-                  ⋯
-                </button>
-              </div>
               {/* チェックボックス（ホバー時 or 選択時に表示） */}
               <div
                 className={`absolute top-0.5 left-0.5 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
@@ -118,12 +101,23 @@ export default function StackCard({
                   {isSelected && '✓'}
                 </div>
               </div>
+              {/* hover ボタン（右下・ライブラリと統一） */}
+              <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                <button
+                  type="button"
+                  className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
+                  onClick={(e) => { e.stopPropagation(); onPlay(v); }}
+                  title="再生"
+                >
+                  ▶
+                </button>
+              </div>
             </div>
           );
         })}
         {stack.count > stack.videos.length && (
           <div
-            className="shrink-0 w-20 h-12 rounded bg-gray-100 dark:bg-gray-800 flex items-center justify-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700"
+            className="shrink-0 w-32 h-20 rounded bg-gray-100 dark:bg-gray-800 flex items-center justify-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700"
             onClick={onOpen}
           >
             <span className="text-xs text-gray-500 dark:text-gray-400">+{stack.count - stack.videos.length}</span>

@@ -473,7 +473,7 @@ function App() {
       {/* ボディ: サイドバー + メインコンテンツ + 詳細パネル */}
       <div className="flex flex-1 min-h-0">
       {mainView === 'inbox' ? (
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 min-w-0">
           <InboxView />
         </div>
       ) : (
@@ -811,8 +811,8 @@ function App() {
       )}
 
       {/* 詳細パネル */}
-      {detailVideo && (
-        <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
+      <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
+        {detailVideo ? (
           <VideoDetailModal
             key={detailVideo.id}
             video={detailVideo}
@@ -822,8 +822,16 @@ function App() {
             }}
             onViewImage={setViewingImage}
           />
-        </div>
-      )}
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600 select-none gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+              <rect x="3" y="5" width="18" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 9l5 3-5 3V9z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <p className="text-xs">動画を選択してください</p>
+          </div>
+        )}
+      </div>
       </div>
 
       <PlayerControls />
