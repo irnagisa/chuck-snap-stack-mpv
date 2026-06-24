@@ -117,13 +117,14 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   },
 
   fetchVideoTagsForIds: async (videoIds) => {
-    if (videoIds.length === 0) {
+    const safeIds = videoIds.filter((id) => Number.isFinite(id));
+    if (safeIds.length === 0) {
       set({ videoTags: {} });
       return;
     }
     const rows = await invoke<{ video_id: number; id: number; name: string; color: string; icon: string | null; tag_category_id: number | null; created_at: string }[]>(
       'db_fetch_video_tags_for_ids',
-      { videoIds }
+      { videoIds: safeIds }
     );
     const videoTags: Record<number, Tag[]> = {};
     for (const row of rows) {
@@ -160,7 +161,7 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   updateTag: async (tagId, name, color, tagCategoryId, icon) => {
     await invoke('db_update_tag', { tagId, name, color, tagCategoryId: tagCategoryId ?? null, icon: icon ?? null });
     await get().fetchTags();
-    const currentIds = Object.keys(get().videoTags).map(Number);
+    const currentIds = Object.keys(get().videoTags).map(Number).filter(Number.isFinite);
     if (currentIds.length > 0) {
       await get().fetchVideoTagsForIds(currentIds);
     }
@@ -250,7 +251,7 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   addTagToMultiple: async (videoIds, tagId) => {
     if (videoIds.length === 0) return;
     await invoke('db_add_tag_to_multiple', { videoIds, tagId });
-    const cachedIds = Object.keys(get().videoTags).map(Number);
+    const cachedIds = Object.keys(get().videoTags).map(Number).filter(Number.isFinite);
     // 対象IDをキャッシュ済みIDに合算してリフレッシュ（タグなしビデオが選択対象の場合にも更新されるようにする）
     const allIds = [...new Set([...cachedIds, ...videoIds])];
     if (allIds.length > 0) {
