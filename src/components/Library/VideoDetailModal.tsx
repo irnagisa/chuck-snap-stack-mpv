@@ -506,6 +506,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                       <button
                         type="button"
                         className="shrink-0 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 p-0.5 leading-none"
+                        title="カテゴリを解除して Inbox に戻す"
                         onClick={(e) => { e.stopPropagation(); handleCategoryChange(''); }}
                       >
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">

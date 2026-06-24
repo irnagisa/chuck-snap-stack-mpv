@@ -470,10 +470,17 @@ pub async fn db_set_video_category(
     category_id: Option<i64>,
 ) -> Result<(), String> {
     let conn = state.conn()?;
-    conn.execute(
-        "UPDATE videos SET category_id = ?1 WHERE id = ?2",
-        rusqlite::params![category_id, video_id],
-    )
+    if category_id.is_none() {
+        conn.execute(
+            "UPDATE videos SET category_id = NULL, status = 'inbox' WHERE id = ?1",
+            [video_id],
+        )
+    } else {
+        conn.execute(
+            "UPDATE videos SET category_id = ?1 WHERE id = ?2",
+            rusqlite::params![category_id, video_id],
+        )
+    }
     .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -514,21 +521,35 @@ pub async fn db_set_category_multiple(
         return Ok(());
     }
     let conn = state.conn()?;
-    // 1 param for category_id + up to 498 ids per batch
-    let batch_size = 498;
-    for chunk in video_ids.chunks(batch_size) {
-        let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let sql = format!("UPDATE videos SET category_id = ? WHERE id IN ({ph})");
-        let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() + 1);
-        match category_id {
-            Some(id) => params.push(rusqlite::types::Value::Integer(id)),
-            None => params.push(rusqlite::types::Value::Null),
+    if category_id.is_none() {
+        // カテゴリ解除 → status を 'inbox' に戻す。params は id のみ (batch_size 999)
+        let batch_size = 999;
+        for chunk in video_ids.chunks(batch_size) {
+            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "UPDATE videos SET category_id = NULL, status = 'inbox' WHERE id IN ({ph})"
+            );
+            let params: Vec<rusqlite::types::Value> = chunk
+                .iter()
+                .map(|&id| rusqlite::types::Value::Integer(id))
+                .collect();
+            conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+                .map_err(|e| e.to_string())?;
         }
-        for &vid in chunk {
-            params.push(rusqlite::types::Value::Integer(vid));
+    } else {
+        // 1 param for category_id + up to 498 ids per batch
+        let batch_size = 498;
+        for chunk in video_ids.chunks(batch_size) {
+            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!("UPDATE videos SET category_id = ? WHERE id IN ({ph})");
+            let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() + 1);
+            params.push(rusqlite::types::Value::Integer(category_id.unwrap()));
+            for &vid in chunk {
+                params.push(rusqlite::types::Value::Integer(vid));
+            }
+            conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+                .map_err(|e| e.to_string())?;
         }
-        conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
-            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
