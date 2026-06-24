@@ -1,6 +1,8 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useEffect } from 'react';
 import { useInboxStore, type InboxStack } from '../../store/useInboxStore';
+import { useLibraryStore } from '../../store/useLibraryStore';
+import { VideoDetailsPanel } from '../common/VideoDetailsPanel';
 import { VideoOrganizerPanel } from '../common/VideoOrganizerPanel';
 import type { Video } from '../../types';
 
@@ -14,7 +16,8 @@ interface Props {
 }
 
 export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail, onGraduate }: Props) {
-  const { quickSortIndex, setQuickSortIndex } = useInboxStore();
+  const { quickSortIndex, setQuickSortIndex, fetchInbox } = useInboxStore();
+  const { assignCategoryFromPath } = useLibraryStore();
 
   const current = videos[quickSortIndex];
   const total = videos.length;
@@ -60,6 +63,12 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
   const handleGraduateAll = async () => {
     await onGraduate(videos.map((v) => v.id));
     onBack();
+  };
+
+  const handleAssignCategory = async () => {
+    if (!current) return;
+    await assignCategoryFromPath([current.id]);
+    await fetchInbox();
   };
 
   return (
@@ -120,9 +129,19 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
               <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug line-clamp-2">
                 {current.title ?? current.path.split('/').pop()}
               </p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
-                {current.path.split('/').slice(-2, -1)[0]}
-              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate min-w-0">
+                  {current.path.split('/').slice(-2, -1)[0]}
+                </p>
+                <button
+                  type="button"
+                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors whitespace-nowrap"
+                  title="フォルダ名をカテゴリに変換して割り当て"
+                  onClick={handleAssignCategory}
+                >
+                  → カテゴリ化
+                </button>
+              </div>
             </div>
 
             {/* Play + Detail */}
@@ -177,6 +196,10 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
           {/* ── Right pane ── */}
           <div className="flex flex-col w-3/5 overflow-y-auto px-6 py-5 gap-5">
             <VideoOrganizerPanel video={current} />
+
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
+              <VideoDetailsPanel video={current} />
+            </div>
 
             {/* Graduate actions */}
             <div className="mt-auto pt-5 border-t border-gray-100 dark:border-gray-800 flex flex-col gap-2">

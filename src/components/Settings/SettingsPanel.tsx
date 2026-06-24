@@ -191,7 +191,7 @@ export function SettingsPanel({ onClose }: Props) {
     )}
 
     {showVirtualConfirm && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowVirtualConfirm(false)}>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" onClick={() => setShowVirtualConfirm(false)}>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-80 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
             {t('categoryModeChange.toVirtualTitle')}
@@ -644,7 +644,7 @@ export function SettingsPanel({ onClose }: Props) {
                 <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
                   {t(KEY_ACTION_KEYS[action])}
                 </span>
-                <kbd className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-gray-700 dark:text-gray-300 min-w-[3.5rem] text-center">
+                <kbd className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-gray-700 dark:text-gray-300 min-w-14 text-center">
                   {formatKey(local.keybindings[action])}
                 </kbd>
                 <button
