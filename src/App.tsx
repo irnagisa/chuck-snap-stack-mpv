@@ -834,7 +834,7 @@ function App() {
       </div>
       </div>
 
-      <PlayerControls />
+      {mainView !== 'inbox' && <PlayerControls />}
       </>
       )}
 
