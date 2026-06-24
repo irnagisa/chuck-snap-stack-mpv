@@ -420,9 +420,9 @@ pub async fn db_delete_category(
         [category_id],
     )
     .map_err(|e| e.to_string())?;
-    // Unset category on videos
+    // Unset category on videos and return them to inbox
     conn.execute(
-        "UPDATE videos SET category_id = NULL WHERE category_id = ?1",
+        "UPDATE videos SET category_id = NULL, status = 'inbox' WHERE category_id = ?1",
         [category_id],
     )
     .map_err(|e| e.to_string())?;
@@ -477,7 +477,7 @@ pub async fn db_set_video_category(
         )
     } else {
         conn.execute(
-            "UPDATE videos SET category_id = ?1 WHERE id = ?2",
+            "UPDATE videos SET category_id = ?1, status = NULL WHERE id = ?2",
             rusqlite::params![category_id, video_id],
         )
     }
@@ -541,7 +541,7 @@ pub async fn db_set_category_multiple(
         let batch_size = 498;
         for chunk in video_ids.chunks(batch_size) {
             let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let sql = format!("UPDATE videos SET category_id = ? WHERE id IN ({ph})");
+            let sql = format!("UPDATE videos SET category_id = ?, status = NULL WHERE id IN ({ph})");
             let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() + 1);
             params.push(rusqlite::types::Value::Integer(category_id.unwrap()));
             for &vid in chunk {

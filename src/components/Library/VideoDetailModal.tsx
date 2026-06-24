@@ -193,7 +193,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       const watchDir = findWatchDir(video.path, watchDirs);
       if (watchDir) {
         const catPath = catId !== null ? getCategoryPath(catId, categories) : null;
-        const destDir = catPath ? `${watchDir}/${catPath}` : watchDir;
+        const destDir = catPath ? `${watchDir}/${catPath}` : `${watchDir}/Unsorted`;
         const result = await moveVideoFile(video.id, destDir);
         if (result === null) {
           alert(t('syncMode.moveFileFailed'));
@@ -369,6 +369,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   AV1
                 </button>
               )}
+
             </div>
           </div>
 

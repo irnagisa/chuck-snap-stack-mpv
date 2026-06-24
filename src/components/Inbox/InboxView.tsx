@@ -40,11 +40,6 @@ export default function InboxView() {
     await graduateFromInbox(ids);
   };
 
-  const handleBulkGraduate = async () => {
-    await graduateFromInbox(Array.from(selectedIds));
-    setSelectedIds(new Set());
-  };
-
   if (activeStack) {
     const stackVideos = videos.filter((v) => {
       const s = activeStack;
@@ -106,13 +101,6 @@ export default function InboxView() {
           <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
             {selectedIds.size} 件選択中
           </span>
-          <button
-            type="button"
-            className="px-2.5 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded"
-            onClick={handleBulkGraduate}
-          >
-            整理完了にする
-          </button>
           <button
             type="button"
             className="ml-auto text-xs text-blue-500 hover:underline"

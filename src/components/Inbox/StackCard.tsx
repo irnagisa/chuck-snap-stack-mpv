@@ -1,3 +1,4 @@
+import { convertFileSrc } from '@tauri-apps/api/core';
 import type { InboxStack } from '../../store/useInboxStore';
 import type { Video } from '../../types';
 
@@ -74,11 +75,11 @@ export default function StackCard({
               key={v.id}
               className={`relative shrink-0 w-20 h-12 rounded overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-pointer group
                 ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
-              onClick={() => toggleSelect(v.id)}
+              onClick={() => onShowDetail(v)}
             >
               {v.thumbnail ? (
                 <img
-                  src={`asset://${v.thumbnail}`}
+                  src={convertFileSrc(v.thumbnail)}
                   alt={v.title ?? ''}
                   className="w-full h-full object-cover"
                 />
@@ -106,11 +107,17 @@ export default function StackCard({
                   ⋯
                 </button>
               </div>
-              {isSelected && (
-                <div className="absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-[8px]">✓</span>
+              {/* チェックボックス（ホバー時 or 選択時に表示） */}
+              <div
+                className={`absolute top-0.5 left-0.5 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                onClick={(e) => { e.stopPropagation(); toggleSelect(v.id); }}
+              >
+                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center text-white text-[8px] font-bold transition-colors ${
+                  isSelected ? 'bg-blue-500 border-blue-500' : 'bg-black/40 border-white/70 hover:bg-black/60'
+                }`}>
+                  {isSelected && '✓'}
                 </div>
-              )}
+              </div>
             </div>
           );
         })}

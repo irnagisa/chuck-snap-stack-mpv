@@ -1,3 +1,4 @@
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useEffect } from 'react';
 import { useInboxStore, type InboxStack } from '../../store/useInboxStore';
 import type { Video } from '../../types';
@@ -92,7 +93,7 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
           <div className="w-full max-w-md mx-auto aspect-video rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 mb-4 shrink-0">
             {current.thumbnail ? (
               <img
-                src={`asset://${current.thumbnail}`}
+                src={convertFileSrc(current.thumbnail)}
                 alt={current.title ?? ''}
                 className="w-full h-full object-cover"
               />

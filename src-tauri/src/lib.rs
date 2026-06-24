@@ -22,6 +22,20 @@ pub fn run() {
             let conn = rusqlite::Connection::open(&db_path)?;
             db::schema::init_db(&conn)?;
             db::migrations::run_data_migrations(&conn)?;
+            // watchDir/Inbox → watchDir/Unsorted への一回限りのディレクトリ名変更
+            if let Ok(mut stmt) = conn.prepare("SELECT path FROM watch_dirs") {
+                let paths: Vec<String> = stmt
+                    .query_map([], |r| r.get(0))
+                    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                    .unwrap_or_default();
+                for dir in paths {
+                    let old_inbox = std::path::Path::new(&dir).join("Inbox");
+                    let new_unsorted = std::path::Path::new(&dir).join("Unsorted");
+                    if old_inbox.is_dir() && !new_unsorted.exists() {
+                        let _ = std::fs::rename(&old_inbox, &new_unsorted);
+                    }
+                }
+            }
             app.manage(DbState(Mutex::new(conn)));
             Ok(())
         })

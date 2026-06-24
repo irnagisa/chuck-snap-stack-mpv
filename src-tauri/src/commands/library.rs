@@ -988,7 +988,7 @@ pub async fn migrate_root_files_to_inbox(
         return Ok(MigrateRootResult { moved: 0, skipped: 0, errors: vec![] });
     }
 
-    let inbox_dir = Path::new(&watch_dir).join("Inbox");
+    let inbox_dir = Path::new(&watch_dir).join("Unsorted");
 
     // ── Step 1: DB からルート直下の動画を取得 (conn はブロック内でのみ保持) ──
     let root_videos: Vec<(i64, String)> = {
@@ -1033,10 +1033,10 @@ pub async fn migrate_root_files_to_inbox(
         return Ok(MigrateRootResult { moved: 0, skipped: 0, errors: vec![] });
     }
 
-    // ── Step 3: Inbox ディレクトリを作成 ──
+    // ── Step 3: Unsorted ディレクトリを作成 ──
     tokio::fs::create_dir_all(&inbox_dir)
         .await
-        .map_err(|e| format!("Inbox ディレクトリの作成に失敗: {e}"))?;
+        .map_err(|e| format!("Unsorted ディレクトリの作成に失敗: {e}"))?;
 
     let mut moved = 0usize;
     let mut skipped = 0usize;

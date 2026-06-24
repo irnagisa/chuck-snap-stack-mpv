@@ -37,7 +37,7 @@ export function DownloadModal({ onClose }: Props) {
   useEffect(() => {
     const init = async () => {
       if (watchDirs.length > 0) {
-        setSaveDir(await join(watchDirs[0], 'Inbox'));
+        setSaveDir(await join(watchDirs[0], 'Unsorted'));
       } else if (settingsDownloadDir) {
         setSaveDir(settingsDownloadDir);
       } else {
