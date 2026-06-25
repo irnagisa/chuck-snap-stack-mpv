@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::db::DbState;
+use super::db_tags::VideoTagRow;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ pub struct Video {
 pub struct FetchVideosResult {
     pub videos: Vec<Video>,
     pub total_count: i64,
+    pub video_tags: Vec<VideoTagRow>,
 }
 
 #[derive(Deserialize)]
@@ -321,7 +323,37 @@ pub async fn db_fetch_videos(
         .map_err(|e| e.to_string())?;
     let videos = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
 
-    Ok(FetchVideosResult { videos, total_count })
+    let video_tags = if videos.is_empty() {
+        vec![]
+    } else {
+        let ph = videos.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let tag_sql = format!(
+            "SELECT vt.video_id, t.id, t.name, t.color, t.icon, t.tag_category_id, t.created_at
+             FROM video_tags vt JOIN tags t ON vt.tag_id = t.id
+             WHERE vt.video_id IN ({ph})"
+        );
+        let mut tag_stmt = conn.prepare(&tag_sql).map_err(|e| e.to_string())?;
+        let tag_params: Vec<rusqlite::types::Value> = videos
+            .iter()
+            .map(|v| rusqlite::types::Value::Integer(v.id))
+            .collect();
+        let tag_rows = tag_stmt
+            .query_map(rusqlite::params_from_iter(tag_params.iter()), |r| {
+                Ok(VideoTagRow {
+                    video_id: r.get(0)?,
+                    id: r.get(1)?,
+                    name: r.get(2)?,
+                    color: r.get(3)?,
+                    icon: r.get(4)?,
+                    tag_category_id: r.get(5)?,
+                    created_at: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        tag_rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?
+    };
+
+    Ok(FetchVideosResult { videos, total_count, video_tags })
 }
 
 #[tauri::command]

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
-import type { Video } from '../types';
+import type { Video, Tag } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
@@ -168,7 +168,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   fetchVideos: async () => {
     const { currentPage, pageSize, filterSortBy, filterSortOrder } = get();
 
-    const result = await invoke<{ videos: Video[]; totalCount: number }>('db_fetch_videos', {
+    const result = await invoke<{
+      videos: Video[];
+      totalCount: number;
+      videoTags: { videoId: number; id: number; name: string; color: string; icon: string | null; tagCategoryId: number | null; createdAt: string }[];
+    }>('db_fetch_videos', {
       filter: {
         filterSearch: get().filterSearch,
         filterCategoryId: get().filterCategoryId,
@@ -187,13 +191,24 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       },
     });
 
-    const { videos, totalCount } = result;
+    const { videos, totalCount, videoTags: videoTagRows } = result;
     const maxPage = Math.max(1, Math.ceil(totalCount / pageSize));
     const page = Math.min(currentPage, maxPage);
     set({ videos, totalCount, currentPage: page });
 
-    const videoIds = videos.map((v) => v.id);
-    await useTagStore.getState().fetchVideoTagsForIds(videoIds);
+    const videoTagsMap: Record<number, Tag[]> = {};
+    for (const row of videoTagRows) {
+      if (!videoTagsMap[row.videoId]) videoTagsMap[row.videoId] = [];
+      videoTagsMap[row.videoId].push({
+        id: row.id,
+        name: row.name,
+        color: row.color,
+        icon: row.icon,
+        tag_category_id: row.tagCategoryId,
+        created_at: row.createdAt,
+      });
+    }
+    useTagStore.setState({ videoTags: videoTagsMap });
   },
 
   fetchAllForShuffle: async () => {
