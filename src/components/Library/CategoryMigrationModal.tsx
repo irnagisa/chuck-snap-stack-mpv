@@ -66,7 +66,7 @@ export function CategoryMigrationModal({ onDone, onCancel }: Props) {
       const catPath = video.category_id !== null && video.category_id !== undefined
         ? getCategoryPath(video.category_id, categories)
         : null;
-      const destDir = catPath ? `${watchDir}/${catPath}` : watchDir;
+      const destDir = catPath ? `${watchDir}/${catPath}` : `${watchDir}/Unsorted`;
 
       const result = await moveVideoFile(video.id, destDir);
       if (result !== null) {

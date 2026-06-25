@@ -46,7 +46,7 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
           if (!video) continue;
           const watchDir = findWatchDir(video.path, watchDirs);
           if (!watchDir) continue;
-          const destDir = catPath ? `${watchDir}/${catPath}` : watchDir;
+          const destDir = catPath ? `${watchDir}/${catPath}` : `${watchDir}/Unsorted`;
           const result = await moveVideoFile(videoId, destDir);
           if (result === null) failCount++;
         }
