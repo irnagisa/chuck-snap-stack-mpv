@@ -6,7 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useToastStore } from '../store/useToastStore';
 import { useModalStore } from '../store/useModalStore';
 
-const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv', 'media']);
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv', 'mpg', 'mpeg', 'media']);
 
 function getBasename(path: string) {
   return path.replace(/\\/g, '/').split('/').pop() ?? '';

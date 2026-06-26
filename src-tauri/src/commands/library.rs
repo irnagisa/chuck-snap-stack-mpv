@@ -30,7 +30,7 @@ pub struct ThumbnailResult {
     pub has_audio: bool,
 }
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "mpg", "mpeg", "media"];
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "aac", "wav", "ogg", "opus", "m4a", "wma"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "avif"];
 

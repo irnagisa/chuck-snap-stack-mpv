@@ -9,7 +9,7 @@ pub fn new_watcher_state() -> SharedWatcherState {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "media"];
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "mpg", "mpeg", "media"];
 
 #[derive(Clone, serde::Serialize)]
 pub struct FileEventPayload {
