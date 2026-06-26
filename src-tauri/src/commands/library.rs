@@ -34,6 +34,20 @@ const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "aac", "wav", "ogg", "opus", "m4a", "wma"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "avif"];
 
+/// WebP RIFF ヘッダー先頭 24 バイトを読んでアニメーション WebP か判定する。
+/// VP8X チャンクのフラグビット 1 (Animation) が立っていれば true。
+fn is_animated_webp(path: &str) -> bool {
+    use std::io::Read;
+    let mut buf = [0u8; 24];
+    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let Ok(n) = f.read(&mut buf) else { return false };
+    n >= 24
+        && &buf[0..4] == b"RIFF"
+        && &buf[8..12] == b"WEBP"
+        && &buf[12..16] == b"VP8X"
+        && (buf[20] & 0x02) != 0
+}
+
 #[derive(Serialize)]
 pub struct ScannedFile {
     pub path: String,
@@ -174,6 +188,15 @@ pub async fn generate_thumbnail(
     // 画像ファイルはffprobeスキップ・シークなしでリサイズのみ
     // scale=320:-2: 高さを2の倍数に丸めることで偶数次元を保証する
     if is_image {
+        // アニメーション WebP はファイルヘッダー (24 バイト) でフラグを確認し、
+        // そのままコピーしてアニメーションを保持する
+        if ext == "webp" && is_animated_webp(&video_path) {
+            tokio::fs::copy(&video_path, &output_path)
+                .await
+                .map_err(|e| e.to_string())?;
+            return Ok(ThumbnailResult { thumbnail_path: output_path, duration: None, has_audio: false });
+        }
+
         let status = tokio::process::Command::new(&ffmpeg_path)
             .args([
                 "-y", "-i", &video_path,
