@@ -13,7 +13,7 @@ export interface InboxStats {
 
 // Inbox videos grouped into a stack (display unit)
 export interface InboxStack {
-  stackType: 'source' | 'date' | 'missing_metadata' | 'almost_done';
+  stackType: 'source' | 'date' | 'missing_metadata' | 'almost_done' | 'directory';
   groupKey: string;
   label: string;
   count: number;
@@ -140,6 +140,29 @@ function buildStacks(videos: Video[]): InboxStack[] {
       count: almostDone.length,
       videos: almostDone.slice(0, 10),
     });
+  }
+
+  // Directory Stack — group by immediate parent directory (only when 2+ distinct dirs)
+  const dirGroups = new Map<string, { label: string; videos: Video[] }>();
+  for (const v of videos) {
+    const parts = v.path.replace(/\\/g, '/').split('/');
+    const dirPath = parts.slice(0, -1).join('/');
+    const dirName = parts[parts.length - 2] ?? dirPath;
+    if (!dirGroups.has(dirPath)) {
+      dirGroups.set(dirPath, { label: dirName, videos: [] });
+    }
+    dirGroups.get(dirPath)!.videos.push(v);
+  }
+  if (dirGroups.size > 1) {
+    for (const [dirPath, g] of dirGroups.entries()) {
+      stacks.push({
+        stackType: 'directory',
+        groupKey: dirPath,
+        label: g.label,
+        count: g.videos.length,
+        videos: g.videos.slice(0, 10),
+      });
+    }
   }
 
   return stacks;

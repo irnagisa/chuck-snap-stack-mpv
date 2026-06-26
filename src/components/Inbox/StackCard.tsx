@@ -26,6 +26,7 @@ export default function StackCard({
     date: '日付',
     missing_metadata: '未設定項目',
     almost_done: 'ほぼ完了',
+    directory: 'フォルダ',
   };
 
   const toggleSelect = (id: number) => {
@@ -45,7 +46,17 @@ export default function StackCard({
         <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">
           {stackTypeLabel[stack.stackType]}
         </span>
-        <span className="font-semibold text-sm text-gray-800 dark:text-gray-200">{stack.label}</span>
+        <span
+          className="font-semibold text-sm text-gray-800 dark:text-gray-200"
+          title={stack.stackType === 'directory' ? stack.groupKey : undefined}
+        >
+          {stack.label}
+        </span>
+        {stack.stackType === 'directory' && (
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate min-w-0 max-w-xs" title={stack.groupKey}>
+            {stack.groupKey}
+          </span>
+        )}
         <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">{stack.count} 件</span>
         <div className="ml-auto flex gap-1">
           <button

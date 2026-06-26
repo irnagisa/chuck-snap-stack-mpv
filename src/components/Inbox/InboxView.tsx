@@ -26,32 +26,13 @@ export default function InboxView() {
 
   const handleStackGraduate = async (stack: InboxStack) => {
     const ids = videos
-      .filter((v) => {
-        if (stack.stackType === 'source') return (v.source_type ?? 'unknown') === stack.groupKey;
-        if (stack.stackType === 'date') return getDateKey(v.created_at) === stack.groupKey;
-        if (stack.stackType === 'missing_metadata') {
-          if (stack.groupKey === 'category') return v.category_id == null;
-          if (stack.groupKey === 'rating') return !v.rating;
-        }
-        if (stack.stackType === 'almost_done') return v.category_id != null && (v.rating ?? 0) > 0;
-        return false;
-      })
+      .filter((v) => matchesStack(v, stack))
       .map((v) => v.id);
     await graduateFromInbox(ids);
   };
 
   if (activeStack) {
-    const stackVideos = videos.filter((v) => {
-      const s = activeStack;
-      if (s.stackType === 'source') return (v.source_type ?? 'unknown') === s.groupKey;
-      if (s.stackType === 'date') return getDateKey(v.created_at) === s.groupKey;
-      if (s.stackType === 'missing_metadata') {
-        if (s.groupKey === 'category') return v.category_id == null;
-        if (s.groupKey === 'rating') return !v.rating;
-      }
-      if (s.stackType === 'almost_done') return v.category_id != null && (v.rating ?? 0) > 0;
-      return false;
-    });
+    const stackVideos = videos.filter((v) => matchesStack(v, activeStack));
     return (
       <QuickSort
         stack={activeStack}
@@ -157,4 +138,20 @@ function getDateKey(createdAt: string): string {
   if (d >= yesterday) return 'yesterday';
   if (d >= lastWeekStart) return 'last_week';
   return 'older';
+}
+
+function getDirPath(videoPath: string): string {
+  return videoPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+}
+
+function matchesStack(v: import('../../types').Video, stack: import('../../store/useInboxStore').InboxStack): boolean {
+  if (stack.stackType === 'source') return (v.source_type ?? 'unknown') === stack.groupKey;
+  if (stack.stackType === 'date') return getDateKey(v.created_at) === stack.groupKey;
+  if (stack.stackType === 'missing_metadata') {
+    if (stack.groupKey === 'category') return v.category_id == null;
+    if (stack.groupKey === 'rating') return !v.rating;
+  }
+  if (stack.stackType === 'almost_done') return v.category_id != null && (v.rating ?? 0) > 0;
+  if (stack.stackType === 'directory') return getDirPath(v.path) === stack.groupKey;
+  return false;
 }
