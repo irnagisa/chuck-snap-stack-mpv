@@ -14,7 +14,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   const { playlists, createPlaylist, deletePlaylist } = usePlaylistStore();
   const {
     setSearch, setCategoryFilter, setMinRating, setHasAudio,
-    setMinDuration, setWatchedStatus, setSort,
+    setMinDuration, setMaxDuration, setWatchedStatus, setSort,
   } = useLibraryStore();
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -42,6 +42,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
       if (f.filterMinRating !== undefined) await setMinRating(f.filterMinRating);
       if (f.filterHasAudio !== undefined) await setHasAudio(f.filterHasAudio);
       if (f.filterMinDuration !== undefined) await setMinDuration(f.filterMinDuration);
+      if (f.filterMaxDuration !== undefined) await setMaxDuration(f.filterMaxDuration);
       if (f.filterWatchedStatus !== undefined) await setWatchedStatus(f.filterWatchedStatus as WatchedStatus);
       if (f.filterSortBy !== undefined && f.filterSortOrder !== undefined) {
         await setSort(f.filterSortBy as SortBy, f.filterSortOrder as SortOrder);

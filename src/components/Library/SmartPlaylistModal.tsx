@@ -11,7 +11,7 @@ export function SmartPlaylistModal({ onClose }: Props) {
   const { t } = useTranslation();
   const {
     filterSearch, filterCategoryId, filterTagIds, filterMinRating,
-    filterHasAudio, filterMinDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
+    filterHasAudio, filterMinDuration, filterMaxDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
   } = useLibraryStore();
 
   const [name, setName] = useState('');
@@ -24,7 +24,7 @@ export function SmartPlaylistModal({ onClose }: Props) {
     try {
       const filterState = {
         filterSearch, filterCategoryId, filterTagIds, filterMinRating,
-        filterHasAudio, filterMinDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
+        filterHasAudio, filterMinDuration, filterMaxDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
       };
       await invoke('db_create_smart_playlist', {
         name: name.trim(),
@@ -45,6 +45,7 @@ export function SmartPlaylistModal({ onClose }: Props) {
   if (filterMinRating > 0) filterSummary.push(t('smartPlaylist.filterRating', { rating: filterMinRating }));
   if (filterHasAudio !== null) filterSummary.push(filterHasAudio ? t('smartPlaylist.filterAudioYes') : t('smartPlaylist.filterAudioNo'));
   if (filterMinDuration > 0) filterSummary.push(t('smartPlaylist.filterMinDuration', { seconds: filterMinDuration }));
+  if (filterMaxDuration > 0) filterSummary.push(t('smartPlaylist.filterMaxDuration', { seconds: filterMaxDuration }));
   if (filterWatchedStatus !== 'all') filterSummary.push(filterWatchedStatus === 'watched' ? t('smartPlaylist.filterWatched') : t('smartPlaylist.filterUnwatched'));
 
   return (

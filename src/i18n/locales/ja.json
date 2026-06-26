@@ -65,8 +65,9 @@
     "mediaVideo": "動画",
     "mediaAudio": "音声",
     "mediaImage": "画像",
-    "minDurationPlaceholder": "秒数",
-    "minDurationSuffix": "秒以上"
+    "minDurationPlaceholder": "最短秒数",
+    "maxDurationPlaceholder": "最長秒数",
+    "durationSuffix": "秒"
   },
   "batch": {
     "selectedCount": "{{count}} 件選択中",
@@ -476,6 +477,7 @@
     "filterAudioYes": "音声: あり",
     "filterAudioNo": "音声: なし",
     "filterMinDuration": "最短: {{seconds}}秒",
+    "filterMaxDuration": "最長: {{seconds}}秒",
     "filterWatched": "視聴済み",
     "filterUnwatched": "未視聴",
     "noFilter": "フィルターなし（全動画）",

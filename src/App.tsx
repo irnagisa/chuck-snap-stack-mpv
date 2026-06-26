@@ -39,7 +39,7 @@ function App() {
   const {
     videos, totalCount, currentPage, pageSize,
     filterSearch, filterCategoryId, filterTagIds, filterTagMode,
-    filterMinRating, filterHasAudio, filterMinDuration,
+    filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
     filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused,
     thumbnailProgress, isDbReady, dbError,
@@ -55,6 +55,7 @@ function App() {
     filterMinRating: s.filterMinRating,
     filterHasAudio: s.filterHasAudio,
     filterMinDuration: s.filterMinDuration,
+    filterMaxDuration: s.filterMaxDuration,
     filterWatchedStatus: s.filterWatchedStatus,
     filterWatchDir: s.filterWatchDir,
     filterMediaType: s.filterMediaType,
@@ -70,7 +71,7 @@ function App() {
   const {
     initDb, scanAndImport, assignCategoryFromPath,
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
-    setMinRating, setHasAudio, setMinDuration,
+    setMinRating, setHasAudio, setMinDuration, setMaxDuration,
     setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
     pauseThumbnails, resumeThumbnails, fetchVideos, rescanMultiple,
   } = useLibraryStore(useShallow((s) => ({
@@ -85,6 +86,7 @@ function App() {
     setMinRating: s.setMinRating,
     setHasAudio: s.setHasAudio,
     setMinDuration: s.setMinDuration,
+    setMaxDuration: s.setMaxDuration,
     setWatchedStatus: s.setWatchedStatus,
     setWatchDirFilter: s.setWatchDirFilter,
     setMediaType: s.setMediaType,
@@ -120,6 +122,7 @@ function App() {
   const [mainView, setMainView] = useState<MainView>('library');
   const [searchInput, setSearchInput] = useState(filterSearch);
   const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
+  const [maxDurationInput, setMaxDurationInput] = useState(filterMaxDuration > 0 ? String(filterMaxDuration) : '');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
@@ -142,6 +145,14 @@ function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [durationInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const seconds = parseInt(maxDurationInput, 10);
+      setMaxDuration(isNaN(seconds) || seconds <= 0 ? 0 : seconds);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [maxDurationInput]);
 
   // テーマ適用: <html> に dark クラスを付与/除去
   useEffect(() => {
@@ -204,11 +215,11 @@ function App() {
 
   const scrollResetKey = useMemo(
     () => [filterSearch, filterCategoryId, filterTagIds.join(','), filterTagMode,
-           filterMinRating, filterHasAudio, filterMinDuration,
+           filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
            filterWatchedStatus, filterWatchDir, filterMediaType,
            filterSortBy, filterSortOrder, currentPage].join('|'),
     [filterSearch, filterCategoryId, filterTagIds, filterTagMode,
-     filterMinRating, filterHasAudio, filterMinDuration,
+     filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
      filterWatchedStatus, filterWatchDir, filterMediaType,
      filterSortBy, filterSortOrder, currentPage],
   );
@@ -694,7 +705,17 @@ function App() {
                       min={0}
                       title="最小長さ (秒)"
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('filters.minDurationSuffix')}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">〜</span>
+                    <input
+                      type="number"
+                      className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                      value={maxDurationInput}
+                      onChange={(e) => setMaxDurationInput(e.target.value)}
+                      placeholder={t('filters.maxDurationPlaceholder')}
+                      min={0}
+                      title="最大長さ (秒)"
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('filters.durationSuffix')}</span>
                   </div>
                 </div>
               </div>

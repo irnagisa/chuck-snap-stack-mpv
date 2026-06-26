@@ -65,8 +65,9 @@
     "mediaVideo": "Video",
     "mediaAudio": "Audio",
     "mediaImage": "Image",
-    "minDurationPlaceholder": "secs",
-    "minDurationSuffix": "sec+"
+    "minDurationPlaceholder": "min secs",
+    "maxDurationPlaceholder": "max secs",
+    "durationSuffix": "sec"
   },
   "batch": {
     "selectedCount": "{{count}} selected",
@@ -476,6 +477,7 @@
     "filterAudioYes": "Audio: yes",
     "filterAudioNo": "Audio: no",
     "filterMinDuration": "Min: {{seconds}}s",
+    "filterMaxDuration": "Max: {{seconds}}s",
     "filterWatched": "Watched",
     "filterUnwatched": "Unwatched",
     "noFilter": "No filter (all videos)",

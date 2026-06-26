@@ -65,8 +65,9 @@
     "mediaVideo": "视频",
     "mediaAudio": "音频",
     "mediaImage": "图片",
-    "minDurationPlaceholder": "秒数",
-    "minDurationSuffix": "秒以上"
+    "minDurationPlaceholder": "最短秒数",
+    "maxDurationPlaceholder": "最长秒数",
+    "durationSuffix": "秒"
   },
   "batch": {
     "selectedCount": "已选 {{count}} 个",
@@ -476,6 +477,7 @@
     "filterAudioYes": "音频: 有",
     "filterAudioNo": "音频: 无",
     "filterMinDuration": "最短: {{seconds}}秒",
+    "filterMaxDuration": "最长: {{seconds}}秒",
     "filterWatched": "已观看",
     "filterUnwatched": "未观看",
     "noFilter": "无筛选（全部视频）",

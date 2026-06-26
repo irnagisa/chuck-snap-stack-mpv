@@ -45,6 +45,7 @@ pub struct VideoFilter {
     pub filter_min_rating: i64,
     pub filter_has_audio: Option<i64>,
     pub filter_min_duration: f64,
+    pub filter_max_duration: Option<f64>,
     pub filter_watched_status: String,
     pub filter_watch_dir: Option<String>,
     pub filter_media_type: String,
@@ -236,6 +237,13 @@ fn build_where_clause(
     if filter.filter_min_duration > 0.0 {
         conditions.push("v.duration >= ?".to_string());
         params.push(Value::Real(filter.filter_min_duration));
+    }
+
+    if let Some(max_dur) = filter.filter_max_duration {
+        if max_dur > 0.0 {
+            conditions.push("v.duration <= ?".to_string());
+            params.push(Value::Real(max_dur));
+        }
     }
 
     match filter.filter_watched_status.as_str() {

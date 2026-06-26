@@ -33,6 +33,7 @@ interface LibraryState {
   filterMinRating: number;
   filterHasAudio: number | null;
   filterMinDuration: number;
+  filterMaxDuration: number;
   filterWatchedStatus: WatchedStatus;
   filterWatchDir: string | null;
   filterMediaType: MediaTypeFilter;
@@ -60,6 +61,7 @@ interface LibraryActions {
   setMinRating: (rating: number) => Promise<void>;
   setHasAudio: (hasAudio: number | null) => Promise<void>;
   setMinDuration: (seconds: number) => Promise<void>;
+  setMaxDuration: (seconds: number) => Promise<void>;
   setWatchedStatus: (status: WatchedStatus) => Promise<void>;
   setWatchDirFilter: (dir: string | null) => Promise<void>;
   setMediaType: (mediaType: MediaTypeFilter) => Promise<void>;
@@ -122,6 +124,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterMinRating: 0,
   filterHasAudio: null,
   filterMinDuration: 0,
+  filterMaxDuration: 0,
   filterWatchedStatus: 'all',
   filterWatchDir: null,
   filterMediaType: 'all',
@@ -181,6 +184,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterMinRating: get().filterMinRating,
         filterHasAudio: get().filterHasAudio,
         filterMinDuration: get().filterMinDuration,
+        filterMaxDuration: get().filterMaxDuration > 0 ? get().filterMaxDuration : null,
         filterWatchedStatus: get().filterWatchedStatus,
         filterWatchDir: get().filterWatchDir,
         filterMediaType: get().filterMediaType,
@@ -222,6 +226,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterMinRating: get().filterMinRating,
         filterHasAudio: get().filterHasAudio,
         filterMinDuration: get().filterMinDuration,
+        filterMaxDuration: get().filterMaxDuration > 0 ? get().filterMaxDuration : null,
         filterWatchedStatus: get().filterWatchedStatus,
         filterWatchDir: get().filterWatchDir,
         filterMediaType: get().filterMediaType,
@@ -274,6 +279,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setMinDuration: async (seconds: number) => {
     set({ filterMinDuration: seconds, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setMaxDuration: async (seconds: number) => {
+    set({ filterMaxDuration: seconds, currentPage: 1 });
     await get().fetchVideos();
   },
 
