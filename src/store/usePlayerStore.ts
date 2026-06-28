@@ -32,7 +32,7 @@ interface PlayerActions {
   pauseResume: () => Promise<void>;
   seekTo: (seconds: number) => Promise<void>;
   toggleLoop: () => Promise<void>;
-  toggleShuffle: () => void;
+  toggleShuffle: () => Promise<void>;
   toggleMiniPlayer: () => void;
   playShuffleAll: () => Promise<void>;
   setSpeed: (speed: number) => Promise<void>;
@@ -318,26 +318,43 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       });
     },
 
-    toggleShuffle: () => {
+    toggleShuffle: async () => {
       const { isShuffle, queue, queueIndex, originalQueue } = get();
 
       if (!isShuffle) {
         const current = queue[queueIndex];
-        if (!current || queue.length <= 1) {
-          set({ isShuffle: !isShuffle });
+        if (!current) {
+          set({ isShuffle: true });
           return;
         }
-        const rest = queue.filter((_, i) => i !== queueIndex);
-        for (let i = rest.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [rest[i], rest[j]] = [rest[j], rest[i]];
+        try {
+          const allVideos = (await useLibraryStore.getState().fetchAllForShuffle())
+            .filter((v) => v.media_type !== 'image');
+          const rest = allVideos.filter((v) => v.id !== current.id);
+          for (let i = rest.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [rest[i], rest[j]] = [rest[j], rest[i]];
+          }
+          set({
+            isShuffle: true,
+            originalQueue: queue,
+            queue: [current, ...rest],
+            queueIndex: 0,
+          });
+        } catch (e) {
+          console.error('[toggleShuffle] 全件取得失敗、現在のキューでシャッフル:', e);
+          const rest = queue.filter((_, i) => i !== queueIndex);
+          for (let i = rest.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [rest[i], rest[j]] = [rest[j], rest[i]];
+          }
+          set({
+            isShuffle: true,
+            originalQueue: queue,
+            queue: [current, ...rest],
+            queueIndex: 0,
+          });
         }
-        set({
-          isShuffle: true,
-          originalQueue: queue,
-          queue: [current, ...rest],
-          queueIndex: 0,
-        });
       } else {
         const current = queue[queueIndex];
         const restored = originalQueue.length > 0 ? originalQueue : queue;
