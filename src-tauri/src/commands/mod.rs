@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod db_export;
 pub mod db_playlists;
 pub mod db_settings;

@@ -29,6 +29,21 @@ export interface SubtitleFile {
   ext: string;
 }
 
+export interface AiMatchedTag {
+  tag_id: number;
+  score: number;
+}
+
+export interface AiNewSuggestion {
+  name: string;
+  score: number;
+}
+
+export interface AiSuggestionResult {
+  matched_tags: AiMatchedTag[];
+  new_suggestions: AiNewSuggestion[];
+}
+
 export interface SmartPlaylist {
   id: number;
   name: string;

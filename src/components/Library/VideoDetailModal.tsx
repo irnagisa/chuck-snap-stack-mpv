@@ -5,10 +5,12 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { useTagStore } from '../../store/useTagStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { TranscodeModal } from './TranscodeModal';
 import { Select } from '../common/Select';
-import type { Video, SubtitleFile } from '../../types';
+import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
+import { listen } from '@tauri-apps/api/event';
 
 interface Props {
   video: Video;
@@ -53,6 +55,15 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [localSourceUrl, setLocalSourceUrl] = useState(video.source_url ?? '');
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // AI tag suggestion state
+  const [aiModelDownloaded, setAiModelDownloaded] = useState<boolean | null>(null);
+  const [aiDownloading, setAiDownloading] = useState(false);
+  const [aiDownloadProgress, setAiDownloadProgress] = useState(0);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [aiResult, setAiResult] = useState<AiSuggestionResult | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const { tags, addTagToVideo, createTag, fetchTags } = useTagStore();
+
   useEffect(() => {
     invoke<number>('get_file_size', { path: video.path })
       .then(setFileSizeBytes)
@@ -61,6 +72,77 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       .then(setDimensions)
       .catch(() => {});
   }, [video.path]);
+
+  useEffect(() => {
+    invoke<{ downloaded: boolean; downloading: boolean; progress: number }>(
+      'check_ai_model_status'
+    )
+      .then((s) => {
+        setAiModelDownloaded(s.downloaded);
+        setAiDownloading(s.downloading);
+        setAiDownloadProgress(s.progress);
+      })
+      .catch(() => setAiModelDownloaded(false));
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<number>('ai://download-progress', (e) => {
+      setAiDownloadProgress(e.payload);
+      if (e.payload >= 1.0) {
+        setAiDownloading(false);
+        setAiModelDownloaded(true);
+      }
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
+
+  const handleDownloadAiModel = async () => {
+    setAiDownloading(true);
+    setAiDownloadProgress(0);
+    setAiError(null);
+    try {
+      await invoke('download_ai_model');
+    } catch (e) {
+      setAiError(String(e));
+      setAiDownloading(false);
+    }
+  };
+
+  const handleAnalyzeTags = async () => {
+    setAiAnalyzing(true);
+    setAiError(null);
+    try {
+      const result = await invoke<AiSuggestionResult>('analyze_thumbnail_for_tags', {
+        videoId: video.id,
+      });
+      setAiResult(result);
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+  const handleApplyMatchedTag = async (tagId: number) => {
+    try {
+      await addTagToVideo(video.id, tagId);
+    } catch {
+      // ignore duplicate
+    }
+  };
+
+  const handleNewSuggestionClick = async (sug: AiNewSuggestion) => {
+    const name = window.prompt('新しいタグ名を確認してください:', sug.name);
+    if (!name) return;
+    try {
+      const tag = await createTag(name.trim(), '#6366f1');
+      await addTagToVideo(video.id, tag.id);
+      await fetchTags();
+    } catch {
+      // ignore duplicate
+    }
+  };
 
   const progressPercent =
     video.duration && video.duration > 0
@@ -427,6 +509,122 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
                 </button>
               </div>
+            </div>
+
+            {/* AI タグ提案 */}
+            <div className="pt-4 pb-4 flex flex-col gap-2">
+              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
+                AI タグ提案
+              </label>
+
+              {aiModelDownloaded === false && !aiDownloading && (
+                <button
+                  type="button"
+                  onClick={handleDownloadAiModel}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-medium"
+                >
+                  AI タグ機能を有効にする（~200 MB）
+                </button>
+              )}
+
+              {aiDownloading && (
+                <div className="flex flex-col gap-1">
+                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-500 rounded-full transition-all"
+                      style={{ width: `${Math.round(aiDownloadProgress * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                    ダウンロード中… {Math.round(aiDownloadProgress * 100)}%
+                  </p>
+                </div>
+              )}
+
+              {aiModelDownloaded && !aiDownloading && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleAnalyzeTags}
+                    disabled={aiAnalyzing || !localThumbnail}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-medium disabled:opacity-50"
+                  >
+                    {aiAnalyzing ? '分析中…' : 'タグを分析する'}
+                  </button>
+
+                  {!localThumbnail && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      サムネイルが必要です
+                    </p>
+                  )}
+
+                  {aiError && (
+                    <p className="text-xs text-red-500">{aiError}</p>
+                  )}
+
+                  {aiResult && (
+                    <div className="flex flex-col gap-3 mt-1">
+                      {/* 既存タグ候補 */}
+                      {aiResult.matched_tags.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            既存タグ候補
+                          </p>
+                          {aiResult.matched_tags.map((m) => {
+                            const tag = tags.find((t) => t.id === m.tag_id);
+                            if (!tag) return null;
+                            return (
+                              <label
+                                key={m.tag_id}
+                                className="flex items-center gap-2 cursor-pointer text-xs"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="w-3.5 h-3.5 accent-indigo-500"
+                                  onChange={(e) => {
+                                    if (e.target.checked) handleApplyMatchedTag(m.tag_id);
+                                  }}
+                                />
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-white text-xs"
+                                  style={{ backgroundColor: tag.color }}
+                                >
+                                  {tag.name}
+                                </span>
+                                <span className="text-gray-400 dark:text-gray-500">
+                                  {(m.score * 100).toFixed(0)}%
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* 新規タグ候補 */}
+                      {aiResult.new_suggestions.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            新規タグ候補
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {aiResult.new_suggestions.map((sug) => (
+                              <button
+                                key={sug.name}
+                                type="button"
+                                onClick={() => handleNewSuggestionClick(sug)}
+                                className="px-2 py-0.5 bg-gray-100 hover:bg-indigo-100 dark:bg-gray-800 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300 text-xs rounded border border-gray-200 dark:border-gray-700 hover:border-indigo-400 transition-colors"
+                                title={`スコア: ${(sug.score * 100).toFixed(0)}%`}
+                              >
+                                + {sug.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* 字幕ファイル管理 */}
