@@ -27,6 +27,8 @@ export default function StackCard({
     missing_metadata: '未設定項目',
     almost_done: 'ほぼ完了',
     directory: 'フォルダ',
+    category: 'カテゴリ',
+    tag: 'タグ',
   };
 
   const toggleSelect = (id: number) => {

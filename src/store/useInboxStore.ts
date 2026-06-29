@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { create } from 'zustand';
-import type { Video } from '../types';
+import type { Video, Tag, Category } from '../types';
 
 export interface InboxStats {
   total: number;
@@ -12,8 +12,10 @@ export interface InboxStats {
 }
 
 // Inbox videos grouped into a stack (display unit)
+export type StackType = 'source' | 'date' | 'missing_metadata' | 'almost_done' | 'directory' | 'tag' | 'category';
+
 export interface InboxStack {
-  stackType: 'source' | 'date' | 'missing_metadata' | 'almost_done' | 'directory';
+  stackType: StackType;
   groupKey: string;
   label: string;
   count: number;
@@ -36,7 +38,11 @@ interface InboxActions {
   setQuickSortIndex: (index: number) => void;
 }
 
-function buildStacks(videos: Video[]): InboxStack[] {
+function buildStacks(
+  videos: Video[],
+  videoTags: Record<number, Tag[]> = {},
+  categories: Category[] = [],
+): InboxStack[] {
   const stacks: InboxStack[] = [];
 
   // Source Stack — group by source_type
@@ -107,6 +113,7 @@ function buildStacks(videos: Video[]): InboxStack[] {
   // Missing Metadata Stack
   const missingCat = videos.filter((v) => v.category_id == null);
   const missingRating = videos.filter((v) => !v.rating);
+  const missingTagsList = videos.filter((v) => (videoTags[v.id] ?? []).length === 0);
   if (missingCat.length > 0) {
     stacks.push({
       stackType: 'missing_metadata',
@@ -125,8 +132,17 @@ function buildStacks(videos: Video[]): InboxStack[] {
       videos: missingRating.slice(0, 10),
     });
   }
+  if (missingTagsList.length > 0) {
+    stacks.push({
+      stackType: 'missing_metadata',
+      groupKey: 'tags',
+      label: 'タグ未設定',
+      count: missingTagsList.length,
+      videos: missingTagsList.slice(0, 10),
+    });
+  }
 
-  // Almost Done Stack (category + rating both set, just missing tags — from stats)
+  // Almost Done Stack (category + rating both set)
   const almostDone = videos.filter((v) => {
     const hasCategory = v.category_id != null;
     const hasRating = (v.rating ?? 0) > 0;
@@ -163,6 +179,43 @@ function buildStacks(videos: Video[]): InboxStack[] {
         videos: g.videos.slice(0, 10),
       });
     }
+  }
+
+  // Category Stack — group by category_id
+  const catGroups = new Map<number, { label: string; videos: Video[] }>();
+  for (const v of videos) {
+    if (v.category_id == null) continue;
+    const cat = categories.find((c) => c.id === v.category_id);
+    const label = cat?.name ?? String(v.category_id);
+    if (!catGroups.has(v.category_id)) catGroups.set(v.category_id, { label, videos: [] });
+    catGroups.get(v.category_id)!.videos.push(v);
+  }
+  for (const [catId, { label, videos: vids }] of catGroups.entries()) {
+    stacks.push({
+      stackType: 'category',
+      groupKey: String(catId),
+      label,
+      count: vids.length,
+      videos: vids.slice(0, 10),
+    });
+  }
+
+  // Tag Stack — group by tag (one stack per distinct tag)
+  const tagGroups = new Map<number, { tag: Tag; videos: Video[] }>();
+  for (const v of videos) {
+    for (const tag of videoTags[v.id] ?? []) {
+      if (!tagGroups.has(tag.id)) tagGroups.set(tag.id, { tag, videos: [] });
+      tagGroups.get(tag.id)!.videos.push(v);
+    }
+  }
+  for (const [, { tag, videos: vids }] of tagGroups.entries()) {
+    stacks.push({
+      stackType: 'tag',
+      groupKey: String(tag.id),
+      label: tag.name,
+      count: vids.length,
+      videos: vids.slice(0, 10),
+    });
   }
 
   return stacks;
