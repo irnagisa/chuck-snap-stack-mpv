@@ -320,13 +320,26 @@ function App() {
         >
           {t('app.downloadUrl')}
         </button>
-        <input
-          className="flex-1 border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={t('app.searchPlaceholder')}
-          disabled={!isDbReady}
-        />
+        <div className="relative flex-1 min-w-0">
+          <input
+            className="w-full border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0 pr-7"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('app.searchPlaceholder')}
+            disabled={!isDbReady}
+          />
+          {searchInput && (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 leading-none"
+              onClick={() => setSearchInput('')}
+              tabIndex={-1}
+              aria-label="クリア"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <button
           type="button"
           title={t('app.statsTitle')}
