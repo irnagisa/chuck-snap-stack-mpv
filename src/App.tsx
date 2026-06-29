@@ -122,8 +122,12 @@ function App() {
   const [mainView, setMainView] = useState<MainView>('library');
   const [searchInput, setSearchInput] = useState(filterSearch);
   const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
+    const presets = [120, 180, 240, 320];
     const saved = localStorage.getItem('gridItemMinWidth');
-    return saved ? Number(saved) : 160;
+    if (!saved) return 180;
+    const n = Number(saved);
+    // プリセット以外の値（旧スライダー値）は最近傍に丸める
+    return presets.reduce((prev, cur) => Math.abs(cur - n) < Math.abs(prev - n) ? cur : prev);
   });
   const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
   const [maxDurationInput, setMaxDurationInput] = useState(filterMaxDuration > 0 ? String(filterMaxDuration) : '');
@@ -737,18 +741,27 @@ function App() {
                   </div>
 
                   {/* グリッドサイズ */}
-                  <div className="flex items-center gap-1.5 ml-auto shrink-0" title="グリッドサイズ">
-                    <span className="text-xs text-gray-400 dark:text-gray-500">⊞</span>
-                    <input
-                      type="range"
-                      min={100}
-                      max={320}
-                      step={20}
-                      value={gridItemMinWidth}
-                      onChange={(e) => setGridItemMinWidth(Number(e.target.value))}
-                      className="w-20 accent-blue-500 cursor-pointer"
-                      title={`カードサイズ: ${gridItemMinWidth}px`}
-                    />
+                  <div className="flex items-center gap-0.5 ml-auto shrink-0">
+                    {([
+                      { label: 'S', value: 120 },
+                      { label: 'M', value: 180 },
+                      { label: 'L', value: 240 },
+                      { label: 'XL', value: 320 },
+                    ] as const).map(({ label, value }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          gridItemMinWidth === value
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                        onClick={() => setGridItemMinWidth(value)}
+                        title={`カードサイズ: ${label}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
