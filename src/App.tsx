@@ -121,6 +121,10 @@ function App() {
 
   const [mainView, setMainView] = useState<MainView>('library');
   const [searchInput, setSearchInput] = useState(filterSearch);
+  const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('gridItemMinWidth');
+    return saved ? Number(saved) : 160;
+  });
   const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
   const [maxDurationInput, setMaxDurationInput] = useState(filterMaxDuration > 0 ? String(filterMaxDuration) : '');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
@@ -128,6 +132,10 @@ function App() {
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
   const [viewingImage, setViewingImage] = useState<Video | null>(null);
   const [pendingImport, setPendingImport] = useState<{ path: string; fileCount: number; useDirAsCategory: boolean } | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('gridItemMinWidth', String(gridItemMinWidth));
+  }, [gridItemMinWidth]);
 
   // Debounce search input → store
   useEffect(() => {
@@ -231,6 +239,16 @@ function App() {
     },
     [videos, playWithQueue]
   );
+
+  const handleContextSetTag = useCallback((v: Video) => {
+    setSelectedVideoIds(new Set([v.id]));
+    openBulkModal('tag');
+  }, [openBulkModal]);
+
+  const handleContextSetCategory = useCallback((v: Video) => {
+    setSelectedVideoIds(new Set([v.id]));
+    openBulkModal('category');
+  }, [openBulkModal]);
 
   const imageList = useMemo(() => videos.filter((v) => v.media_type === 'image'), [videos]);
 
@@ -717,6 +735,21 @@ function App() {
                     />
                     <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('filters.durationSuffix')}</span>
                   </div>
+
+                  {/* グリッドサイズ */}
+                  <div className="flex items-center gap-1.5 ml-auto shrink-0" title="グリッドサイズ">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">⊞</span>
+                    <input
+                      type="range"
+                      min={100}
+                      max={320}
+                      step={20}
+                      value={gridItemMinWidth}
+                      onChange={(e) => setGridItemMinWidth(Number(e.target.value))}
+                      className="w-20 accent-blue-500 cursor-pointer"
+                      title={`カードサイズ: ${gridItemMinWidth}px`}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -791,9 +824,12 @@ function App() {
                   currentVideoId={currentVideo?.id ?? null}
                   detailVideoId={detailVideo?.id ?? null}
                   scrollResetKey={scrollResetKey}
+                  itemMinWidth={gridItemMinWidth}
                   onPlay={handlePlay}
                   onShowDetail={openDetailVideo}
                   onAddToPlaylist={openAddToPlaylist}
+                  onSetTag={handleContextSetTag}
+                  onSetCategory={handleContextSetCategory}
                   selectedIds={selectedVideoIds}
                   onSelectionChange={setSelectedVideoIds}
                 />
