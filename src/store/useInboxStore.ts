@@ -142,11 +142,13 @@ function buildStacks(
     });
   }
 
-  // Almost Done Stack (category + rating both set)
+  // Almost Done Stack — 3条件のうち2つが揃っている (残り1つで自動卒業)
   const almostDone = videos.filter((v) => {
     const hasCategory = v.category_id != null;
     const hasRating = (v.rating ?? 0) > 0;
-    return hasCategory && hasRating;
+    const hasTags = (videoTags[v.id] ?? []).length > 0;
+    const score = [hasCategory, hasRating, hasTags].filter(Boolean).length;
+    return score === 2;
   });
   if (almostDone.length > 0) {
     stacks.push({

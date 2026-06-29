@@ -469,10 +469,26 @@ pub async fn db_update_video(
     let sql = format!("UPDATE videos SET {} WHERE id = ?", set_parts.join(", "));
     conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
         .map_err(|e| e.to_string())?;
+    auto_graduate_if_complete(&conn, video_id).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 // ── inbox ─────────────────────────────────────────────────────────────────────
+
+/// カテゴリ・評価・タグが全て揃っていれば inbox から自動卒業する。
+pub(crate) fn auto_graduate_if_complete(
+    conn: &rusqlite::Connection,
+    video_id: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE videos SET status = NULL WHERE id = ?1 AND status = 'inbox'
+         AND category_id IS NOT NULL
+         AND rating IS NOT NULL AND rating > 0
+         AND EXISTS (SELECT 1 FROM video_tags WHERE video_id = ?1)",
+        [video_id],
+    )?;
+    Ok(())
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
