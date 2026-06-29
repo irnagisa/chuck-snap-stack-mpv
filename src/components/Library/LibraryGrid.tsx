@@ -111,7 +111,7 @@ const VideoCard = memo(function VideoCard({
           <img
             src={convertFileSrc(v.thumbnail)}
             alt={v.title ?? ''}
-            className={`w-full h-full ${isImage ? 'object-contain bg-black' : 'object-cover'}`}
+            className="w-full h-full object-cover"
             loading="lazy"
           />
         ) : (
