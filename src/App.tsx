@@ -742,6 +742,13 @@ function App() {
 
                   {/* グリッドサイズ */}
                   <div className="flex items-center gap-0.5 ml-auto shrink-0">
+                    {/* サムネイルサイズアイコン */}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 mr-1 shrink-0">
+                      <rect x="1" y="1" width="6" height="6" rx="0.8" />
+                      <rect x="9" y="1" width="6" height="6" rx="0.8" />
+                      <rect x="1" y="9" width="6" height="6" rx="0.8" />
+                      <rect x="9" y="9" width="6" height="6" rx="0.8" />
+                    </svg>
                     {([
                       { label: 'S', value: 120 },
                       { label: 'M', value: 180 },
