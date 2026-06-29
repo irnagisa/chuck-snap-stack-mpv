@@ -77,6 +77,7 @@
     "rename": "重命名",
     "delete": "删除",
     "rescan": "重新扫描",
+    "setRating": "设置评分",
     "deselect": "取消选择"
   },
   "pagination": {
@@ -303,6 +304,15 @@
     "noTags": "暂无标签",
     "apply": "应用（{{count}} 个标签）",
     "applying": "处理中...",
+    "cancel": "取消"
+  },
+  "bulkRating": {
+    "title": "批量设置评分",
+    "desc": "选择要应用于 {{count}} 个视频的评分",
+    "noSelection": "点击星星选择评分",
+    "selected": "设置为 ★ {{count}}",
+    "applying": "处理中...",
+    "apply": "应用",
     "cancel": "取消"
   },
   "bulkCategory": {

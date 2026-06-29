@@ -77,6 +77,7 @@
     "rename": "リネーム",
     "delete": "削除",
     "rescan": "再スキャン",
+    "setRating": "評価設定",
     "deselect": "選択解除"
   },
   "pagination": {
@@ -303,6 +304,15 @@
     "noTags": "タグがありません",
     "apply": "適用 ({{count}}件のタグ)",
     "applying": "処理中...",
+    "cancel": "キャンセル"
+  },
+  "bulkRating": {
+    "title": "一括評価設定",
+    "desc": "{{count}} 件の動画に設定する評価を選択",
+    "noSelection": "星をクリックして評価を選択",
+    "selected": "★ {{count}} で設定",
+    "applying": "処理中...",
+    "apply": "適用",
     "cancel": "キャンセル"
   },
   "bulkCategory": {
