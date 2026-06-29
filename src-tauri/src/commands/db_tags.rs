@@ -5,6 +5,7 @@ use tauri::State;
 
 use crate::db::DbState;
 use super::utils::resolve_unique_path;
+use super::db_videos::auto_graduate_if_complete;
 
 #[derive(Serialize, Deserialize)]
 pub struct Tag {
@@ -723,6 +724,7 @@ pub async fn db_add_tag_to_video(
         [video_id, tag_id],
     )
     .map_err(|e| e.to_string())?;
+    auto_graduate_if_complete(&conn, video_id).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -753,13 +755,15 @@ pub async fn db_set_video_category(
             "UPDATE videos SET category_id = NULL, status = 'inbox' WHERE id = ?1",
             [video_id],
         )
+        .map_err(|e| e.to_string())?;
     } else {
         conn.execute(
-            "UPDATE videos SET category_id = ?1, status = NULL WHERE id = ?2",
+            "UPDATE videos SET category_id = ?1 WHERE id = ?2",
             rusqlite::params![category_id, video_id],
         )
+        .map_err(|e| e.to_string())?;
+        auto_graduate_if_complete(&conn, video_id).map_err(|e| e.to_string())?;
     }
-    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -784,6 +788,17 @@ pub async fn db_add_tag_to_multiple(
             params.push(rusqlite::types::Value::Integer(tag_id));
         }
         conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+            .map_err(|e| e.to_string())?;
+
+        // タグが追加されたのでカテゴリ・評価が揃っていれば自動卒業
+        let id_ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let graduate_sql = format!(
+            "UPDATE videos SET status = NULL WHERE id IN ({id_ph}) AND status = 'inbox'
+             AND category_id IS NOT NULL AND rating IS NOT NULL AND rating > 0"
+        );
+        let id_params: Vec<rusqlite::types::Value> =
+            chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
+        conn.execute(&graduate_sql, rusqlite::params_from_iter(id_params.iter()))
             .map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -819,13 +834,25 @@ pub async fn db_set_category_multiple(
         let batch_size = 498;
         for chunk in video_ids.chunks(batch_size) {
             let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let sql = format!("UPDATE videos SET category_id = ?, status = NULL WHERE id IN ({ph})");
+            let sql = format!("UPDATE videos SET category_id = ? WHERE id IN ({ph})");
             let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() + 1);
             params.push(rusqlite::types::Value::Integer(category_id.unwrap()));
             for &vid in chunk {
                 params.push(rusqlite::types::Value::Integer(vid));
             }
             conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+                .map_err(|e| e.to_string())?;
+
+            // カテゴリが設定されたので評価・タグが揃っていれば自動卒業
+            let id_ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let graduate_sql = format!(
+                "UPDATE videos SET status = NULL WHERE id IN ({id_ph}) AND status = 'inbox'
+                 AND rating IS NOT NULL AND rating > 0
+                 AND id IN (SELECT DISTINCT video_id FROM video_tags)"
+            );
+            let id_params: Vec<rusqlite::types::Value> =
+                chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
+            conn.execute(&graduate_sql, rusqlite::params_from_iter(id_params.iter()))
                 .map_err(|e| e.to_string())?;
         }
     }

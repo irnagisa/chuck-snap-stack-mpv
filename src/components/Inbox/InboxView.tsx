@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useInboxStore, buildStacks, type InboxStack } from '../../store/useInboxStore';
+import { useInboxStore, buildStacks, type InboxStack, type StackType } from '../../store/useInboxStore';
 import { useModalStore } from '../../store/useModalStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
+import { useTagStore } from '../../store/useTagStore';
 import type { Video } from '../../types';
+import type { Tag } from '../../types';
 import StackCard from './StackCard';
 import QuickSort from './QuickSort';
 
@@ -11,14 +13,26 @@ export default function InboxView() {
     useInboxStore();
   const openDetailVideo = useModalStore((s) => s.openDetailVideo);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
+  const { videoTags, categories, fetchVideoTagsForIds, fetchCategories } = useTagStore();
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // フィルター: 非表示にするスタック種別 (空 = 全表示)
+  const [hiddenTypes, setHiddenTypes] = useState<Set<StackType>>(new Set());
 
   useEffect(() => {
     fetchInbox();
+    fetchCategories();
   }, []);
 
-  const stacks = buildStacks(videos);
+  useEffect(() => {
+    if (videos.length > 0) {
+      fetchVideoTagsForIds(videos.map((v) => v.id));
+    }
+  }, [videos]);
+
+  const stacks = buildStacks(videos, videoTags, categories).filter(
+    (s) => !hiddenTypes.has(s.stackType),
+  );
 
   const handlePlay = (v: Video) => {
     playWithQueue([v], 0);
@@ -26,13 +40,22 @@ export default function InboxView() {
 
   const handleStackGraduate = async (stack: InboxStack) => {
     const ids = videos
-      .filter((v) => matchesStack(v, stack))
+      .filter((v) => matchesStack(v, stack, videoTags))
       .map((v) => v.id);
     await graduateFromInbox(ids);
   };
 
+  const toggleType = (type: StackType) => {
+    setHiddenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
+
   if (activeStack) {
-    const stackVideos = videos.filter((v) => matchesStack(v, activeStack));
+    const stackVideos = videos.filter((v) => matchesStack(v, activeStack, videoTags));
     return (
       <QuickSort
         stack={activeStack}
@@ -44,6 +67,16 @@ export default function InboxView() {
       />
     );
   }
+
+  const filterDefs: { type: StackType; label: string }[] = [
+    { type: 'source', label: '入手元' },
+    { type: 'date', label: '日付' },
+    { type: 'missing_metadata', label: '未設定項目' },
+    { type: 'almost_done', label: 'ほぼ完了' },
+    { type: 'directory', label: 'フォルダ' },
+    { type: 'category', label: 'カテゴリ' },
+    { type: 'tag', label: 'タグ' },
+  ];
 
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -66,7 +99,7 @@ export default function InboxView() {
           </button>
         </div>
         {stats && (
-          <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400 mb-2">
             <span>全体: {stats.total.toLocaleString()}</span>
             <span className="text-amber-600 dark:text-amber-400">Inbox: {stats.inboxCount}</span>
             <span>カテゴリ未設定: {stats.missingCategory}</span>
@@ -74,6 +107,26 @@ export default function InboxView() {
             <span className="text-green-600 dark:text-green-400">もう少し: {stats.almostDone}</span>
           </div>
         )}
+        {/* Stack type filter chips */}
+        <div className="flex flex-wrap gap-1">
+          {filterDefs.map(({ type, label }) => {
+            const active = !hiddenTypes.has(type);
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => toggleType(type)}
+                className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
+                  active
+                    ? 'bg-blue-100 dark:bg-blue-900/50 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                    : 'bg-transparent border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Bulk operation bar */}
@@ -119,6 +172,11 @@ export default function InboxView() {
             ))}
           </div>
         )}
+        {!isLoading && videos.length > 0 && stacks.length === 0 && (
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
+            表示するスタックがありません（フィルターをご確認ください）
+          </p>
+        )}
       </div>
     </div>
   );
@@ -144,14 +202,21 @@ function getDirPath(videoPath: string): string {
   return videoPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
 }
 
-function matchesStack(v: import('../../types').Video, stack: import('../../store/useInboxStore').InboxStack): boolean {
+function matchesStack(
+  v: Video,
+  stack: InboxStack,
+  videoTags: Record<number, Tag[]>,
+): boolean {
   if (stack.stackType === 'source') return (v.source_type ?? 'unknown') === stack.groupKey;
   if (stack.stackType === 'date') return getDateKey(v.created_at) === stack.groupKey;
   if (stack.stackType === 'missing_metadata') {
     if (stack.groupKey === 'category') return v.category_id == null;
     if (stack.groupKey === 'rating') return !v.rating;
+    if (stack.groupKey === 'tags') return (videoTags[v.id] ?? []).length === 0;
   }
   if (stack.stackType === 'almost_done') return v.category_id != null && (v.rating ?? 0) > 0;
   if (stack.stackType === 'directory') return getDirPath(v.path) === stack.groupKey;
+  if (stack.stackType === 'category') return String(v.category_id) === stack.groupKey;
+  if (stack.stackType === 'tag') return (videoTags[v.id] ?? []).some((t) => String(t.id) === stack.groupKey);
   return false;
 }

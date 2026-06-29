@@ -17,6 +17,7 @@ import { useSettingsStore } from "./store/useSettingsStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { MiniPlayer } from "./components/Player/MiniPlayer";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
+import { LibraryList } from "./components/Library/LibraryList";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
 import { WatchDirSidebar } from "./components/Library/WatchDirSidebar";
@@ -121,6 +122,20 @@ function App() {
 
   const [mainView, setMainView] = useState<MainView>('library');
   const [searchInput, setSearchInput] = useState(filterSearch);
+  const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
+    const presets = [120, 180, 240, 320];
+    const saved = localStorage.getItem('gridItemMinWidth');
+    if (!saved) return 180;
+    const n = Number(saved);
+    // プリセット以外の値（旧スライダー値）は最近傍に丸める
+    return presets.reduce((prev, cur) => Math.abs(cur - n) < Math.abs(prev - n) ? cur : prev);
+  });
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    return (localStorage.getItem('viewMode') as 'grid' | 'list') ?? 'grid';
+  });
+  const [listItemSize, setListItemSize] = useState<'S' | 'M' | 'L' | 'XL'>(() => {
+    return (localStorage.getItem('listItemSize') as 'S' | 'M' | 'L' | 'XL') ?? 'M';
+  });
   const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
   const [maxDurationInput, setMaxDurationInput] = useState(filterMaxDuration > 0 ? String(filterMaxDuration) : '');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
@@ -128,6 +143,18 @@ function App() {
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
   const [viewingImage, setViewingImage] = useState<Video | null>(null);
   const [pendingImport, setPendingImport] = useState<{ path: string; fileCount: number; useDirAsCategory: boolean } | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('gridItemMinWidth', String(gridItemMinWidth));
+  }, [gridItemMinWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('viewMode', viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('listItemSize', listItemSize);
+  }, [listItemSize]);
 
   // Debounce search input → store
   useEffect(() => {
@@ -232,6 +259,16 @@ function App() {
     [videos, playWithQueue]
   );
 
+  const handleContextSetTag = useCallback((v: Video) => {
+    setSelectedVideoIds(new Set([v.id]));
+    openBulkModal('tag');
+  }, [openBulkModal]);
+
+  const handleContextSetCategory = useCallback((v: Video) => {
+    setSelectedVideoIds(new Set([v.id]));
+    openBulkModal('category');
+  }, [openBulkModal]);
+
   const imageList = useMemo(() => videos.filter((v) => v.media_type === 'image'), [videos]);
 
   return (
@@ -298,13 +335,26 @@ function App() {
         >
           {t('app.downloadUrl')}
         </button>
-        <input
-          className="flex-1 border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={t('app.searchPlaceholder')}
-          disabled={!isDbReady}
-        />
+        <div className="relative flex-1 min-w-0">
+          <input
+            className="w-full border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0 pr-7"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('app.searchPlaceholder')}
+            disabled={!isDbReady}
+          />
+          {searchInput && (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 leading-none"
+              onClick={() => setSearchInput('')}
+              tabIndex={-1}
+              aria-label="クリア"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <button
           type="button"
           title={t('app.statsTitle')}
@@ -717,6 +767,82 @@ function App() {
                     />
                     <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('filters.durationSuffix')}</span>
                   </div>
+
+                  {/* 表示モード・グリッドサイズ */}
+                  <div className="flex items-center gap-1 ml-auto shrink-0">
+                    {/* グリッド/リスト切替 */}
+                    <div className="flex gap-0.5 border border-gray-300 dark:border-gray-600 rounded p-0.5">
+                      <button
+                        type="button"
+                        className={`p-1 rounded transition-colors ${
+                          viewMode === 'grid'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        onClick={() => setViewMode('grid')}
+                        title="グリッド表示"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                          <rect x="1" y="1" width="6" height="6" rx="0.8" />
+                          <rect x="9" y="1" width="6" height="6" rx="0.8" />
+                          <rect x="1" y="9" width="6" height="6" rx="0.8" />
+                          <rect x="9" y="9" width="6" height="6" rx="0.8" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className={`p-1 rounded transition-colors ${
+                          viewMode === 'list'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        onClick={() => setViewMode('list')}
+                        title="リスト表示"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                          <rect x="1" y="2" width="14" height="2.5" rx="0.8" />
+                          <rect x="1" y="6.75" width="14" height="2.5" rx="0.8" />
+                          <rect x="1" y="11.5" width="14" height="2.5" rx="0.8" />
+                        </svg>
+                      </button>
+                    </div>
+                    {/* サイズボタン (モードに応じて切替) */}
+                    {viewMode === 'grid' && ([
+                      { label: 'S', value: 120 },
+                      { label: 'M', value: 180 },
+                      { label: 'L', value: 240 },
+                      { label: 'XL', value: 320 },
+                    ] as const).map(({ label, value }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          gridItemMinWidth === value
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                        onClick={() => setGridItemMinWidth(value)}
+                        title={`カードサイズ: ${label}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    {viewMode === 'list' && (['S', 'M', 'L', 'XL'] as const).map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          listItemSize === size
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                        onClick={() => setListItemSize(size)}
+                        title={`行サイズ: ${size}`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -786,17 +912,37 @@ function App() {
               )}
 
               <div className="flex-1 min-h-0">
-                <LibraryGrid
-                  videos={videos}
-                  currentVideoId={currentVideo?.id ?? null}
-                  detailVideoId={detailVideo?.id ?? null}
-                  scrollResetKey={scrollResetKey}
-                  onPlay={handlePlay}
-                  onShowDetail={openDetailVideo}
-                  onAddToPlaylist={openAddToPlaylist}
-                  selectedIds={selectedVideoIds}
-                  onSelectionChange={setSelectedVideoIds}
-                />
+                {viewMode === 'list' ? (
+                  <LibraryList
+                    videos={videos}
+                    currentVideoId={currentVideo?.id ?? null}
+                    detailVideoId={detailVideo?.id ?? null}
+                    scrollResetKey={scrollResetKey}
+                    listRowSize={listItemSize}
+                    onPlay={handlePlay}
+                    onShowDetail={openDetailVideo}
+                    onAddToPlaylist={openAddToPlaylist}
+                    onSetTag={handleContextSetTag}
+                    onSetCategory={handleContextSetCategory}
+                    selectedIds={selectedVideoIds}
+                    onSelectionChange={setSelectedVideoIds}
+                  />
+                ) : (
+                  <LibraryGrid
+                    videos={videos}
+                    currentVideoId={currentVideo?.id ?? null}
+                    detailVideoId={detailVideo?.id ?? null}
+                    scrollResetKey={scrollResetKey}
+                    itemMinWidth={gridItemMinWidth}
+                    onPlay={handlePlay}
+                    onShowDetail={openDetailVideo}
+                    onAddToPlaylist={openAddToPlaylist}
+                    onSetTag={handleContextSetTag}
+                    onSetCategory={handleContextSetCategory}
+                    selectedIds={selectedVideoIds}
+                    onSelectionChange={setSelectedVideoIds}
+                  />
+                )}
               </div>
 
               {/* ページネーション */}

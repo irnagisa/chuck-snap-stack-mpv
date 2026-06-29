@@ -6,6 +6,7 @@ import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { TagBadge } from './TagBadge';
 import { DeleteVideoModal } from './DeleteVideoModal';
+import { VideoContextMenu } from './VideoContextMenu';
 
 interface VideoCardProps {
   video: Video;
@@ -20,6 +21,7 @@ interface VideoCardProps {
   onAddToPlaylist?: (video: Video) => void;
   onDelete: (video: Video) => void;
   onCheckbox: (e: React.MouseEvent, video: Video, idx: number) => void;
+  onContextMenu: (e: React.MouseEvent, video: Video) => void;
 }
 
 const VideoCard = memo(function VideoCard({
@@ -35,6 +37,7 @@ const VideoCard = memo(function VideoCard({
   onAddToPlaylist,
   onDelete,
   onCheckbox,
+  onContextMenu,
 }: VideoCardProps) {
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
@@ -75,6 +78,7 @@ const VideoCard = memo(function VideoCard({
   return (
     <div
       ref={cardRef}
+      onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, v); }}
       className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
         fileMissing
           ? 'border-red-500/60 opacity-60'
@@ -107,7 +111,7 @@ const VideoCard = memo(function VideoCard({
           <img
             src={convertFileSrc(v.thumbnail)}
             alt={v.title ?? ''}
-            className={`w-full h-full ${isImage ? 'object-contain bg-black' : 'object-cover'}`}
+            className="w-full h-full object-cover"
             loading="lazy"
           />
         ) : (
@@ -218,9 +222,12 @@ interface Props {
   currentVideoId: number | null;
   detailVideoId?: number | null;
   scrollResetKey?: string | number;
+  itemMinWidth?: number;
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
+  onSetTag?: (video: Video) => void;
+  onSetCategory?: (video: Video) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
 }
@@ -233,9 +240,12 @@ export function LibraryGrid({
   currentVideoId,
   detailVideoId,
   scrollResetKey,
+  itemMinWidth = ITEM_MIN_WIDTH,
   onPlay,
   onShowDetail,
   onAddToPlaylist,
+  onSetTag,
+  onSetCategory,
   selectedIds,
   onSelectionChange,
 }: Props) {
@@ -243,6 +253,7 @@ export function LibraryGrid({
   const videoTags = useTagStore((s) => s.videoTags);
   const categories = useTagStore((s) => s.categories);
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ video: Video; x: number; y: number } | null>(null);
   const lastSelectedIdxRef = useRef<number | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -258,7 +269,7 @@ export function LibraryGrid({
     const el = scrollRef.current;
     if (!el) return;
     const measure = () => {
-      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (ITEM_MIN_WIDTH + GAP)));
+      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (itemMinWidth + GAP)));
       setColumns(cols);
     };
     measure();
@@ -274,7 +285,7 @@ export function LibraryGrid({
       if (timer !== null) clearTimeout(timer);
       ro.disconnect();
     };
-  }, []);
+  }, [itemMinWidth]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -320,6 +331,10 @@ export function LibraryGrid({
     onSelectionChange(next);
   }, [videos, onSelectionChange]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, video: Video) => {
+    setContextMenu({ video, x: e.clientX, y: e.clientY });
+  }, []);
+
   return (
     <>
       <div ref={scrollRef} className="h-full overflow-y-auto select-none">
@@ -362,6 +377,7 @@ export function LibraryGrid({
                           onAddToPlaylist={onAddToPlaylist}
                           onDelete={setDeleteTarget}
                           onCheckbox={handleCheckbox}
+                          onContextMenu={handleContextMenu}
                         />
                       );
                     })}
@@ -378,6 +394,21 @@ export function LibraryGrid({
           video={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onRemoved={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {contextMenu && (
+        <VideoContextMenu
+          video={contextMenu.video}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onPlay={() => { onPlay(contextMenu.video); setContextMenu(null); }}
+          onShowDetail={() => { onShowDetail(contextMenu.video); setContextMenu(null); }}
+          onAddToPlaylist={onAddToPlaylist ? () => { onAddToPlaylist!(contextMenu.video); setContextMenu(null); } : undefined}
+          onSetTag={onSetTag ? () => { onSetTag!(contextMenu.video); setContextMenu(null); } : undefined}
+          onSetCategory={onSetCategory ? () => { onSetCategory!(contextMenu.video); setContextMenu(null); } : undefined}
+          onDelete={() => { setDeleteTarget(contextMenu.video); setContextMenu(null); }}
         />
       )}
     </>
