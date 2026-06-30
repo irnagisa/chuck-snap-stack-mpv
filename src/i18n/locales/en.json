@@ -77,6 +77,7 @@
     "rename": "Rename",
     "delete": "Delete",
     "rescan": "Rescan",
+    "setRating": "Set Rating",
     "deselect": "Deselect"
   },
   "pagination": {
@@ -135,7 +136,10 @@
     "categoryModeVirtualDesc": "Categories are stored in DB only. Files are not moved. Works with read-only and network drives.",
     "categoryModeSync": "Sync Mode",
     "categoryModeSyncDesc": "Changing a category moves the file to the corresponding directory. Directory structure reflects categories.",
-    "categoryModeActive": "Current mode"
+    "categoryModeActive": "Current mode",
+    "sectionAi": "AI Features",
+    "aiEnabled": "Enable AI Tag Suggestions",
+    "aiEnabledDesc": "Use WD Tagger to automatically suggest tags from thumbnails (requires ~200 MB model download on first use)"
   },
   "keybindings": {
     "pause": "Play/Pause",
@@ -303,6 +307,15 @@
     "noTags": "No tags available",
     "apply": "Apply ({{count}} tags)",
     "applying": "Processing...",
+    "cancel": "Cancel"
+  },
+  "bulkRating": {
+    "title": "Bulk Set Rating",
+    "desc": "Select a rating to apply to {{count}} videos",
+    "noSelection": "Click a star to select a rating",
+    "selected": "Set to ★ {{count}}",
+    "applying": "Applying...",
+    "apply": "Apply",
     "cancel": "Cancel"
   },
   "bulkCategory": {

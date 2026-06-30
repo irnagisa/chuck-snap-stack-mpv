@@ -878,6 +878,13 @@ function App() {
                   </button>
                   <button
                     type="button"
+                    className="px-2.5 py-1 text-xs bg-yellow-500 hover:bg-yellow-600 text-white rounded"
+                    onClick={() => openBulkModal('rating')}
+                  >
+                    {t('batch.setRating')}
+                  </button>
+                  <button
+                    type="button"
                     className="px-2.5 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded"
                     onClick={() => openBulkModal('rename')}
                   >

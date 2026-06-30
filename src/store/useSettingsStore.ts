@@ -56,6 +56,7 @@ export interface AppSettings {
   autoPlayNext: boolean;
   language: Language;
   categoryMode: CategoryMode;
+  aiEnabled: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -70,6 +71,7 @@ const DEFAULTS: AppSettings = {
   autoPlayNext: false,
   language: "ja",
   categoryMode: 'virtual',
+  aiEnabled: false,
 };
 
 interface SettingsStore extends AppSettings {
@@ -134,6 +136,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       autoPlayNext: map["auto_play_next"] === "true",
       language,
       categoryMode: (map["category_mode"] as CategoryMode | undefined) ?? 'virtual',
+      aiEnabled: map["ai_enabled"] === "true",
     };
 
     set({ ...settings, isLoaded: true });
