@@ -89,14 +89,19 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
     listen<number>('ai://download-progress', (e) => {
       setAiDownloadProgress(e.payload);
       if (e.payload >= 1.0) {
         setAiDownloading(false);
         setAiModelDownloaded(true);
       }
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
+    }).then((fn) => {
+      // コンポーネントが listen() 解決前にアンマウントされた場合は
+      // 即座に unlisten して登録済みリスナーを解放する
+      if (cancelled) { fn(); } else { unlisten = fn; }
+    });
+    return () => { cancelled = true; unlisten?.(); };
   }, []);
 
   const handleDownloadAiModel = async () => {
