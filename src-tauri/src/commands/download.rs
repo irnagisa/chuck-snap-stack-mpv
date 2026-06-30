@@ -42,9 +42,14 @@ pub async fn download_video(
     super::utils::validate_path(&save_path)?;
 
     state.cancel_flag.store(false, Ordering::SeqCst);
+
+    // 同名ファイルが存在する場合は連番サフィックスで一意パスに解決する
+    let actual_path = super::utils::resolve_unique_path(std::path::Path::new(&save_path));
+    let actual_path_str = actual_path.to_string_lossy().into_owned();
+
     {
         let mut p = state.current_path.lock().map_err(|e| e.to_string())?;
-        *p = Some(save_path.clone());
+        *p = Some(actual_path_str.clone());
     }
 
     let client = reqwest::Client::builder()
@@ -64,13 +69,17 @@ pub async fn download_video(
 
     let total = response.content_length().unwrap_or(0);
 
-    if let Some(parent) = std::path::Path::new(&save_path).parent() {
+    if let Some(parent) = actual_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|e| e.to_string())?;
     }
 
-    let mut file = tokio::fs::File::create(&save_path)
+    // create_new でファイルを作成する: 解決済みパスなので既存ファイルは存在しないはず
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&actual_path)
         .await
         .map_err(|e| format!("ファイル作成失敗: {e}"))?;
 
@@ -83,39 +92,51 @@ pub async fn download_video(
         DownloadProgress { downloaded: 0, total, percent: 0 },
     );
 
-    while let Some(chunk) = stream.next().await {
-        if state.cancel_flag.load(Ordering::SeqCst) {
-            drop(file);
-            let _ = tokio::fs::remove_file(&save_path).await;
-            {
-                let mut p = state.current_path.lock().map_err(|e| e.to_string())?;
-                *p = None;
+    // ── ダウンロードループ ──
+    // キャンセル・ネットワークエラー・書き込みエラーのすべての失敗パスで
+    // 部分ファイルを削除して current_path をリセットするため、
+    // ループを inner クロージャにまとめてから共通クリーンアップを適用する。
+    let loop_result: Result<(), String> = async {
+        while let Some(chunk) = stream.next().await {
+            if state.cancel_flag.load(Ordering::SeqCst) {
+                return Err("キャンセルされました".to_string());
             }
-            return Err("キャンセルされました".to_string());
+
+            let chunk = chunk.map_err(|e| format!("読み込みエラー: {e}"))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| format!("書き込みエラー: {e}"))?;
+            downloaded += chunk.len() as u64;
+
+            let percent = if total > 0 {
+                ((downloaded * 100) / total).min(100) as u8
+            } else {
+                0
+            };
+
+            if percent != last_percent {
+                last_percent = percent;
+                let _ = app.emit(
+                    "download://progress",
+                    DownloadProgress { downloaded, total, percent },
+                );
+            }
         }
 
-        let chunk = chunk.map_err(|e| format!("読み込みエラー: {e}"))?;
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("書き込みエラー: {e}"))?;
-        downloaded += chunk.len() as u64;
-
-        let percent = if total > 0 {
-            ((downloaded * 100) / total).min(100) as u8
-        } else {
-            0
-        };
-
-        if percent != last_percent {
-            last_percent = percent;
-            let _ = app.emit(
-                "download://progress",
-                DownloadProgress { downloaded, total, percent },
-            );
-        }
+        file.flush().await.map_err(|e| e.to_string())
     }
+    .await;
 
-    file.flush().await.map_err(|e| e.to_string())?;
+    if let Err(msg) = loop_result {
+        // キャンセル・エラー共通: このアプリが作成した部分ファイルを削除する
+        // (create_new で作成したため既存ファイルは上書きしていない)
+        let _ = tokio::fs::remove_file(&actual_path).await;
+        {
+            let mut p = state.current_path.lock().map_err(|e| e.to_string())?;
+            *p = None;
+        }
+        return Err(msg);
+    }
 
     {
         let mut p = state.current_path.lock().map_err(|e| e.to_string())?;
@@ -127,7 +148,7 @@ pub async fn download_video(
         DownloadProgress { downloaded, total, percent: 100 },
     );
 
-    Ok(save_path)
+    Ok(actual_path_str)
 }
 
 #[tauri::command]

@@ -1,21 +1,22 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { VideoOrganizerPanel } from '../common/VideoOrganizerPanel';
+import { useTranslation } from 'react-i18next';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { useTagStore } from '../../store/useTagStore';
+import { appCacheDir, join } from '@tauri-apps/api/path';
+import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { useTagStore } from '../../store/useTagStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
-import { TagBadge } from './TagBadge';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { TranscodeModal } from './TranscodeModal';
 import { Select } from '../common/Select';
-import type { Video, Tag, SubtitleFile } from '../../types';
-
-const COLORS = [
-  '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280',
-];
+import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
+import { listen } from '@tauri-apps/api/event';
 
 interface Props {
   video: Video;
   onClose: () => void;
+  onViewImage?: (video: Video) => void;
 }
 
 function formatFileSize(bytes: number): string {
@@ -32,43 +33,38 @@ function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function findWatchDir(filePath: string, watchDirs: string[]): string | null {
-  const normalized = filePath.replace(/\\/g, '/');
-  for (const dir of watchDirs) {
-    const d = dir.replace(/\\/g, '/').replace(/\/$/, '');
-    if (normalized.startsWith(d + '/')) return d;
-  }
-  return null;
-}
 
-export function VideoDetailModal({ video, onClose }: Props) {
-  const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
-    useTagStore();
-  const { db, fetchVideos, updateVideo, watchDirs, moveVideoFile } = useLibraryStore();
+export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
+  const { t } = useTranslation();
+  const { fetchVideos, updateVideo, rescanVideo } = useLibraryStore();
   const { play } = usePlayerStore();
+  const { aiEnabled } = useSettingsStore();
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
-  const [localRating, setLocalRating] = useState(video.rating ?? 0);
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
-  const [moveFile, setMoveFile] = useState(true);
-  const [tagInput, setTagInput] = useState('');
-  const [newTagColor, setNewTagColor] = useState(COLORS[5]);
+  const [renameFile, setRenameFile] = useState(true);
   const [showTranscode, setShowTranscode] = useState(false);
-  const [tagInputFocused, setTagInputFocused] = useState(false);
   const [thumbTimestamp, setThumbTimestamp] = useState('5');
   const [isCapturingThumb, setIsCapturingThumb] = useState(false);
+  const [localThumbnail, setLocalThumbnail] = useState(video.thumbnail ?? null);
+  const [thumbCacheBust, setThumbCacheBust] = useState(0);
+  const [isRescanning, setIsRescanning] = useState(false);
+  const [localMediaType, setLocalMediaType] = useState<'video' | 'audio' | 'image'>(video.media_type ?? 'video');
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
   const [isScanningSubs, setIsScanningSubs] = useState(false);
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
+  const [localSourceUrl, setLocalSourceUrl] = useState(video.source_url ?? '');
   const titleRef = useRef<HTMLInputElement>(null);
 
-  const currentTags = videoTags[video.id] ?? [];
-
-  useEffect(() => {
-    if (db) fetchVideoTags(db, video.id);
-  }, [db, video.id]);
+  // AI tag suggestion state
+  const [aiModelDownloaded, setAiModelDownloaded] = useState<boolean | null>(null);
+  const [aiDownloading, setAiDownloading] = useState(false);
+  const [aiDownloadProgress, setAiDownloadProgress] = useState(0);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [aiResult, setAiResult] = useState<AiSuggestionResult | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const { tags, addTagToVideo, createTag, fetchTags } = useTagStore();
 
   useEffect(() => {
     invoke<number>('get_file_size', { path: video.path })
@@ -79,97 +75,135 @@ export function VideoDetailModal({ video, onClose }: Props) {
       .catch(() => {});
   }, [video.path]);
 
+  useEffect(() => {
+    invoke<{ downloaded: boolean; downloading: boolean; progress: number }>(
+      'check_ai_model_status'
+    )
+      .then((s) => {
+        setAiModelDownloaded(s.downloaded);
+        setAiDownloading(s.downloading);
+        setAiDownloadProgress(s.progress);
+      })
+      .catch(() => setAiModelDownloaded(false));
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    listen<number>('ai://download-progress', (e) => {
+      setAiDownloadProgress(e.payload);
+      if (e.payload >= 1.0) {
+        setAiDownloading(false);
+        setAiModelDownloaded(true);
+      }
+    }).then((fn) => {
+      // コンポーネントが listen() 解決前にアンマウントされた場合は
+      // 即座に unlisten して登録済みリスナーを解放する
+      if (cancelled) { fn(); } else { unlisten = fn; }
+    });
+    return () => { cancelled = true; unlisten?.(); };
+  }, []);
+
+  const handleDownloadAiModel = async () => {
+    setAiDownloading(true);
+    setAiDownloadProgress(0);
+    setAiError(null);
+    try {
+      await invoke('download_ai_model');
+    } catch (e) {
+      setAiError(String(e));
+      setAiDownloading(false);
+    }
+  };
+
+  const handleAnalyzeTags = async () => {
+    setAiAnalyzing(true);
+    setAiError(null);
+    try {
+      const result = await invoke<AiSuggestionResult>('analyze_thumbnail_for_tags', {
+        videoId: video.id,
+      });
+      setAiResult(result);
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+  const handleApplyMatchedTag = async (tagId: number) => {
+    try {
+      await addTagToVideo(video.id, tagId);
+    } catch {
+      // ignore duplicate
+    }
+  };
+
+  const handleNewSuggestionClick = async (sug: AiNewSuggestion) => {
+    const name = window.prompt('新しいタグ名を確認してください:', sug.name);
+    if (!name) return;
+    try {
+      const tag = await createTag(name.trim(), '#6366f1');
+      await addTagToVideo(video.id, tag.id);
+      await fetchTags();
+    } catch {
+      // ignore duplicate
+    }
+  };
+
   const progressPercent =
     video.duration && video.duration > 0
       ? Math.min((video.progress / video.duration) * 100, 100)
       : null;
 
-  const tagUsageCounts = useMemo(() => {
-    const counts: Record<number, number> = {};
-    for (const vtags of Object.values(videoTags)) {
-      for (const t of vtags) {
-        counts[t.id] = (counts[t.id] ?? 0) + 1;
-      }
-    }
-    return counts;
-  }, [videoTags]);
-
-  const filteredSuggestions = useMemo(() => {
-    const unassigned = tags.filter((t) => !currentTags.some((ct) => ct.id === t.id));
-    const filtered = tagInput
-      ? unassigned.filter((t) => t.name.toLowerCase().includes(tagInput.toLowerCase()))
-      : unassigned;
-    return filtered.sort((a, b) => (tagUsageCounts[b.id] ?? 0) - (tagUsageCounts[a.id] ?? 0));
-  }, [tags, currentTags, tagInput, tagUsageCounts]);
-
-  const exactMatch = tags.some((t) => t.name.toLowerCase() === tagInput.toLowerCase());
-  const showSuggestions = tagInputFocused || tagInput.length > 0;
-
   const handleTitleSave = async () => {
     const trimmed = localTitle.trim();
     if (!trimmed || trimmed === (video.title ?? video.path.split('/').pop())) return;
-    await updateVideo(video.id, { title: trimmed });
-  };
 
-  const handleRatingClick = async (star: number) => {
-    const next = star === localRating ? 0 : star;
-    setLocalRating(next);
-    await updateVideo(video.id, { rating: next });
-  };
+    if (renameFile) {
+      const filename = video.path.split('/').pop() ?? video.path;
+      const dotIdx = filename.lastIndexOf('.');
+      const ext = dotIdx > 0 ? filename.slice(dotIdx) : '';
+      const newFilename = trimmed + ext;
+      const oldPath = video.path;
+      const newPath = oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + newFilename;
 
-  const handleAddTag = async (tag: Tag) => {
-    if (!db) return;
-    await addTagToVideo(db, video.id, tag.id);
-    setTagInput('');
-  };
-
-  const handleCreateAndAdd = async () => {
-    if (!db || !tagInput.trim()) return;
-    const tag = await createTag(db, tagInput.trim(), newTagColor);
-    await addTagToVideo(db, video.id, tag.id);
-    setTagInput('');
-  };
-
-  const handleRemoveTag = async (tagId: number) => {
-    if (!db) return;
-    await removeTagFromVideo(db, video.id, tagId);
-  };
-
-  const handleCategoryChange = async (value: string) => {
-    if (!db) return;
-    setCategoryId(value);
-    const catId = value ? Number(value) : null;
-    await setVideoCategory(db, video.id, catId);
-
-    if (moveFile) {
-      const watchDir = findWatchDir(video.path, watchDirs);
-      if (watchDir) {
-        const catName = catId !== null ? categories.find((c) => c.id === catId)?.name : null;
-        const destDir = catName ? `${watchDir}/${catName}` : watchDir;
-        await moveVideoFile(video.id, destDir);
+      await updateVideo(video.id, { title: trimmed, path: newPath });
+      try {
+        await invoke<void>('rename_video_file', { oldPath, newName: newFilename });
+      } catch (e) {
+        await updateVideo(video.id, { title: video.title ?? '', path: oldPath });
+        alert(`ファイルのリネームに失敗しました: ${e}`);
       }
+    } else {
+      await updateVideo(video.id, { title: trimmed });
     }
-
-    await fetchVideos();
   };
 
   const handlePlay = () => {
     play(video);
-    onClose();
   };
 
   const handleCaptureThumb = async () => {
-    if (!db) return;
     const ts = parseFloat(thumbTimestamp);
     if (isNaN(ts) || ts < 0) return;
     setIsCapturingThumb(true);
     try {
+      let outputPath = localThumbnail;
+      if (!outputPath) {
+        const cacheDir = await appCacheDir();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+        const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+        outputPath = await join(cacheDir, 'thumbnails', hash.slice(0, 2), `${hash}.webp`);
+      }
       await invoke('capture_frame_at', {
         videoPath: video.path,
         timestamp: ts,
-        outputPath: video.thumbnail ?? '',
+        outputPath,
       });
-      await db.execute('UPDATE videos SET thumbnail = ? WHERE id = ?', [video.thumbnail, video.id]);
+      await invoke('db_update_video_thumbnail', { videoId: video.id, thumbnail: outputPath });
+      setLocalThumbnail(outputPath);
+      setThumbCacheBust(Date.now());
       await fetchVideos();
     } catch (e) {
       console.error('Capture failed:', e);
@@ -199,28 +233,46 @@ export function VideoDetailModal({ video, onClose }: Props) {
     }
   };
 
+  const handleMediaTypeChange = async (value: string) => {
+    const mt = value as 'video' | 'audio' | 'image';
+    setLocalMediaType(mt);
+    await updateVideo(video.id, { media_type: mt });
+  };
+
+  const handleSourceUrlSave = async () => {
+    const trimmed = localSourceUrl.trim();
+    await updateVideo(video.id, { source_url: trimmed || null });
+  };
+
+  const handleRescan = async () => {
+    setIsRescanning(true);
+    try {
+      await rescanVideo(video.id);
+      const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+      const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+      const mt: 'video' | 'audio' | 'image' = imageExts.includes(ext) ? 'image' : audioExts.includes(ext) ? 'audio' : 'video';
+      setLocalMediaType(mt);
+    } finally {
+      setIsRescanning(false);
+    }
+  };
+
   return (
     <>
-    {showTranscode && (
-      <TranscodeModal
-        video={video}
-        onClose={() => {
-          setShowTranscode(false);
-          onClose();
-        }}
-      />
-    )}
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {showTranscode && (
+        <TranscodeModal
+          video={video}
+          onClose={() => {
+            setShowTranscode(false);
+            onClose();
+          }}
+        />
+      )}
+      <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">動画詳細</h2>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('detail.title')}</h2>
           <button
             type="button"
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
@@ -231,19 +283,22 @@ export function VideoDetailModal({ video, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex gap-6 px-6 py-5 overflow-y-auto">
-          {/* Left: thumbnail + play */}
-          <div className="flex flex-col gap-2.5 shrink-0 w-44">
-            <div className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
-              {video.thumbnail ? (
+        <div className="flex-1 overflow-y-auto pb-20">
+          {/* サムネイル + 再生 */}
+          <div className="px-4 pt-4 pb-3 flex flex-col gap-2">
+            <div
+              className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer"
+              onDoubleClick={handlePlay}
+            >
+              {localThumbnail ? (
                 <img
-                  src={convertFileSrc(video.thumbnail)}
+                  src={`${convertFileSrc(localThumbnail)}${thumbCacheBust ? `?t=${thumbCacheBust}` : ''}`}
                   alt={localTitle}
-                  className="w-full h-full object-cover"
+                  className={`w-full h-full ${video.media_type === 'image' ? 'object-contain bg-black' : 'object-cover'}`}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-3xl">
-                  ▶
+                  {video.media_type === 'image' ? '🖼' : video.media_type === 'audio' ? '♪' : '▶'}
                 </div>
               )}
             </div>
@@ -252,29 +307,54 @@ export function VideoDetailModal({ video, onClose }: Props) {
                 <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progressPercent}%` }} />
               </div>
             )}
-            <button
-              type="button"
-              className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-              onClick={handlePlay}
-            >
-              ▶ 再生
-            </button>
-            <button
-              type="button"
-              className="w-full py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
-              onClick={() => setShowTranscode(true)}
-            >
-              AV1 変換
-            </button>
+            <div className="flex gap-2">
+              {video.media_type === 'image' ? (
+                onViewImage && (
+                  <button
+                    type="button"
+                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                    onClick={() => onViewImage(video)}
+                  >
+                    {t('detail.viewer')}
+                  </button>
+                )
+              ) : (
+                <button
+                  type="button"
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                  onClick={handlePlay}
+                >
+                  {t('detail.play')}
+                </button>
+              )}
+              <button
+                type="button"
+                className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium disabled:opacity-50"
+                onClick={handleRescan}
+                disabled={isRescanning}
+                title={t('detail.rescanTitle')}
+              >
+                {isRescanning ? t('detail.rescanning') : t('detail.rescan')}
+              </button>
+              {video.media_type !== 'image' && (
+                <button
+                  type="button"
+                  className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
+                  onClick={() => setShowTranscode(true)}
+                >
+                  AV1
+                </button>
+              )}
+
+            </div>
           </div>
 
-          {/* Right: info */}
-          <div className="flex-1 min-w-0 flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+          <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800 px-4">
             {/* タイトル + パス */}
             <div className="pb-4 flex flex-col gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  タイトル
+                  {t('detail.titleField')}
                 </label>
                 <input
                   ref={titleRef}
@@ -284,22 +364,85 @@ export function VideoDetailModal({ video, onClose }: Props) {
                   onBlur={handleTitleSave}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
                 />
+                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer w-fit">
+                  <input
+                    type="checkbox"
+                    checked={renameFile}
+                    onChange={(e) => setRenameFile(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-blue-500"
+                  />
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.renameFile')}</span>
+                </label>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
+                    {t('detail.path')}
+                  </label>
+                  <button
+                    type="button"
+                    className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
+                    onClick={() => revealItemInDir(video.path).catch(() => {})}
+                    title={t('detail.openFinder')}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    {t('detail.openFinder')}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">{video.path}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                  パス
+                  {t('detail.url')}
                 </label>
-                <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">{video.path}</p>
+                <input
+                  className="w-full px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg outline-none transition-colors"
+                  placeholder={t('detail.urlPlaceholder')}
+                  value={localSourceUrl}
+                  onChange={(e) => setLocalSourceUrl(e.target.value)}
+                  onBlur={handleSourceUrlSave}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                />
+                {localSourceUrl && (
+                  <button
+                    type="button"
+                    className="text-xs text-blue-500 hover:underline mt-0.5 block truncate max-w-full text-left"
+                    onClick={() => openUrl(localSourceUrl).catch(() => {})}
+                    title={localSourceUrl}
+                  >
+                    {localSourceUrl}
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* メタデータ + 評価 */}
+            {/* カテゴリ + タグ + 評価 */}
+            <div className="py-4">
+              <VideoOrganizerPanel video={video} />
+            </div>
+
+            {/* メタデータ */}
             <div className="py-4 flex flex-col gap-3">
-              <div className="flex gap-6 flex-wrap">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    {t('detail.mediaType')}
+                  </label>
+                  <Select
+                    value={localMediaType}
+                    onChange={(e) => handleMediaTypeChange(e.target.value)}
+                  >
+                    <option value="video">{t('detail.mediaVideo')}</option>
+                    <option value="audio">{t('detail.mediaAudio')}</option>
+                    <option value="image">{t('detail.mediaImage')}</option>
+                  </Select>
+                </div>
                 {video.duration != null && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      再生時間
+                      {t('detail.duration')}
                     </label>
                     <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.duration)}</p>
                   </div>
@@ -307,208 +450,197 @@ export function VideoDetailModal({ video, onClose }: Props) {
                 {video.progress > 0 && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      視聴位置
+                      {t('detail.watchProgress')}
                     </label>
                     <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.progress)}</p>
                   </div>
                 )}
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    ファイルサイズ
+                    {t('detail.fileSize')}
                   </label>
                   <p className="text-sm text-gray-800 dark:text-gray-200">
                     {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
                   </p>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    解像度
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {dimensions ? `${dimensions.width} × ${dimensions.height}` : '—'}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    追加日時
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {new Date(video.created_at).toLocaleDateString('ja-JP')}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    再生回数
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {(video.watch_count ?? 0)}回
-                  </p>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  評価
-                </label>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      className={`text-xl leading-none transition-colors ${
-                        star <= localRating
-                          ? 'text-yellow-400'
-                          : 'text-gray-300 dark:text-gray-600 hover:text-yellow-300'
-                      }`}
-                      onClick={() => handleRatingClick(star)}
-                    >
-                      ★
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* カテゴリ + タグ */}
-            <div className="pt-4 flex flex-col gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  カテゴリ
-                </label>
-                <Select
-                  fullWidth
-                  value={categoryId}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                >
-                  <option value="">なし</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </Select>
-                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={moveFile}
-                    onChange={(e) => setMoveFile(e.target.checked)}
-                    className="accent-blue-600"
-                  />
-                  <span className="text-xs text-gray-500 dark:text-gray-400">ファイルも移動</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  タグ
-                </label>
-                <div className="flex flex-wrap gap-1.5 mb-2.5 min-h-6">
-                  {currentTags.length > 0 ? (
-                    currentTags.map((tag) => (
-                      <TagBadge key={tag.id} tag={tag} onRemove={() => handleRemoveTag(tag.id)} />
-                    ))
-                  ) : (
-                    <span className="text-xs text-gray-400 dark:text-gray-500">タグなし</span>
-                  )}
-                </div>
-                <div className="relative">
-                <input
-                  className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                  placeholder="タグを検索 / 新規作成..."
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onFocus={() => setTagInputFocused(true)}
-                  onBlur={() => setTimeout(() => setTagInputFocused(false), 150)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && tagInput && !exactMatch) handleCreateAndAdd();
-                    if (e.key === 'Escape') { setTagInput(''); setTagInputFocused(false); }
-                  }}
-                />
-                {showSuggestions && (
-                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto">
-                    {filteredSuggestions.length === 0 && !tagInput && (
-                      <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">タグがありません</p>
-                    )}
-                    {filteredSuggestions.map((tag) => (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
-                        onClick={() => handleAddTag(tag)}
-                      >
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
-                        <span className="flex-1">{tag.name}</span>
-                        {(tagUsageCounts[tag.id] ?? 0) > 0 && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-                            {tagUsageCounts[tag.id]}件
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                    {tagInput && !exactMatch && (
-                      <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">色:</span>
-                          {COLORS.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              className={`w-4 h-4 rounded-full transition-transform ${
-                                newTagColor === c
-                                  ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800'
-                                  : ''
-                              }`}
-                              style={{ backgroundColor: c }}
-                              onClick={() => setNewTagColor(c)}
-                            />
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                          onClick={handleCreateAndAdd}
-                        >
-                          「{tagInput}」を新規作成して追加
-                        </button>
-                      </div>
-                    )}
+                {dimensions && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                      {t('detail.resolution')}
+                    </label>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {dimensions.width} × {dimensions.height}
+                    </p>
                   </div>
                 )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    {t('detail.createdAt')}
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {new Date(video.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+                    {t('detail.playCount')}
+                  </label>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">
+                    {(video.watch_count ?? 0)}{t('detail.playCountUnit')}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
             {/* カスタムサムネイル */}
-            <div className="pt-4 flex flex-col gap-2">
+            <div className="pt-4 pb-4 flex flex-col gap-2">
               <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-                サムネイルを変更
+                {t('detail.thumbnail')}
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <input
                   type="number"
                   min={0}
                   step={1}
-                  className="w-24 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   value={thumbTimestamp}
                   onChange={(e) => setThumbTimestamp(e.target.value)}
-                  placeholder="秒"
                 />
-                <span className="text-xs text-gray-500 dark:text-gray-400">秒のフレームを設定</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('detail.captureAt')}</span>
                 <button
                   type="button"
                   onClick={handleCaptureThumb}
-                  disabled={isCapturingThumb || !video.thumbnail}
+                  disabled={isCapturingThumb}
                   className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
                 >
-                  {isCapturingThumb ? '処理中...' : 'キャプチャ'}
+                  {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
                 </button>
               </div>
             </div>
 
+            {/* AI タグ提案 */}
+            {aiEnabled && <div className="pt-4 pb-4 flex flex-col gap-2">
+              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
+                AI タグ提案
+              </label>
+
+              {aiModelDownloaded === false && !aiDownloading && (
+                <button
+                  type="button"
+                  onClick={handleDownloadAiModel}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-medium"
+                >
+                  AI タグ機能を有効にする（~200 MB）
+                </button>
+              )}
+
+              {aiDownloading && (
+                <div className="flex flex-col gap-1">
+                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-500 rounded-full transition-all"
+                      style={{ width: `${Math.round(aiDownloadProgress * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                    ダウンロード中… {Math.round(aiDownloadProgress * 100)}%
+                  </p>
+                </div>
+              )}
+
+              {aiModelDownloaded && !aiDownloading && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleAnalyzeTags}
+                    disabled={aiAnalyzing || !localThumbnail}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-medium disabled:opacity-50"
+                  >
+                    {aiAnalyzing ? '分析中…' : 'タグを分析する'}
+                  </button>
+
+                  {!localThumbnail && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      サムネイルが必要です
+                    </p>
+                  )}
+
+                  {aiError && (
+                    <p className="text-xs text-red-500">{aiError}</p>
+                  )}
+
+                  {aiResult && (
+                    <div className="flex flex-col gap-3 mt-1">
+                      {/* 既存タグ候補 */}
+                      {aiResult.matched_tags.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            既存タグ候補
+                          </p>
+                          {aiResult.matched_tags.map((m) => {
+                            const tag = tags.find((t) => t.id === m.tag_id);
+                            if (!tag) return null;
+                            return (
+                              <label
+                                key={m.tag_id}
+                                className="flex items-center gap-2 cursor-pointer text-xs"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="w-3.5 h-3.5 accent-indigo-500"
+                                  onChange={(e) => {
+                                    if (e.target.checked) handleApplyMatchedTag(m.tag_id);
+                                  }}
+                                />
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-white text-xs"
+                                  style={{ backgroundColor: tag.color }}
+                                >
+                                  {tag.name}
+                                </span>
+                                <span className="text-gray-400 dark:text-gray-500">
+                                  {(m.score * 100).toFixed(0)}%
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* 新規タグ候補 */}
+                      {aiResult.new_suggestions.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            新規タグ候補
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {aiResult.new_suggestions.map((sug) => (
+                              <button
+                                key={sug.name}
+                                type="button"
+                                onClick={() => handleNewSuggestionClick(sug)}
+                                className="px-2 py-0.5 bg-gray-100 hover:bg-indigo-100 dark:bg-gray-800 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300 text-xs rounded border border-gray-200 dark:border-gray-700 hover:border-indigo-400 transition-colors"
+                                title={`スコア: ${(sug.score * 100).toFixed(0)}%`}
+                              >
+                                + {sug.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            }
+
             {/* 字幕ファイル管理 */}
-            <div className="pt-4 flex flex-col gap-2">
+            <div className="pt-4 pb-4 flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
-                  字幕ファイル
+                  {t('detail.subtitle')}
                 </label>
                 <button
                   type="button"
@@ -516,12 +648,12 @@ export function VideoDetailModal({ video, onClose }: Props) {
                   disabled={isScanningSubs}
                   className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
                 >
-                  {isScanningSubs ? '検索中...' : '検索'}
+                  {isScanningSubs ? t('detail.searchingSubtitle') : t('detail.searchSubtitle')}
                 </button>
               </div>
               {subtitles.length === 0 && !isScanningSubs && (
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  「検索」で同フォルダの字幕ファイルを探します
+                  {t('detail.subtitleHelp')}
                 </p>
               )}
               {subtitles.length > 0 && (
@@ -539,7 +671,7 @@ export function VideoDetailModal({ video, onClose }: Props) {
                             : 'bg-blue-600 hover:bg-blue-700 text-white'
                         }`}
                       >
-                        {loadedSubtitle === sub.path ? 'ロード済' : 'ロード'}
+                        {loadedSubtitle === sub.path ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
                       </button>
                     </div>
                   ))}
@@ -549,7 +681,6 @@ export function VideoDetailModal({ video, onClose }: Props) {
           </div>
         </div>
       </div>
-    </div>
     </>
   );
 }

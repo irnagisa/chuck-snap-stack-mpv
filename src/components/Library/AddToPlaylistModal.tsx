@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Video } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function AddToPlaylistModal({ video, onClose }: Props) {
+  const { t } = useTranslation();
   const { playlists, createPlaylist, addVideoToPlaylist } = usePlaylistStore();
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState<number | null>(null);
@@ -37,7 +39,7 @@ export function AddToPlaylistModal({ video, onClose }: Props) {
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-80 max-h-[70vh] flex flex-col overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-            プレイリストに追加
+            {t('addToPlaylist.title')}
           </h2>
           <button
             type="button"
@@ -56,7 +58,7 @@ export function AddToPlaylistModal({ video, onClose }: Props) {
         <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1">
           {playlists.length === 0 && (
             <p className="text-xs text-gray-400 dark:text-gray-500 py-2">
-              プレイリストがありません
+              {t('addToPlaylist.empty')}
             </p>
           )}
           {playlists.map((pl) => {
@@ -79,7 +81,7 @@ export function AddToPlaylistModal({ video, onClose }: Props) {
                   }`}
                   onClick={() => handleAdd(pl.id)}
                 >
-                  {isAdded ? '追加済み' : adding === pl.id ? '...' : '追加'}
+                  {isAdded ? t('addToPlaylist.added') : adding === pl.id ? '...' : t('addToPlaylist.add')}
                 </button>
               </div>
             );
@@ -93,7 +95,7 @@ export function AddToPlaylistModal({ video, onClose }: Props) {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
-            placeholder="新しいプレイリスト名..."
+            placeholder={t('addToPlaylist.newPlaylistPlaceholder')}
             className="flex-1 min-w-0 text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
           />
           <button
@@ -102,7 +104,7 @@ export function AddToPlaylistModal({ video, onClose }: Props) {
             className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 dark:bg-gray-600 dark:hover:bg-gray-500 text-white rounded disabled:opacity-40 shrink-0"
             onClick={handleCreate}
           >
-            作成
+            {t('addToPlaylist.create')}
           </button>
         </div>
       </div>

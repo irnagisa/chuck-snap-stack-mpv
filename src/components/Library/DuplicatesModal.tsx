@@ -1,6 +1,8 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { useState, useEffect } from 'react';
+import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
 
 interface VideoWithSize extends Video {
@@ -32,6 +34,7 @@ function fmtDuration(sec: number): string {
 }
 
 export function DuplicatesModal({ onClose }: Props) {
+  const { t } = useTranslation();
   const { fetchAllForShuffle, removeMultiple } = useLibraryStore();
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
@@ -95,10 +98,26 @@ export function DuplicatesModal({ onClose }: Props) {
     setProcessing((prev) => new Set(prev).add(groupIndex));
     try {
       if (deleteFiles) {
-        await invoke('delete_multiple_video_files', { paths: toRemove.map((v) => v.path) });
+        // 返り値 [path, success][] を確認し、成功したファイルの ID のみ DB から削除する
+        const results = await invoke<[string, boolean][]>('delete_multiple_video_files', {
+          paths: toRemove.map((v) => v.path),
+        });
+        const deletedPaths = new Set(results.filter(([, ok]) => ok).map(([p]) => p));
+        const deletedIds = toRemove.filter((v) => deletedPaths.has(v.path)).map((v) => v.id);
+        const failCount = toRemove.length - deletedIds.length;
+        if (deletedIds.length > 0) {
+          await removeMultiple(deletedIds);
+        }
+        if (failCount > 0) {
+          toast.error(`${failCount} 件のファイル削除に失敗しました`);
+        }
+      } else {
+        await removeMultiple(toRemove.map((v) => v.id));
       }
-      await removeMultiple(toRemove.map((v) => v.id));
       setResolvedGroups((prev) => new Set(prev).add(groupIndex));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`処理に失敗しました: ${msg}`);
     } finally {
       setProcessing((prev) => {
         const next = new Set(prev);
@@ -109,6 +128,7 @@ export function DuplicatesModal({ onClose }: Props) {
   };
 
   const activeGroups = groups.filter((_, i) => !resolvedGroups.has(i));
+  const count = activeGroups.reduce((sum, g) => sum + g.videos.length, 0);
 
   return (
     <div
@@ -122,7 +142,7 @@ export function DuplicatesModal({ onClose }: Props) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            重複動画の検出
+            {t('duplicates.title')}
           </h2>
           <button
             type="button"
@@ -138,28 +158,21 @@ export function DuplicatesModal({ onClose }: Props) {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-sm text-gray-400 dark:text-gray-500">
               <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
-              ファイルサイズを確認中...
+              {t('duplicates.loading')}
             </div>
           ) : activeGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2">
               <span className="text-3xl">✓</span>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {groups.length === 0
-                  ? '重複動画は見つかりませんでした'
-                  : 'すべての重複が解消されました'}
+                  ? t('duplicates.empty')
+                  : t('duplicates.resolved')}
               </p>
             </div>
           ) : (
             <div className="flex flex-col gap-5">
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                <span className="font-medium text-gray-700 dark:text-gray-300">
-                  {activeGroups.length} グループ
-                </span>
-                、計{' '}
-                <span className="font-medium text-gray-700 dark:text-gray-300">
-                  {activeGroups.reduce((sum, g) => sum + g.videos.length, 0)} 件
-                </span>
-                の重複動画が見つかりました。保持する動画をラジオで選択し、他を削除してください。
+                {t('duplicates.found', { groups: activeGroups.length, count })}
               </p>
 
               {groups.map((group, groupIdx) => {
@@ -175,10 +188,10 @@ export function DuplicatesModal({ onClose }: Props) {
                     {/* グループヘッダー */}
                     <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
                       <span className="font-medium text-gray-700 dark:text-gray-300">
-                        グループ {groupIdx + 1}
+                        {t('duplicates.group')} {groupIdx + 1}
                       </span>
                       <span>·</span>
-                      <span>{group.videos.length} 件</span>
+                      <span>{group.videos.length} {t('duplicates.countUnit')}</span>
                       <span>·</span>
                       <span>{fmtDuration(group.duration)}</span>
                       <span>·</span>
@@ -224,7 +237,7 @@ export function DuplicatesModal({ onClose }: Props) {
                           </div>
                           {keepId === video.id && (
                             <span className="text-[10px] text-blue-600 dark:text-blue-400 shrink-0 font-medium">
-                              保持
+                              {t('duplicates.keep')}
                             </span>
                           )}
                         </label>
@@ -239,7 +252,7 @@ export function DuplicatesModal({ onClose }: Props) {
                         className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
                         onClick={() => handleRemoveOthers(groupIdx, false)}
                       >
-                        他をライブラリから除外
+                        {t('duplicates.removeOthersFromLibrary')}
                       </button>
                       <button
                         type="button"
@@ -247,10 +260,10 @@ export function DuplicatesModal({ onClose }: Props) {
                         className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
                         onClick={() => handleRemoveOthers(groupIdx, true)}
                       >
-                        他のファイルを削除
+                        {t('duplicates.deleteOthers')}
                       </button>
                       {isProcessing && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500">処理中...</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">{t('duplicates.processing')}</span>
                       )}
                     </div>
                   </div>
@@ -267,7 +280,7 @@ export function DuplicatesModal({ onClose }: Props) {
             className="px-4 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
             onClick={onClose}
           >
-            閉じる
+            {t('duplicates.close')}
           </button>
         </div>
       </div>

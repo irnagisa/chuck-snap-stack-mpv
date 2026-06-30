@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from "react-i18next";
 import type { Playlist, SmartPlaylist } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { useLibraryStore, type SortBy, type SortOrder, type WatchedStatus } from '../../store/useLibraryStore';
@@ -8,21 +10,21 @@ interface Props {
 }
 
 export function PlaylistSidebar({ onOpenPlaylist }: Props) {
+  const { t } = useTranslation();
   const { playlists, createPlaylist, deletePlaylist } = usePlaylistStore();
   const {
-    db, setSearch, setCategoryFilter, setMinRating, setHasAudio,
-    setMinDuration, setWatchedStatus, setSort,
+    setSearch, setCategoryFilter, setMinRating, setHasAudio,
+    setMinDuration, setMaxDuration, setWatchedStatus, setSort,
   } = useLibraryStore();
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [smartPlaylists, setSmartPlaylists] = useState<SmartPlaylist[]>([]);
 
   useEffect(() => {
-    if (!db) return;
-    db.select<SmartPlaylist[]>('SELECT * FROM smart_playlists ORDER BY created_at DESC')
+    invoke<SmartPlaylist[]>('db_get_smart_playlists')
       .then(setSmartPlaylists)
       .catch(() => {});
-  }, [db]);
+  }, []);
 
   const handleCreate = async () => {
     const name = newName.trim();
@@ -40,6 +42,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
       if (f.filterMinRating !== undefined) await setMinRating(f.filterMinRating);
       if (f.filterHasAudio !== undefined) await setHasAudio(f.filterHasAudio);
       if (f.filterMinDuration !== undefined) await setMinDuration(f.filterMinDuration);
+      if (f.filterMaxDuration !== undefined) await setMaxDuration(f.filterMaxDuration);
       if (f.filterWatchedStatus !== undefined) await setWatchedStatus(f.filterWatchedStatus as WatchedStatus);
       if (f.filterSortBy !== undefined && f.filterSortOrder !== undefined) {
         await setSort(f.filterSortBy as SortBy, f.filterSortOrder as SortOrder);
@@ -50,8 +53,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   };
 
   const handleDeleteSmartPlaylist = async (id: number) => {
-    if (!db) return;
-    await db.execute('DELETE FROM smart_playlists WHERE id = ?', [id]);
+    await invoke('db_delete_smart_playlist', { id });
     setSmartPlaylists((prev) => prev.filter((sp) => sp.id !== id));
   };
 
@@ -60,12 +62,12 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
       {/* プレイリスト */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-          プレイリスト
+          {t('playlist.title')}
         </span>
         <button
           type="button"
           className="text-xs text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 leading-none"
-          title="プレイリストを作成"
+          title={t('playlist.create')}
           onClick={() => setIsCreating(true)}
         >
           +
@@ -83,7 +85,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
               if (e.key === 'Enter') handleCreate();
               if (e.key === 'Escape') { setIsCreating(false); setNewName(''); }
             }}
-            placeholder="名前..."
+            placeholder={t('playlist.namePlaceholder')}
             className="flex-1 min-w-0 text-xs border border-gray-300 dark:border-gray-600 rounded px-1.5 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400"
           />
           <button
@@ -98,7 +100,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
 
       {playlists.length === 0 && !isCreating && (
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          プレイリストなし
+          {t('playlist.empty')}
         </p>
       )}
 
@@ -115,7 +117,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
             type="button"
             className="opacity-0 group-hover:opacity-100 text-xs text-gray-400 hover:text-red-500 shrink-0 transition-opacity px-1"
             onClick={() => deletePlaylist(pl.id)}
-            title="削除"
+            title={t('playlist.delete')}
           >
             ×
           </button>
@@ -127,7 +129,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
         <>
           <div className="mt-3 mb-1">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-              スマート
+              {t('playlist.smart')}
             </span>
           </div>
           {smartPlaylists.map((sp) => (
@@ -136,7 +138,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
                 type="button"
                 className="flex-1 min-w-0 text-left text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 truncate"
                 onClick={() => handleApplySmartPlaylist(sp)}
-                title="このフィルター条件を適用"
+                title={t('playlist.applyFilter')}
               >
                 🔍 {sp.name}
               </button>
@@ -144,7 +146,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
                 type="button"
                 className="opacity-0 group-hover:opacity-100 text-xs text-gray-400 hover:text-red-500 shrink-0 transition-opacity px-1"
                 onClick={() => handleDeleteSmartPlaylist(sp.id)}
-                title="削除"
+                title={t('playlist.delete')}
               >
                 ×
               </button>

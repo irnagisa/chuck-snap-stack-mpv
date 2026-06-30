@@ -1,83 +1,57 @@
 import { create } from 'zustand';
-import Database from '@tauri-apps/plugin-sql';
+import { invoke } from '@tauri-apps/api/core';
 import type { Playlist, Video } from '../types';
 
 interface PlaylistState {
   playlists: Playlist[];
-  db: Database | null;
 }
 
 interface PlaylistActions {
-  init: (db: Database) => Promise<void>;
+  init: () => Promise<void>;
   fetchPlaylists: () => Promise<void>;
   createPlaylist: (name: string) => Promise<void>;
   deletePlaylist: (id: number) => Promise<void>;
   fetchPlaylistVideos: (playlistId: number) => Promise<Video[]>;
   addVideoToPlaylist: (playlistId: number, videoId: number) => Promise<void>;
   removeVideoFromPlaylist: (playlistId: number, videoId: number) => Promise<void>;
+  reorderPlaylistItems: (playlistId: number, videoIds: number[]) => Promise<void>;
 }
 
 export const usePlaylistStore = create<PlaylistState & PlaylistActions>((set, get) => ({
   playlists: [],
-  db: null,
 
-  init: async (db: Database) => {
-    set({ db });
+  init: async () => {
     await get().fetchPlaylists();
   },
 
   fetchPlaylists: async () => {
-    const { db } = get();
-    if (!db) return;
-    const playlists = await db.select<Playlist[]>(
-      'SELECT * FROM playlists ORDER BY created_at DESC'
-    );
+    const playlists = await invoke<Playlist[]>('db_fetch_playlists');
     set({ playlists });
   },
 
   createPlaylist: async (name: string) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute('INSERT INTO playlists (name) VALUES (?)', [name]);
+    await invoke('db_create_playlist', { name });
     await get().fetchPlaylists();
   },
 
   deletePlaylist: async (id: number) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute('DELETE FROM playlist_items WHERE playlist_id = ?', [id]);
-    await db.execute('DELETE FROM playlists WHERE id = ?', [id]);
+    await invoke('db_delete_playlist', { id });
     set((state) => ({ playlists: state.playlists.filter((p) => p.id !== id) }));
   },
 
   fetchPlaylistVideos: async (playlistId: number): Promise<Video[]> => {
-    const { db } = get();
-    if (!db) return [];
-    return db.select<Video[]>(
-      `SELECT v.* FROM videos v
-       JOIN playlist_items pi ON v.id = pi.video_id
-       WHERE pi.playlist_id = ?
-       ORDER BY pi.position ASC`,
-      [playlistId]
-    );
+    return invoke<Video[]>('db_fetch_playlist_videos', { playlistId });
   },
 
   addVideoToPlaylist: async (playlistId: number, videoId: number) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute(
-      `INSERT OR IGNORE INTO playlist_items (playlist_id, video_id, position)
-       SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM playlist_items WHERE playlist_id = ?`,
-      [playlistId, videoId, playlistId]
-    );
+    await invoke('db_add_video_to_playlist', { playlistId, videoId });
   },
 
   removeVideoFromPlaylist: async (playlistId: number, videoId: number) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute(
-      'DELETE FROM playlist_items WHERE playlist_id = ? AND video_id = ?',
-      [playlistId, videoId]
-    );
+    await invoke('db_remove_video_from_playlist', { playlistId, videoId });
+  },
+
+  reorderPlaylistItems: async (playlistId: number, videoIds: number[]) => {
+    await invoke('db_reorder_playlist_items', { playlistId, videoIds });
   },
 }));

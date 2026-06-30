@@ -11,6 +11,10 @@ export interface Video {
   has_audio: number | null;
   watch_count: number;
   created_at: string;
+  media_type: 'video' | 'audio' | 'image' | null;
+  source_url: string | null;
+  status: 'inbox' | null;
+  source_type: 'import' | 'download' | 'dragdrop' | 'watcher' | null;
 }
 
 export interface Chapter {
@@ -25,6 +29,21 @@ export interface SubtitleFile {
   ext: string;
 }
 
+export interface AiMatchedTag {
+  tag_id: number;
+  score: number;
+}
+
+export interface AiNewSuggestion {
+  name: string;
+  score: number;
+}
+
+export interface AiSuggestionResult {
+  matched_tags: AiMatchedTag[];
+  new_suggestions: AiNewSuggestion[];
+}
+
 export interface SmartPlaylist {
   id: number;
   name: string;
@@ -36,12 +55,21 @@ export interface ScannedFile {
   path: string;
   title: string;
   parent_dir_name: string | null;
+  media_type: string;
+}
+
+export interface ScanResult {
+  files: ScannedFile[];
+  errors: string[];
+  truncated: boolean;
+  skipped_count: number;
 }
 
 export interface Tag {
   id: number;
   name: string;
   color: string;
+  icon: string | null;
   tag_category_id: number | null;
   created_at: string;
 }
@@ -56,6 +84,8 @@ export interface Category {
   id: number;
   name: string;
   color: string;
+  icon: string | null;
+  parent_id: number | null;
   created_at: string;
 }
 

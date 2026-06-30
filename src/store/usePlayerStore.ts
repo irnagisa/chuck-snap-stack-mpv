@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Video, Chapter } from '../types';
 import { useLibraryStore } from './useLibraryStore';
+import { useSettingsStore } from './useSettingsStore';
+import { toast } from './useToastStore';
 
 interface PlayerState {
   currentVideo: Video | null;
@@ -11,6 +13,7 @@ interface PlayerState {
   isPaused: boolean;
   isLooping: boolean;
   isShuffle: boolean;
+  isMiniPlayer: boolean;
   queue: Video[];
   queueIndex: number;
   originalQueue: Video[];
@@ -30,6 +33,7 @@ interface PlayerActions {
   seekTo: (seconds: number) => Promise<void>;
   toggleLoop: () => Promise<void>;
   toggleShuffle: () => void;
+  toggleMiniPlayer: () => void;
   playShuffleAll: () => Promise<void>;
   setSpeed: (speed: number) => Promise<void>;
   setAbLoopA: () => Promise<void>;
@@ -53,44 +57,64 @@ function initListeners(
   if (listenersInitialized) return;
   listenersInitialized = true;
 
+  // listen() 失敗時はログを出してノーオペレーションを返す
+  const safeListen = <T>(event: string, handler: Parameters<typeof listen<T>>[1]) => {
+    const p = listen<T>(event, handler).catch((e: unknown) => {
+      console.error(`[initListeners] "${event}" リスナー登録失敗:`, e);
+      return () => {};
+    });
+    unlistenFns.push(p);
+  };
+
   // mpv のプロパティ変化をリアルタイムで受信
-  unlistenFns.push(listen<number>('mpv://playback-time', (e) => {
+  safeListen<number>('mpv://playback-time', (e) => {
     set({ playbackTime: e.payload });
-  }));
+  });
 
-  unlistenFns.push(listen<boolean>('mpv://pause', (e) => {
+  safeListen<boolean>('mpv://pause', (e) => {
     set({ isPaused: e.payload });
-  }));
+  });
 
-  unlistenFns.push(listen<number>('mpv://duration', (e) => {
+  safeListen<number>('mpv://duration', (e) => {
     set({ duration: e.payload });
-  }));
+  });
 
-  // ファイルが自然終了した場合 → ループ中はスキップ、キューがあれば次へ進む
-  unlistenFns.push(listen<string>('mpv://end-file', async (e) => {
+  // ファイルが自然終了した場合 → ループ中はスキップ、自動再生ON かつキューがあれば次へ、なければ終了
+  safeListen<string>('mpv://end-file', async (e) => {
     if (e.payload !== 'eof') return;
     const { queue, queueIndex, isLooping } = get();
     if (isLooping) return;
-    if (queue.length > 0 && queueIndex < queue.length - 1) {
+    const { autoPlayNext } = useSettingsStore.getState();
+    if (autoPlayNext && queue.length > 0 && queueIndex < queue.length - 1) {
       await get().playNext();
+    } else {
+      await get().quit();
     }
-  }));
+  });
 
   // mpv プロセスが終了した場合 → 進捗を保存してステートをリセット
-  unlistenFns.push(listen('mpv://closed', async () => {
-    const { currentVideo, playbackTime } = get();
+  safeListen('mpv://closed', async () => {
+    const { currentVideo, playbackTime, isMiniPlayer } = get();
     if (currentVideo && playbackTime > 0) {
       await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
+    }
+    if (isMiniPlayer) {
+      invoke('exit_mini_player').catch(console.error);
     }
     set({
       currentVideo: null,
       playbackTime: 0,
       duration: 0,
       isPaused: false,
+      isMiniPlayer: false,
       queue: [],
       queueIndex: -1,
+      originalQueue: [],
+      abLoopA: null,
+      abLoopB: null,
+      chapters: [],
     });
-  }));
+  });
 }
 
 async function invokePlay(video: Video) {
@@ -111,6 +135,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     isPaused: false,
     isLooping: false,
     isShuffle: false,
+    isMiniPlayer: false,
     queue: [],
     queueIndex: -1,
     originalQueue: [],
@@ -121,33 +146,37 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
     play: async (video: Video) => {
       const { isLooping } = get();
+      // duration/playbackTime は invokePlay の前にリセットする。
+      // await 中に mpv から duration イベントが届く場合があり、後でリセットすると上書きしてしまう。
+      set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
       await invokePlay(video);
       if (isLooping) {
         try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
       }
       set({
         currentVideo: video,
-        playbackTime: 0,
-        duration: 0,
         isPaused: false,
         queue: [],
         queueIndex: -1,
-        abLoopA: null,
-        abLoopB: null,
-        chapters: [],
       });
       useLibraryStore.getState().incrementWatchCount(video.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: video.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     playWithQueue: async (videos: Video[], startIndex = 0) => {
-      if (videos.length === 0) return;
+      // 画像は mpv 非対応のためキューから除外する
+      const playable = videos.filter((v) => v.media_type !== 'image');
+      if (playable.length === 0) return;
       const { isShuffle, isLooping } = get();
 
-      let queue = [...videos];
-      let idx = Math.max(0, Math.min(startIndex, videos.length - 1));
+      // startIndex が指す動画を playable 内で再探索する
+      const targetId = videos[Math.max(0, Math.min(startIndex, videos.length - 1))]?.id;
+      const playableIdx = targetId != null ? playable.findIndex((v) => v.id === targetId) : -1;
+
+      let queue = [...playable];
+      let idx = Math.max(0, playableIdx >= 0 ? playableIdx : 0);
       let originalQueue: Video[] = [];
 
       if (isShuffle && videos.length > 1) {
@@ -162,26 +191,22 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         idx = 0;
       }
 
+      set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
       await invokePlay(queue[idx]);
       if (isLooping) {
         try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
       }
       set({
         currentVideo: queue[idx],
-        playbackTime: 0,
-        duration: 0,
         isPaused: false,
         queue,
         queueIndex: idx,
         originalQueue,
-        abLoopA: null,
-        abLoopB: null,
-        chapters: [],
       });
       useLibraryStore.getState().incrementWatchCount(queue[idx].id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: queue[idx].path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     playNext: async () => {
@@ -192,21 +217,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       if (queue.length === 0 || queueIndex >= queue.length - 1) return;
       const nextIdx = queueIndex + 1;
       const nextVideo = queue[nextIdx];
+      set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
       await invokePlay(nextVideo);
       set({
         currentVideo: nextVideo,
-        playbackTime: 0,
-        duration: 0,
         isPaused: false,
         queueIndex: nextIdx,
-        abLoopA: null,
-        abLoopB: null,
-        chapters: [],
       });
       useLibraryStore.getState().incrementWatchCount(nextVideo.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: nextVideo.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     playPrev: async () => {
@@ -217,27 +238,26 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       if (queue.length === 0 || queueIndex <= 0) return;
       const prevIdx = queueIndex - 1;
       const prevVideo = queue[prevIdx];
+      set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
       await invokePlay(prevVideo);
       set({
         currentVideo: prevVideo,
-        playbackTime: 0,
-        duration: 0,
         isPaused: false,
         queueIndex: prevIdx,
-        abLoopA: null,
-        abLoopB: null,
-        chapters: [],
       });
       useLibraryStore.getState().incrementWatchCount(prevVideo.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: prevVideo.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
 
     quit: async () => {
-      const { currentVideo, playbackTime } = get();
+      const { currentVideo, playbackTime, isMiniPlayer } = get();
       if (currentVideo && playbackTime > 0) {
         await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
+      }
+      if (isMiniPlayer) {
+        invoke('exit_mini_player').catch(console.error);
       }
       try {
         await invoke('quit_mpv');
@@ -249,8 +269,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         playbackTime: 0,
         duration: 0,
         isPaused: false,
+        isMiniPlayer: false,
         queue: [],
         queueIndex: -1,
+        originalQueue: [],
+        abLoopA: null,
+        abLoopB: null,
+        chapters: [],
       });
     },
 
@@ -275,9 +300,22 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       set({ isLooping: next });
       try {
         await invoke('set_loop', { enabled: next });
-      } catch {
-        // 無視
+      } catch (e) {
+        // invoke 失敗時はステートを元に戻す
+        set({ isLooping: !next });
+        console.error('[toggleLoop] set_loop 失敗:', e);
       }
+    },
+
+    toggleMiniPlayer: () => {
+      const next = !get().isMiniPlayer;
+      set({ isMiniPlayer: next });
+      const cmd = next ? 'enter_mini_player' : 'exit_mini_player';
+      invoke(cmd).catch((e: unknown) => {
+        console.error(`[toggleMiniPlayer] ${cmd} 失敗:`, e);
+        // invoke 失敗時はステートを元に戻す
+        set({ isMiniPlayer: !next });
+      });
     },
 
     toggleShuffle: () => {
@@ -314,44 +352,52 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     },
 
     playShuffleAll: async () => {
-      const { isLooping } = get();
-      const allVideos = await useLibraryStore.getState().fetchAllForShuffle();
-      if (allVideos.length === 0) return;
+      try {
+        const { isLooping } = get();
+        const allVideos = (await useLibraryStore.getState().fetchAllForShuffle())
+          .filter((v) => v.media_type !== 'image');
+        if (allVideos.length === 0) return;
 
-      const shuffled = [...allVideos];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
+        const shuffled = [...allVideos];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
 
-      await invokePlay(shuffled[0]);
-      if (isLooping) {
-        try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
+        set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
+        await invokePlay(shuffled[0]);
+        if (isLooping) {
+          try { await invoke('set_loop', { enabled: true }); } catch { /* mpv not ready */ }
+        }
+        set({
+          currentVideo: shuffled[0],
+          isPaused: false,
+          isShuffle: true,
+          originalQueue: [],
+          queue: shuffled,
+          queueIndex: 0,
+        });
+        useLibraryStore.getState().incrementWatchCount(shuffled[0].id).catch(() => {});
+        invoke<Chapter[]>('get_chapters', { videoPath: shuffled[0].path })
+          .then((chapters) => set({ chapters }))
+          .catch(() => { set({ chapters: [] }); });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('[playShuffleAll] エラー:', e);
+        toast.error(`シャッフル再生に失敗しました: ${msg}`);
       }
-      set({
-        currentVideo: shuffled[0],
-        playbackTime: 0,
-        duration: 0,
-        isPaused: false,
-        isShuffle: true,
-        originalQueue: [],
-        queue: shuffled,
-        queueIndex: 0,
-        abLoopA: null,
-        abLoopB: null,
-        chapters: [],
-      });
-      useLibraryStore.getState().incrementWatchCount(shuffled[0].id).catch(() => {});
-      invoke<Chapter[]>('get_chapters', { videoPath: shuffled[0].path })
-        .then((chapters) => set({ chapters }))
-        .catch(() => {});
     },
 
     setSpeed: async (speed: number) => {
+      const prevSpeed = get().speed;
       set({ speed });
       try {
         await invoke('set_playback_speed', { speed });
-      } catch { /* 無視 */ }
+      } catch (e) {
+        // invoke 失敗時はステートを元に戻す
+        set({ speed: prevSpeed });
+        console.error('[setSpeed] set_playback_speed 失敗:', e);
+      }
     },
 
     setAbLoopA: async () => {
@@ -407,21 +453,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         await useLibraryStore.getState().updateProgress(currentVideo.id, playbackTime);
       }
       const video = queue[index];
+      set({ playbackTime: 0, duration: 0, abLoopA: null, abLoopB: null, chapters: [] });
       await invokePlay(video);
       set({
         currentVideo: video,
-        playbackTime: 0,
-        duration: 0,
         isPaused: false,
         queueIndex: index,
-        abLoopA: null,
-        abLoopB: null,
-        chapters: [],
       });
       useLibraryStore.getState().incrementWatchCount(video.id).catch(() => {});
       invoke<Chapter[]>('get_chapters', { videoPath: video.path })
         .then((chapters) => set({ chapters }))
-        .catch(() => {});
+        .catch(() => { set({ chapters: [] }); });
     },
   };
 });

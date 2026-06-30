@@ -1,15 +1,18 @@
 import { useRef, useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { TagBadge } from './TagBadge';
 import { DeleteVideoModal } from './DeleteVideoModal';
+import { VideoContextMenu } from './VideoContextMenu';
 
 interface VideoCardProps {
   video: Video;
   isPlaying: boolean;
   isSelected: boolean;
+  isDetailVideo: boolean;
   tags: Tag[];
   category: Category | null;
   idx: number;
@@ -18,12 +21,14 @@ interface VideoCardProps {
   onAddToPlaylist?: (video: Video) => void;
   onDelete: (video: Video) => void;
   onCheckbox: (e: React.MouseEvent, video: Video, idx: number) => void;
+  onContextMenu: (e: React.MouseEvent, video: Video) => void;
 }
 
 const VideoCard = memo(function VideoCard({
   video: v,
   isPlaying,
   isSelected,
+  isDetailVideo,
   tags,
   category,
   idx,
@@ -32,29 +37,75 @@ const VideoCard = memo(function VideoCard({
   onAddToPlaylist,
   onDelete,
   onCheckbox,
+  onContextMenu,
 }: VideoCardProps) {
+  const { t } = useTranslation();
+  const isImage = v.media_type === 'image';
+  const isAudio = v.media_type === 'audio';
+  const handlePrimaryClick = () => onShowDetail(v);
   const progressPercent =
     v.duration && v.duration > 0
       ? Math.min((v.progress / v.duration) * 100, 100)
       : null;
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [fileMissing, setFileMissing] = useState(false);
+  const checkedRef = useRef(false);
+
+  useEffect(() => {
+    checkedRef.current = false;
+    setFileMissing(false);
+  }, [v.path]);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !checkedRef.current) {
+          checkedRef.current = true;
+          invoke<boolean>('path_exists', { path: v.path }).then((exists) => {
+            if (!exists) setFileMissing(true);
+          });
+        }
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [v.path]);
+
   return (
     <div
-      className={`group cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
-        isSelected
-          ? 'border-blue-400 dark:border-blue-500'
-          : isPlaying
-            ? 'border-blue-500'
-            : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+      ref={cardRef}
+      onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, v); }}
+      className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
+        fileMissing
+          ? 'border-red-500/60 opacity-60'
+          : isSelected
+            ? 'border-blue-400 dark:border-blue-500'
+            : isPlaying
+              ? 'border-blue-500'
+              : isDetailVideo
+                ? 'border-sky-400 dark:border-sky-500'
+                : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
       }`}
     >
+      {fileMissing && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+          <span className="bg-red-600/80 text-white text-xs font-semibold px-2 py-0.5 rounded shadow">
+            {t('library.noFile')}
+          </span>
+        </div>
+      )}
       {category && (
         <div className="h-1 shrink-0" style={{ backgroundColor: category.color }} />
       )}
 
       <div
         className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
-        onClick={() => onPlay(v)}
+        onClick={handlePrimaryClick}
+        onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}
       >
         {v.thumbnail ? (
           <img
@@ -65,7 +116,13 @@ const VideoCard = memo(function VideoCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-2xl">
-            ▶
+            {isImage ? '🖼' : isAudio ? '♪' : '▶'}
+          </div>
+        )}
+        {/* メディアタイプバッジ */}
+        {(isImage || isAudio) && (
+          <div className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded pointer-events-none">
+            {isImage ? t('library.imageType') : t('library.audioType')}
           </div>
         )}
 
@@ -86,7 +143,7 @@ const VideoCard = memo(function VideoCard({
           </div>
         </div>
 
-        {v.has_audio === 0 && (
+        {v.has_audio === 0 && !isImage && !isAudio && (
           <div className="absolute top-1 left-1 pointer-events-none group-hover:opacity-0 transition-opacity">
             <div className="bg-black/60 rounded p-0.5">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
@@ -98,7 +155,7 @@ const VideoCard = memo(function VideoCard({
 
         {isPlaying && (
           <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
-            再生中
+            {t('library.playing')}
           </div>
         )}
         <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
@@ -107,24 +164,24 @@ const VideoCard = memo(function VideoCard({
               type="button"
               className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
               onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
-              title="プレイリストに追加"
+              title={t('library.addToPlaylist')}
             >
               +
             </button>
           )}
           <button
             type="button"
-            className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
-            onClick={(e) => { e.stopPropagation(); onShowDetail(v); }}
-            title="動画の詳細を表示"
+            className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
+            onClick={(e) => { e.stopPropagation(); onPlay(v); }}
+            title={t('library.play')}
           >
-            詳細
+            ▶
           </button>
           <button
             type="button"
             className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
             onClick={(e) => { e.stopPropagation(); onDelete(v); }}
-            title="動画を削除"
+            title={t('library.deleteVideo')}
           >
             削除
           </button>
@@ -139,7 +196,7 @@ const VideoCard = memo(function VideoCard({
         <div className="h-1 bg-blue-500" />
       ) : null}
 
-      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={() => onPlay(v)}>
+      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={handlePrimaryClick} onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}>
         <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
           {v.title ?? v.path.split('/').pop()}
         </p>
@@ -163,9 +220,14 @@ const VideoCard = memo(function VideoCard({
 interface Props {
   videos: Video[];
   currentVideoId: number | null;
+  detailVideoId?: number | null;
+  scrollResetKey?: string | number;
+  itemMinWidth?: number;
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
+  onSetTag?: (video: Video) => void;
+  onSetCategory?: (video: Video) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
 }
@@ -176,9 +238,14 @@ const GAP = 16; // gap-4
 export function LibraryGrid({
   videos,
   currentVideoId,
+  detailVideoId,
+  scrollResetKey,
+  itemMinWidth = ITEM_MIN_WIDTH,
   onPlay,
   onShowDetail,
   onAddToPlaylist,
+  onSetTag,
+  onSetCategory,
   selectedIds,
   onSelectionChange,
 }: Props) {
@@ -186,6 +253,7 @@ export function LibraryGrid({
   const videoTags = useTagStore((s) => s.videoTags);
   const categories = useTagStore((s) => s.categories);
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ video: Video; x: number; y: number } | null>(null);
   const lastSelectedIdxRef = useRef<number | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -201,7 +269,7 @@ export function LibraryGrid({
     const el = scrollRef.current;
     if (!el) return;
     const measure = () => {
-      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (ITEM_MIN_WIDTH + GAP)));
+      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (itemMinWidth + GAP)));
       setColumns(cols);
     };
     measure();
@@ -217,7 +285,13 @@ export function LibraryGrid({
       if (timer !== null) clearTimeout(timer);
       ro.disconnect();
     };
-  }, []);
+  }, [itemMinWidth]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [scrollResetKey]);
 
   const rows = useMemo(() => {
     const result: Video[][] = [];
@@ -257,6 +331,10 @@ export function LibraryGrid({
     onSelectionChange(next);
   }, [videos, onSelectionChange]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, video: Video) => {
+    setContextMenu({ video, x: e.clientX, y: e.clientY });
+  }, []);
+
   return (
     <>
       <div ref={scrollRef} className="h-full overflow-y-auto select-none">
@@ -290,6 +368,7 @@ export function LibraryGrid({
                           video={v}
                           isPlaying={v.id === currentVideoId}
                           isSelected={selectedIds.has(v.id)}
+                          isDetailVideo={v.id === (detailVideoId ?? null)}
                           tags={videoTags[v.id] ?? []}
                           category={v.category_id != null ? categoryMap[v.category_id] : null}
                           idx={idx}
@@ -298,6 +377,7 @@ export function LibraryGrid({
                           onAddToPlaylist={onAddToPlaylist}
                           onDelete={setDeleteTarget}
                           onCheckbox={handleCheckbox}
+                          onContextMenu={handleContextMenu}
                         />
                       );
                     })}
@@ -314,6 +394,21 @@ export function LibraryGrid({
           video={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onRemoved={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {contextMenu && (
+        <VideoContextMenu
+          video={contextMenu.video}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onPlay={() => { onPlay(contextMenu.video); setContextMenu(null); }}
+          onShowDetail={() => { onShowDetail(contextMenu.video); setContextMenu(null); }}
+          onAddToPlaylist={onAddToPlaylist ? () => { onAddToPlaylist!(contextMenu.video); setContextMenu(null); } : undefined}
+          onSetTag={onSetTag ? () => { onSetTag!(contextMenu.video); setContextMenu(null); } : undefined}
+          onSetCategory={onSetCategory ? () => { onSetCategory!(contextMenu.video); setContextMenu(null); } : undefined}
+          onDelete={() => { setDeleteTarget(contextMenu.video); setContextMenu(null); }}
         />
       )}
     </>

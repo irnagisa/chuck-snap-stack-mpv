@@ -1,7 +1,9 @@
 use std::path::{Component, Path, PathBuf};
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv"];
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "mpg", "mpeg", "media"];
+const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "aac", "wav", "ogg", "opus", "m4a", "wma"];
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "avif"];
+const TEXT_EXTENSIONS: &[&str] = &["json", "txt", "csv", "tsv", "md", "xml", "yaml", "yml", "toml", "nfo", "srt", "vtt"];
 
 /// 絶対パスであり `..` コンポーネントや制御文字を含まないことを検証する。
 pub fn validate_path(path: &str) -> Result<PathBuf, String> {
@@ -35,6 +37,40 @@ pub fn validate_video_path(path: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
+/// メディアファイルのパスを検証する (絶対パス + `..` なし + 動画/音声/画像拡張子)。
+pub fn validate_media_path(path: &str) -> Result<PathBuf, String> {
+    let p = validate_path(path)?;
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if !VIDEO_EXTENSIONS.contains(&ext.as_str())
+        && !AUDIO_EXTENSIONS.contains(&ext.as_str())
+        && !IMAGE_EXTENSIONS.contains(&ext.as_str())
+    {
+        return Err(format!("対応メディアファイルのみ操作できます: {path}"));
+    }
+    Ok(p)
+}
+
+/// テキスト系ファイルのパスを検証する (絶対パス + `..` なし + テキスト拡張子)。
+/// 任意ファイルの読み書きを防ぐため、許可する拡張子を明示的に限定する。
+pub fn validate_text_path(path: &str) -> Result<PathBuf, String> {
+    let p = validate_path(path)?;
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if !TEXT_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(format!(
+            "テキストファイル (.json, .txt, .csv 等) のみ操作できます: {path}"
+        ));
+    }
+    Ok(p)
+}
+
 /// 画像出力パスを検証する (絶対パス + `..` なし + 画像拡張子)。
 pub fn validate_image_output_path(path: &str) -> Result<PathBuf, String> {
     let p = validate_path(path)?;
@@ -47,6 +83,33 @@ pub fn validate_image_output_path(path: &str) -> Result<PathBuf, String> {
         return Err(format!("画像ファイルパス (.jpg/.png 等) を指定してください: {path}"));
     }
     Ok(p)
+}
+
+/// 指定パスに同名ファイルが存在する場合、連番サフィックス (_2, _3, ...) を付与した
+/// 一意なパスを返す。存在しない場合は元のパスをそのまま返す。
+///
+/// # 例
+/// - `foo.mp4` が存在しない → `foo.mp4`
+/// - `foo.mp4` が存在する → `foo_2.mp4`
+/// - `foo.mp4`, `foo_2.mp4` が存在する → `foo_3.mp4`
+pub fn resolve_unique_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let ext = path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let mut i = 2u32;
+    loop {
+        let candidate = dir.join(format!("{stem}_{i}{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        i += 1;
+    }
 }
 
 /// ダウンロード URL を検証する (スキーム検証 + プライベート IP ブロック + 危険ポートブロック)。

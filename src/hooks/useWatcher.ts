@@ -1,35 +1,71 @@
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useLibraryStore } from '../store/useLibraryStore';
+import { toast } from '../store/useToastStore';
+
+type WatcherBatch = {
+  creates: { path: string; title: string }[];
+  removes: string[];
+  renames: { old_path: string; new_path: string; title: string }[];
+};
+
+const DEBOUNCE_MS = 500;
 
 export function useWatcher() {
   useEffect(() => {
-    // アンマウント前に Promise が解決していない場合も確実にクリーンアップできるよう
-    // cancelled フラグで二重クリーンアップを保証する
     let cancelled = false;
     let u1: (() => void) | undefined;
     let u2: (() => void) | undefined;
+    let u3: (() => void) | undefined;
+
+    const batch: WatcherBatch = { creates: [], removes: [], renames: [] };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = () => {
+      timer = null;
+      // splice(0) でバッチをスナップショットして空にする
+      const snap: WatcherBatch = {
+        creates: batch.creates.splice(0),
+        removes: batch.removes.splice(0),
+        renames: batch.renames.splice(0),
+      };
+      if (snap.creates.length > 0 || snap.removes.length > 0 || snap.renames.length > 0) {
+        useLibraryStore.getState().batchWatcherUpdate(snap);
+      }
+    };
+
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(flush, DEBOUNCE_MS);
+    };
 
     (async () => {
-      u1 = await listen<{ path: string; title: string }>(
-        'video-file-created',
-        (e) => useLibraryStore.getState().addVideoFromPath(e.payload.path, e.payload.title)
-      );
-      u2 = await listen<string>(
-        'video-file-removed',
-        (e) => useLibraryStore.getState().removeVideoByPath(e.payload)
-      );
-      // cleanup がすでに実行されていた場合は即座に登録解除
-      if (cancelled) {
-        u1();
-        u2();
+      try {
+        u1 = await listen<{ path: string; title: string }>(
+          'video-file-created',
+          (e) => { batch.creates.push(e.payload); schedule(); }
+        );
+        u2 = await listen<string>(
+          'video-file-removed',
+          (e) => { batch.removes.push(e.payload); schedule(); }
+        );
+        u3 = await listen<{ old_path: string; new_path: string; title: string }>(
+          'video-file-renamed',
+          (e) => { batch.renames.push(e.payload); schedule(); }
+        );
+        if (cancelled) { u1?.(); u2?.(); u3?.(); }
+      } catch (e) {
+        console.error('[useWatcher] ファイル変更イベントのリスナー登録に失敗しました:', e);
+        toast.error('フォルダ監視の初期化に失敗しました。アプリを再起動してください。');
       }
     })();
 
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
       u1?.();
       u2?.();
+      u3?.();
     };
-  }, []); // 空配列: マウント時に一度だけリスナーを登録
+  }, []);
 }

@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { useTagStore } from '../../store/useTagStore';
+import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 interface Props {
   videoIds: number[];
@@ -18,29 +20,38 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
 }
 
 export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
+  const { t } = useTranslation();
   const { categories, setCategoryMultiple } = useTagStore();
-  const { db, fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
+  const { fetchVideos, watchDirs, videos, moveVideoFile } = useLibraryStore();
+  const { categoryMode } = useSettingsStore();
+  const flatCategories = useMemo(() => flattenCategoryTree(buildCategoryTree(categories)), [categories]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null | 'unset'>('unset');
-  const [moveFiles, setMoveFiles] = useState(true);
+  // Sync モード: 常に移動 / Virtual モード: 移動しない
+  const moveFiles = categoryMode === 'sync';
   const [loading, setLoading] = useState(false);
 
   const handleApply = async () => {
-    if (!db || selectedCategoryId === 'unset') return;
+    if (selectedCategoryId === 'unset') return;
     setLoading(true);
     try {
-      await setCategoryMultiple(db, videoIds, selectedCategoryId);
+      await setCategoryMultiple(videoIds, selectedCategoryId);
 
       if (moveFiles) {
-        const catName = typeof selectedCategoryId === 'number'
-          ? categories.find((c) => c.id === selectedCategoryId)?.name
+        const catPath = typeof selectedCategoryId === 'number'
+          ? getCategoryPath(selectedCategoryId, categories)
           : null;
+        let failCount = 0;
         for (const videoId of videoIds) {
           const video = videos.find((v) => v.id === videoId);
           if (!video) continue;
           const watchDir = findWatchDir(video.path, watchDirs);
           if (!watchDir) continue;
-          const destDir = catName ? `${watchDir}/${catName}` : watchDir;
-          await moveVideoFile(videoId, destDir);
+          const destDir = catPath ? `${watchDir}/${catPath}` : `${watchDir}/Unsorted`;
+          const result = await moveVideoFile(videoId, destDir);
+          if (result === null) failCount++;
+        }
+        if (failCount > 0) {
+          alert(t('syncMode.moveFilesFailed', { count: failCount }));
         }
       }
 
@@ -58,10 +69,10 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-          一括カテゴリ設定
+          {t('bulkCategory.title')}
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          {videoIds.length} 件の動画に設定するカテゴリを選択
+          {t('bulkCategory.desc', { count: videoIds.length })}
         </p>
 
         <div className="flex flex-col gap-1.5 mb-4 max-h-60 overflow-y-auto">
@@ -72,13 +83,14 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
               checked={selectedCategoryId === null}
               onChange={() => setSelectedCategoryId(null)}
             />
-            <span className="text-sm text-gray-500 dark:text-gray-400">カテゴリなし</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{t('bulkCategory.none')}</span>
           </label>
 
-          {categories.map((cat) => (
+          {flatCategories.map(({ category: cat, depth }) => (
             <label
               key={cat.id}
               className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 rounded"
+              style={{ paddingLeft: `${8 + depth * 12}px` }}
             >
               <input
                 type="radio"
@@ -96,18 +108,14 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
         </div>
 
         {categories.length === 0 && (
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">カテゴリがありません</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{t('bulkCategory.empty')}</p>
         )}
 
-        <label className="flex items-center gap-1.5 mb-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={moveFiles}
-            onChange={(e) => setMoveFiles(e.target.checked)}
-            className="accent-blue-600"
-          />
-          <span className="text-xs text-gray-500 dark:text-gray-400">ファイルも移動する</span>
-        </label>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+          {categoryMode === 'sync'
+            ? t('bulkCategory.syncModeNote')
+            : t('bulkCategory.virtualModeNote')}
+        </p>
 
         <div className="flex gap-2">
           <button
@@ -116,7 +124,7 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
             className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
             onClick={handleApply}
           >
-            {loading ? '処理中...' : '適用'}
+            {loading ? t('bulkCategory.applying') : t('bulkCategory.apply')}
           </button>
           <button
             type="button"
@@ -124,7 +132,7 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
             className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
             onClick={onClose}
           >
-            キャンセル
+            {t('bulkCategory.cancel')}
           </button>
         </div>
       </div>

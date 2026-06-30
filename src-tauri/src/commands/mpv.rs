@@ -157,7 +157,7 @@ fn connect_and_start_reader(
             match reader.read_line(&mut line) {
                 Ok(0) => {
                     // EOF: mpv プロセスが終了した
-                    eprintln!("[reader gen={current_gen}] EOF 受信");
+                    log::debug!("[reader gen={current_gen}] EOF 受信");
                     let is_current = gen_counter.load(Ordering::Acquire) == current_gen;
                     if is_current {
                         // ソケット参照をクリアし、ゾンビプロセス回収はバックグラウンドへ
@@ -173,19 +173,42 @@ fn connect_and_start_reader(
                         let still_current =
                             gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
-                            eprintln!("[reader gen={current_gen}] mpv//closed 送信");
+                            log::debug!("[reader gen={current_gen}] mpv//closed 送信");
                             let _ = std::fs::remove_file(mpv_socket_path());
                             let _ = app.emit("mpv://closed", ());
                         } else {
-                            eprintln!("[reader gen={current_gen}] generation 変化 → closed をスキップ");
+                            log::debug!("[reader gen={current_gen}] generation 変化 → closed をスキップ");
                         }
                     } else {
-                        eprintln!("[reader gen={current_gen}] is_current=false → スキップ");
+                        log::debug!("[reader gen={current_gen}] is_current=false → スキップ");
                     }
                     return;
                 }
                 Ok(_) => {}
-                Err(_) => return,
+                Err(e) => {
+                    // I/O エラー (ECONNRESET 等): EOF と同様にクリーンアップして終了する
+                    log::debug!("[reader gen={current_gen}] read error: {e} → cleanup");
+                    let is_current = gen_counter.load(Ordering::Acquire) == current_gen;
+                    if is_current {
+                        let child_opt = state.lock().ok().and_then(|mut s| {
+                            s.writer = None;
+                            s.process.take()
+                        });
+                        if let Some(mut child) = child_opt {
+                            std::thread::spawn(move || {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                            });
+                        }
+                        let still_current = gen_counter.load(Ordering::Acquire) == current_gen;
+                        if still_current {
+                            log::debug!("[reader gen={current_gen}] error → mpv//closed 送信");
+                            let _ = std::fs::remove_file(mpv_socket_path());
+                            let _ = app.emit("mpv://closed", ());
+                        }
+                    }
+                    return;
+                }
             }
 
             // 世代チェック: mpv が再起動された場合は古いスレッドを終了
@@ -229,7 +252,7 @@ fn connect_and_start_reader(
                 Some("end-file") => {
                     // reason: "eof" | "stop" | "quit" | "error" | "redirect" | "unknown"
                     let reason = val["reason"].as_str().unwrap_or("unknown").to_string();
-                    eprintln!("[reader gen={current_gen}] end-file reason={reason}");
+                    log::debug!("[reader gen={current_gen}] end-file reason={reason}");
                     let _ = app.emit("mpv://end-file", reason);
                 }
                 _ => {}
@@ -244,17 +267,20 @@ fn connect_and_start_reader(
 
 /// 動画ウィンドウのサイズ制約を適用する。
 /// ディスプレイ寸法を一度だけ取得し、dwidth が確定するまでポーリングする。
-fn apply_window_size_constraints() {
+/// gen_counter/current_gen を渡すことで、古い play() 呼び出しから起動した
+/// スレッドが新しい mpv に誤ったスケールを適用しないようにする。
+fn apply_window_size_constraints(gen_counter: Arc<AtomicU32>, current_gen: u32) {
     // ディスプレイ寸法は起動中に変わらないため一度だけ取得する
-    let disp_w = send_ipc(json!({"command": ["get_property", "display-width"]}))
-        .ok()
-        .and_then(|v| v["data"].as_f64())
-        .unwrap_or(0.0);
-    let disp_h = send_ipc(json!({"command": ["get_property", "display-height"]}))
-        .ok()
-        .and_then(|v| v["data"].as_f64())
-        .unwrap_or(0.0);
+    let disp_w = match send_ipc(json!({"command": ["get_property", "display-width"]})) {
+        Ok(v) => v["data"].as_f64().unwrap_or(0.0),
+        Err(e) => { log::warn!("[window-constraints] display-width 取得失敗: {e}"); 0.0 }
+    };
+    let disp_h = match send_ipc(json!({"command": ["get_property", "display-height"]})) {
+        Ok(v) => v["data"].as_f64().unwrap_or(0.0),
+        Err(e) => { log::warn!("[window-constraints] display-height 取得失敗: {e}"); 0.0 }
+    };
     if disp_w <= 0.0 || disp_h <= 0.0 {
+        log::warn!("[window-constraints] ディスプレイ寸法が取得できません (w={disp_w}, h={disp_h}) → スキップ");
         return;
     }
 
@@ -263,6 +289,11 @@ fn apply_window_size_constraints() {
 
     // dwidth が確定するまで待つ（最大 2 秒）
     for _ in 0..10 {
+        // 世代チェック: 新しい play() が呼ばれていたら即終了
+        if gen_counter.load(Ordering::Acquire) != current_gen {
+            return;
+        }
+
         std::thread::sleep(Duration::from_millis(200));
 
         let w = send_ipc(json!({"command": ["get_property", "dwidth"]}))
@@ -279,6 +310,11 @@ fn apply_window_size_constraints() {
             .unwrap_or(0.0);
         if h == 0.0 {
             break;
+        }
+
+        // 世代チェック: dwidth/dheight 取得後にも確認
+        if gen_counter.load(Ordering::Acquire) != current_gen {
+            return;
         }
 
         // 75% 以上を確保するスケール（両辺とも 75% 以上になるよう大きい方を採用）
@@ -306,23 +342,28 @@ pub async fn play(
 ) -> Result<(), String> {
     let mpv_path = settings.lock().map_err(|e| e.to_string())?.mpv_path.clone();
 
-    // ソケットが存在する（mpv 起動済み）なら loadfile で切り替え
+    // ソケットが存在する（mpv 起動済み）なら永続 writer で loadfile を送信する。
+    // send_ipc (新規コネクション) を使うと 2 秒タイムアウト時に正常動作中の mpv を
+    // 誤って再起動してしまう。send_cmd はカーネルバッファへの書き込み成功を確認するため、
+    // ソケットが切断済みなら EPIPE/ECONNRESET を返し再起動フローに進む。
     let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
-    if let Some(writer) = writer_opt {
+    if let Some(ref writer) = writer_opt {
         if std::path::Path::new(&mpv_socket_path()).exists() {
-            eprintln!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
-            match send_cmd(&writer, json!({"command": ["loadfile", path, "replace"]})) {
-                Ok(_) => {
-                    eprintln!("[play] loadfile 送信成功");
+            log::debug!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
+            match send_cmd(writer, json!({"command": ["loadfile", path, "replace"]})) {
+                Ok(()) => {
+                    log::debug!("[play] loadfile 送信成功");
                     return Ok(());
                 }
                 Err(e) => {
-                    eprintln!("[play] loadfile 失敗 ({e}) → mpv 再起動");
+                    log::debug!("[play] loadfile send_cmd 失敗 ({e}) → 再起動");
                 }
             }
+        } else {
+            log::debug!("[play] ソケット消失 → 再起動");
         }
     } else {
-        eprintln!("[play] mpv 未起動 → 新規起動");
+        log::debug!("[play] mpv 未起動 → 新規起動");
     }
 
     // ソケットファイルと古いプロセスを片付ける
@@ -344,7 +385,7 @@ pub async fn play(
     }
 
     // mpv 起動
-    eprintln!("[play] mpv 起動");
+    log::debug!("[play] mpv 起動");
     let socket_path = mpv_socket_path();
     let ipc_server_arg = format!("--input-ipc-server={socket_path}");
     let mut child = Command::new(&mpv_path)
@@ -368,7 +409,7 @@ pub async fn play(
         std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().flatten() {
-                eprintln!("[mpv stderr] {line}");
+                log::debug!("[mpv stderr] {line}");
             }
         });
     }
@@ -387,6 +428,14 @@ pub async fn play(
             break;
         }
     }
+    if !std::path::Path::new(&mpv_socket_path()).exists() {
+        log::error!("[play] ソケット待機タイムアウト (3秒): mpv が起動しましたがソケットが生成されません");
+        return Err(
+            "mpv が起動しましたが IPC ソケットの準備がタイムアウトしました。\
+             mpv が正しくインストールされているか確認してください。"
+                .to_string(),
+        );
+    }
 
     // IPC 接続・プロパティ購読・リーダースレッド起動
     let state_arc = Arc::clone(state.inner());
@@ -397,12 +446,15 @@ pub async fn play(
     })
     .await
     .map_err(|e| e.to_string())
-    .and_then(|r| r.map_err(|e| { eprintln!("[play] IPC 接続失敗: {e}"); e }))?;
+    .and_then(|r| r.map_err(|e| { log::error!("[play] IPC 接続失敗: {e}"); e }))?;
 
-    eprintln!("[play] IPC 接続成功 gen={current_gen}");
+    log::debug!("[play] IPC 接続成功 gen={current_gen}");
     state.lock().map_err(|e| e.to_string())?.writer = Some(writer);
 
-    tokio::task::spawn_blocking(apply_window_size_constraints);
+    let gen_for_constraints = Arc::clone(&gen_counter);
+    tokio::task::spawn_blocking(move || {
+        apply_window_size_constraints(gen_for_constraints, current_gen)
+    });
 
     Ok(())
 }
@@ -528,10 +580,7 @@ pub async fn take_screenshot(
     state: tauri::State<'_, SharedMpvState>,
     output_path: String,
 ) -> Result<(), String> {
-    // パストラバーサル防止
-    if output_path.contains('\0') || output_path.contains("..") {
-        return Err("不正なパスです".to_string());
-    }
+    super::utils::validate_image_output_path(&output_path)?;
     let writer = state
         .lock()
         .map_err(|e| e.to_string())?
@@ -585,10 +634,7 @@ pub async fn load_subtitle(
     state: tauri::State<'_, SharedMpvState>,
     path: String,
 ) -> Result<(), String> {
-    // パス検証
-    if path.contains('\0') {
-        return Err("不正なパスです".to_string());
-    }
+    super::utils::validate_path(&path)?;
     let writer = state
         .lock()
         .map_err(|e| e.to_string())?
@@ -603,6 +649,9 @@ pub async fn load_subtitle(
 pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), String> {
     let (writer_opt, child_opt) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
+        // generation をインクリメントしてリーダースレッドが mpv://closed を
+        // emit しないようにする（ユーザー操作による明示的な終了のため不要）
+        s.generation.fetch_add(1, Ordering::SeqCst);
         (s.writer.take(), s.process.take())
     };
 
@@ -639,4 +688,41 @@ pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), Str
     }
 
     Ok(())
+}
+
+/// アプリ終了時に mpv プロセスを同期的に強制終了する。
+/// IPC quit を試みた後、3 秒以内に終了しなければ SIGKILL を送る。
+pub fn kill_on_exit(state: &SharedMpvState) {
+    let (writer_opt, child_opt) = {
+        let Ok(mut s) = state.lock() else { return };
+        s.generation.fetch_add(1, Ordering::SeqCst);
+        (s.writer.take(), s.process.take())
+    };
+
+    if let Some(writer) = writer_opt {
+        let _ = send_cmd(&writer, json!({"command": ["quit"]}));
+    }
+    let _ = std::fs::remove_file(mpv_socket_path());
+
+    if let Some(mut child) = child_opt {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+            }
+        }
+    }
 }

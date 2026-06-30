@@ -1,22 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from "react-i18next";
 import { useShallow } from 'zustand/shallow';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { useModalStore } from '../../store/useModalStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { invoke } from '@tauri-apps/api/core';
+import { formatTime } from '../../utils/time';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-
-function formatTime(sec: number): string {
-  const s = Math.floor(sec);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-  }
-  return `${m}:${String(ss).padStart(2, '0')}`;
-}
 
 function PlayerSeekBar() {
   const playbackTime = usePlayerStore((s) => s.playbackTime);
@@ -106,10 +97,11 @@ function PlayerSeekBar() {
 }
 
 export function PlayerControls() {
+  const { t } = useTranslation();
   const {
-    currentVideo, queue, queueIndex, isPaused, isLooping, isShuffle,
+    currentVideo, queue, queueIndex, isPaused, isLooping, isShuffle, isMiniPlayer,
     speed, abLoopA, abLoopB,
-    quit, playNext, playPrev, pauseResume, toggleLoop, toggleShuffle,
+    quit, playNext, playPrev, pauseResume, toggleLoop, toggleShuffle, toggleMiniPlayer,
     setSpeed, setAbLoopA, clearAbLoop,
   } = usePlayerStore(useShallow((s) => ({
     currentVideo: s.currentVideo,
@@ -118,6 +110,7 @@ export function PlayerControls() {
     isPaused: s.isPaused,
     isLooping: s.isLooping,
     isShuffle: s.isShuffle,
+    isMiniPlayer: s.isMiniPlayer,
     speed: s.speed,
     abLoopA: s.abLoopA,
     abLoopB: s.abLoopB,
@@ -127,6 +120,7 @@ export function PlayerControls() {
     pauseResume: s.pauseResume,
     toggleLoop: s.toggleLoop,
     toggleShuffle: s.toggleShuffle,
+    toggleMiniPlayer: s.toggleMiniPlayer,
     setSpeed: s.setSpeed,
     setAbLoopA: s.setAbLoopA,
     clearAbLoop: s.clearAbLoop,
@@ -156,26 +150,29 @@ export function PlayerControls() {
     }
   };
 
+  // ミニプレイヤーモード中はフッターを非表示
+  if (isMiniPlayer) return null;
+
   if (!currentVideo) {
     return (
       <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 py-2 shadow-lg border-t border-gray-700 flex items-center gap-2">
-        <span className="text-xs text-gray-500 shrink-0">再生設定</span>
+        <span className="text-xs text-gray-500 shrink-0">{t('player.playbackSettings')}</span>
         <div className="w-px h-4 bg-gray-700 shrink-0" />
         <button
           type="button"
           onClick={toggleShuffle}
           className={`px-2.5 py-1 rounded text-sm shrink-0 ${isShuffle ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-          title={isShuffle ? 'シャッフル解除' : 'シャッフル再生'}
+          title={isShuffle ? t('player.shuffleOff') : t('player.shuffleOn')}
         >
-          ⇄ シャッフル
+          {t('player.shuffleLabel')}
         </button>
         <button
           type="button"
           onClick={toggleLoop}
           className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-          title={isLooping ? 'ループ解除' : 'ループ再生'}
+          title={isLooping ? t('player.loopOff') : t('player.loopOn')}
         >
-          ↻ ループ
+          {t('player.loopLabel')}
         </button>
       </div>
     );
@@ -188,7 +185,7 @@ export function PlayerControls() {
       <div className="flex items-center gap-1.5 flex-wrap">
         {queue.length > 0 && (
           <span className="text-xs text-gray-400 shrink-0 tabular-nums">
-            {queueIndex + 1} / {queue.length}
+            {t('player.queuePosition', { current: queueIndex + 1, total: queue.length })}
           </span>
         )}
         <span className="flex-1 text-sm truncate text-gray-300 min-w-0">
@@ -200,7 +197,7 @@ export function PlayerControls() {
           type="button"
           onClick={setAbLoopA}
           className={`px-2 py-1 rounded text-xs shrink-0 ${abActive ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-          title={abActive ? (abComplete ? 'A-Bループ中' : 'B点を設定') : 'A点を設定'}
+          title={abActive ? (abComplete ? t('player.abLooping') : t('player.abSetB')) : t('player.abSetA')}
         >
           {abComplete ? 'AB' : abActive ? 'A→B?' : 'A-B'}
         </button>
@@ -209,7 +206,7 @@ export function PlayerControls() {
             type="button"
             onClick={clearAbLoop}
             className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs shrink-0 text-gray-400"
-            title="A-Bループをクリア"
+            title={t('player.abClear')}
           >
             ✕AB
           </button>
@@ -220,7 +217,7 @@ export function PlayerControls() {
           value={speed}
           onChange={(e) => setSpeed(Number(e.target.value))}
           className="bg-gray-700 text-gray-200 text-xs rounded px-1 py-1 shrink-0 cursor-pointer"
-          title="再生速度"
+          title={t('player.speed')}
         >
           {SPEED_OPTIONS.map((s) => (
             <option key={s} value={s}>{s === 1.0 ? '1x' : `${s}x`}</option>
@@ -234,7 +231,7 @@ export function PlayerControls() {
             onClick={playPrev}
             disabled={!hasPrev}
             className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
-            title="前の動画 (P)"
+            title={t('player.prevVideo')}
           >
             ⏮
           </button>
@@ -243,7 +240,7 @@ export function PlayerControls() {
           type="button"
           onClick={pauseResume}
           className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 w-12 text-center"
-          title={isPaused ? '再生 (Space)' : '一時停止 (Space)'}
+          title={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
         >
           {isPaused ? '▶' : '⏸'}
         </button>
@@ -253,7 +250,7 @@ export function PlayerControls() {
             onClick={playNext}
             disabled={!hasNext}
             className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
-            title="次の動画 (N)"
+            title={t('player.nextVideo')}
           >
             ⏭
           </button>
@@ -265,7 +262,7 @@ export function PlayerControls() {
             type="button"
             onClick={toggleShuffle}
             className={`px-2.5 py-1 rounded text-sm shrink-0 ${isShuffle ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-            title={isShuffle ? 'シャッフル解除' : 'シャッフル再生'}
+            title={isShuffle ? t('player.shuffleOff') : t('player.shuffleOn')}
           >
             ⇄
           </button>
@@ -274,7 +271,7 @@ export function PlayerControls() {
           type="button"
           onClick={toggleLoop}
           className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-          title={isLooping ? 'ループ解除' : 'ループ再生'}
+          title={isLooping ? t('player.loopOff') : t('player.loopOn')}
         >
           ↻
         </button>
@@ -284,7 +281,7 @@ export function PlayerControls() {
           type="button"
           onClick={handleScreenshot}
           className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
-          title="スクリーンショット"
+          title={t('player.screenshot')}
         >
           📷
         </button>
@@ -295,7 +292,7 @@ export function PlayerControls() {
             type="button"
             onClick={toggleQueuePanel}
             className={`px-2.5 py-1 rounded text-sm shrink-0 ${showQueuePanel ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-            title="キューを表示"
+            title={t('player.showQueue')}
           >
             ≡
           </button>
@@ -303,11 +300,19 @@ export function PlayerControls() {
 
         <button
           type="button"
+          onClick={toggleMiniPlayer}
+          className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
+          title={t('player.miniPlayer')}
+        >
+          ⇱
+        </button>
+        <button
+          type="button"
           onClick={quit}
           className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-sm shrink-0"
-          title="終了"
+          title={t('player.exit')}
         >
-          終了
+          {t('player.exit')}
         </button>
       </div>
     </div>

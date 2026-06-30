@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::Emitter;
 
 use super::settings::SharedAppSettings;
-use super::utils::validate_video_path;
+use super::utils::{resolve_unique_path, validate_video_path};
 
 #[derive(Clone, Serialize)]
 pub struct TranscodeProgress {
@@ -59,9 +59,14 @@ pub async fn transcode_video(
     let dir = input
         .parent()
         .ok_or_else(|| "入力ファイルの親ディレクトリが取得できません".to_string())?;
-    let output_path = dir.join(format!("{stem}.av1.mkv"));
-    // 一時出力ファイル: 完成後にアトミックリネームすることで TOCTOU を防ぐ
-    let tmp_output_path = dir.join(format!("._{stem}.av1.mkv.tmp"));
+    // 同名の出力ファイルが存在する場合は連番サフィックスで一意化する (上書き防止)
+    let output_path = resolve_unique_path(&dir.join(format!("{stem}.av1.mkv")));
+    // 一時出力ファイルは確定した output_path から派生させる
+    let out_filename = output_path
+        .file_name()
+        .map(|n| format!("._{}", n.to_string_lossy()))
+        .unwrap_or_else(|| format!("._{stem}.av1.mkv"));
+    let tmp_output_path = dir.join(format!("{out_filename}.tmp"));
 
     // 出力パスが入力と同一ディレクトリ内にあることを確認
     if let Ok(canon_dir) = dir.canonicalize() {
@@ -120,14 +125,36 @@ pub async fn transcode_video(
                     "-preset", &preset.to_string(),
                     "-c:a", "libopus",
                     "-b:a", "128k",
+                    "-f", "matroska",
                     &tmp_output_str,
                 ])
                 .stdout(Stdio::piped())
-                .stderr(Stdio::null())
+                .stderr(Stdio::piped())
                 .spawn()
                 .map_err(|e| format!("FFmpeg 起動失敗: {e}"))?;
 
-            let stdout = child.stdout.take().expect("stdout not captured");
+            let stdout = match child.stdout.take() {
+                Some(s) => s,
+                None => {
+                    child.kill().ok();
+                    child.wait().ok();
+                    return Err("ffmpeg stdout の取得に失敗しました".to_string());
+                }
+            };
+            let stderr = match child.stderr.take() {
+                Some(s) => s,
+                None => {
+                    child.kill().ok();
+                    child.wait().ok();
+                    return Err("ffmpeg stderr の取得に失敗しました".to_string());
+                }
+            };
+            let stderr_handle = std::thread::spawn(move || {
+                use std::io::Read;
+                let mut s = String::new();
+                BufReader::new(stderr).read_to_string(&mut s).ok();
+                s
+            });
             let reader = BufReader::new(stdout);
 
             let start = std::time::Instant::now();
@@ -178,10 +205,22 @@ pub async fn transcode_video(
             }
 
             let status = child.wait().map_err(|e| e.to_string())?;
+            let stderr_output = match stderr_handle.join() {
+                Ok(s) => s,
+                Err(_) => {
+                    log::warn!("[transcode] stderr スレッドがパニックしました (出力を取得できません)");
+                    String::new()
+                }
+            };
             if !status.success() {
                 let _ = std::fs::remove_file(&tmp_output_str);
+                let detail = if stderr_output.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!("\n{}", stderr_output.trim())
+                };
                 return Err(format!(
-                    "FFmpeg がエラーで終了しました (code: {:?})",
+                    "FFmpeg がエラーで終了しました (code: {:?}){detail}",
                     status.code()
                 ));
             }
@@ -195,9 +234,9 @@ pub async fn transcode_video(
     .await
     .map_err(|e| e.to_string())?;
 
-    {
-        let mut p = current_output.lock().map_err(|e| e.to_string())?;
-        *p = None;
+    match current_output.lock() {
+        Ok(mut p) => { *p = None; }
+        Err(e) => { log::error!("[transcode] current_output mutex ロック失敗 (クリーンアップ不可): {e}"); }
     }
 
     result?;

@@ -1,9 +1,11 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import type { Video } from "./types";
+import { useTranslation } from "react-i18next";
+import type { Video, ScanResult } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { useShallow } from "zustand/shallow";
-import type { WatchedStatus } from "./store/useLibraryStore";
+import type { WatchedStatus, MediaTypeFilter } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
@@ -13,22 +15,33 @@ import { useTranscodeStore } from "./store/useTranscodeStore";
 import { useModalStore } from "./store/useModalStore";
 import { useSettingsStore } from "./store/useSettingsStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
+import { MiniPlayer } from "./components/Player/MiniPlayer";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
+import { LibraryList } from "./components/Library/LibraryList";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
+import { WatchDirSidebar } from "./components/Library/WatchDirSidebar";
 import { AppModals } from "./components/AppModals";
+import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { ToastContainer } from "./components/common/ToastContainer";
+import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { Select } from "./components/common/Select";
+import { ImageViewerModal } from "./components/Library/ImageViewerModal";
+import { ConfirmModal } from "./components/common/ConfirmModal";
+import InboxView from "./components/Inbox/InboxView";
+import { useInboxStore } from "./store/useInboxStore";
 
-type SidebarTab = 'category' | 'playlist';
+type SidebarTab = 'category' | 'playlist' | 'folder';
+type MainView = 'library' | 'inbox';
 
 function App() {
+  const { t } = useTranslation();
   // useShallow で1サブスクリプションにまとめ、個別セレクタ35個分のオーバーヘッドを削減
   const {
     videos, totalCount, currentPage, pageSize,
-    filterSearch, filterCategoryId, filterTagIds,
-    filterMinRating, filterHasAudio, filterMinDuration,
-    filterWatchedStatus, filterSortBy, filterSortOrder,
+    filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+    filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+    filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
     isScanning, isThumbnailGenerating, isThumbnailPaused,
     thumbnailProgress, isDbReady, dbError,
   } = useLibraryStore(useShallow((s) => ({
@@ -39,10 +52,14 @@ function App() {
     filterSearch: s.filterSearch,
     filterCategoryId: s.filterCategoryId,
     filterTagIds: s.filterTagIds,
+    filterTagMode: s.filterTagMode,
     filterMinRating: s.filterMinRating,
     filterHasAudio: s.filterHasAudio,
     filterMinDuration: s.filterMinDuration,
+    filterMaxDuration: s.filterMaxDuration,
     filterWatchedStatus: s.filterWatchedStatus,
+    filterWatchDir: s.filterWatchDir,
+    filterMediaType: s.filterMediaType,
     filterSortBy: s.filterSortBy,
     filterSortOrder: s.filterSortOrder,
     isScanning: s.isScanning,
@@ -54,10 +71,10 @@ function App() {
   })));
   const {
     initDb, scanAndImport, assignCategoryFromPath,
-    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters,
-    setMinRating, setHasAudio, setMinDuration,
-    setWatchedStatus, setSort, setPage,
-    pauseThumbnails, resumeThumbnails,
+    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
+    setMinRating, setHasAudio, setMinDuration, setMaxDuration,
+    setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
+    pauseThumbnails, resumeThumbnails, fetchVideos, rescanMultiple,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
     scanAndImport: s.scanAndImport,
@@ -66,17 +83,24 @@ function App() {
     setCategoryFilter: s.setCategoryFilter,
     toggleTagFilter: s.toggleTagFilter,
     clearTagFilters: s.clearTagFilters,
+    setTagMode: s.setTagMode,
     setMinRating: s.setMinRating,
     setHasAudio: s.setHasAudio,
     setMinDuration: s.setMinDuration,
+    setMaxDuration: s.setMaxDuration,
     setWatchedStatus: s.setWatchedStatus,
+    setWatchDirFilter: s.setWatchDirFilter,
+    setMediaType: s.setMediaType,
     setSort: s.setSort,
     setPage: s.setPage,
     pauseThumbnails: s.pauseThumbnails,
     resumeThumbnails: s.resumeThumbnails,
+    fetchVideos: s.fetchVideos,
+    rescanMultiple: s.rescanMultiple,
   })));
   // usePlayerStore: currentVideo のみ購読 (playbackTime の毎秒更新で App が再レンダリングされるのを防ぐ)
   const currentVideo = usePlayerStore((s) => s.currentVideo);
+  const isMiniPlayer = usePlayerStore((s) => s.isMiniPlayer);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
   const playShuffleAll = usePlayerStore((s) => s.playShuffleAll);
   const tags = useTagStore((s) => s.tags);
@@ -88,17 +112,49 @@ function App() {
   } = useTranscodeStore();
   const {
     openSettings, openDownload, openDetailVideo, openAddToPlaylist,
-    openPlaylist, openBulkModal, openDuplicates, openStats, openExport, openSmartPlaylist, closeAll,
+    openPlaylist, openBulkModal, openDuplicates, openMissingFiles, openStats, openExport, openSmartPlaylist, closeAll,
+    detailVideo, closeDetailVideo,
   } = useModalStore();
-
   const theme = useSettingsStore((s) => s.theme);
   const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
 
+  const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
+
+  const [mainView, setMainView] = useState<MainView>('library');
   const [searchInput, setSearchInput] = useState(filterSearch);
+  const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
+    const presets = [120, 180, 240, 320];
+    const saved = localStorage.getItem('gridItemMinWidth');
+    if (!saved) return 180;
+    const n = Number(saved);
+    // プリセット以外の値（旧スライダー値）は最近傍に丸める
+    return presets.reduce((prev, cur) => Math.abs(cur - n) < Math.abs(prev - n) ? cur : prev);
+  });
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    return (localStorage.getItem('viewMode') as 'grid' | 'list') ?? 'grid';
+  });
+  const [listItemSize, setListItemSize] = useState<'S' | 'M' | 'L' | 'XL'>(() => {
+    return (localStorage.getItem('listItemSize') as 'S' | 'M' | 'L' | 'XL') ?? 'M';
+  });
   const [durationInput, setDurationInput] = useState(filterMinDuration > 0 ? String(filterMinDuration) : '');
+  const [maxDurationInput, setMaxDurationInput] = useState(filterMaxDuration > 0 ? String(filterMaxDuration) : '');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('category');
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
+  const [viewingImage, setViewingImage] = useState<Video | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ path: string; fileCount: number; useDirAsCategory: boolean } | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('gridItemMinWidth', String(gridItemMinWidth));
+  }, [gridItemMinWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('viewMode', viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('listItemSize', listItemSize);
+  }, [listItemSize]);
 
   // Debounce search input → store
   useEffect(() => {
@@ -116,6 +172,14 @@ function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [durationInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const seconds = parseInt(maxDurationInput, 10);
+      setMaxDuration(isNaN(seconds) || seconds <= 0 ? 0 : seconds);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [maxDurationInput]);
 
   // テーマ適用: <html> に dark クラスを付与/除去
   useEffect(() => {
@@ -139,7 +203,7 @@ function App() {
     return () => mq.removeEventListener('change', apply);
   }, [theme, isSettingsLoaded]);
 
-  useKeyboardShortcuts({ onEscape: closeAll });
+  useKeyboardShortcuts({ onEscape: () => { setViewingImage(null); closeAll(); } });
   useWatcher();
   const { isDragging } = useDragDrop();
 
@@ -147,11 +211,21 @@ function App() {
     initDb();
   }, []);
 
+  const IMPORT_CONFIRM_THRESHOLD = 300;
+
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false });
-    if (typeof selected === "string") {
+    if (typeof selected !== "string") return;
+    const previewResult = await invoke<ScanResult>('scan_directory', { path: selected }).catch(() => null);
+    if (!previewResult) {
       scanAndImport(selected, useDirAsCategory);
+      return;
     }
+    if (previewResult.files.length >= IMPORT_CONFIRM_THRESHOLD) {
+      setPendingImport({ path: selected, fileCount: previewResult.files.length, useDirAsCategory });
+      return;
+    }
+    scanAndImport(selected, useDirAsCategory);
   };
 
   const handleSetPage = (page: number) => {
@@ -166,23 +240,83 @@ function App() {
     [videos, selectedVideoIds]
   );
 
+  const scrollResetKey = useMemo(
+    () => [filterSearch, filterCategoryId, filterTagIds.join(','), filterTagMode,
+           filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+           filterWatchedStatus, filterWatchDir, filterMediaType,
+           filterSortBy, filterSortOrder, currentPage].join('|'),
+    [filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+     filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+     filterWatchedStatus, filterWatchDir, filterMediaType,
+     filterSortBy, filterSortOrder, currentPage],
+  );
+
   const handlePlay = useCallback(
-    (v: Video) => playWithQueue(videos, videos.findIndex((x) => x.id === v.id)),
+    (v: Video) => {
+      if (v.media_type === 'image') { setViewingImage(v); return; }
+      playWithQueue(videos, videos.findIndex((x) => x.id === v.id));
+    },
     [videos, playWithQueue]
   );
 
+  const handleContextSetTag = useCallback((v: Video) => {
+    setSelectedVideoIds(new Set([v.id]));
+    openBulkModal('tag');
+  }, [openBulkModal]);
+
+  const handleContextSetCategory = useCallback((v: Video) => {
+    setSelectedVideoIds(new Set([v.id]));
+    openBulkModal('category');
+  }, [openBulkModal]);
+
+  const imageList = useMemo(() => videos.filter((v) => v.media_type === 'image'), [videos]);
+
   return (
     <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      {isMiniPlayer ? (
+        <MiniPlayer />
+      ) : (
+      <>
       {/* ヘッダー / ツールバー */}
       <div className="px-4 pt-4 pb-3 flex gap-2 items-center border-b border-gray-100 dark:border-gray-800">
         <h1 className="text-lg font-bold mr-2 shrink-0">Chuck Snap Stack</h1>
+        {/* メインビュー切替 */}
+        <div className="flex gap-0.5 text-xs shrink-0 mr-1">
+          <button
+            type="button"
+            className={`px-2.5 py-1.5 rounded-l font-medium transition-colors ${
+              mainView === 'library'
+                ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+            onClick={() => setMainView('library')}
+          >
+            ライブラリ
+          </button>
+          <button
+            type="button"
+            className={`px-2.5 py-1.5 rounded-r font-medium transition-colors relative ${
+              mainView === 'inbox'
+                ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+            onClick={() => setMainView('inbox')}
+          >
+            Inbox
+            {inboxCount > 0 && (
+              <span className="ml-1 px-1.5 py-0 rounded-full bg-amber-500 text-white text-[10px] leading-4">
+                {inboxCount > 999 ? '999+' : inboxCount}
+              </span>
+            )}
+          </button>
+        </div>
         <button
           type="button"
           className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 text-sm dark:bg-blue-500 dark:hover:bg-blue-600 shrink-0"
-          disabled={!isDbReady || isScanning}
+          disabled={!isDbReady || isScanning || isThumbnailGenerating}
           onClick={handlePickDir}
         >
-          {isScanning ? "スキャン中..." : "+ フォルダ追加"}
+          {isScanning || isThumbnailGenerating ? t('app.scanning') : t('app.addFolder')}
         </button>
         <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0 cursor-pointer select-none">
           <input
@@ -191,7 +325,7 @@ function App() {
             onChange={(e) => setUseDirAsCategory(e.target.checked)}
             className="accent-blue-600"
           />
-          フォルダ名をカテゴリに
+          {t('app.useDirAsCategory')}
         </label>
         <button
           type="button"
@@ -199,18 +333,31 @@ function App() {
           disabled={!isDbReady}
           onClick={openDownload}
         >
-          ↓ URL
+          {t('app.downloadUrl')}
         </button>
-        <input
-          className="flex-1 border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="動画を検索..."
-          disabled={!isDbReady}
-        />
+        <div className="relative flex-1 min-w-0">
+          <input
+            className="w-full border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0 pr-7"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('app.searchPlaceholder')}
+            disabled={!isDbReady}
+          />
+          {searchInput && (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 leading-none"
+              onClick={() => setSearchInput('')}
+              tabIndex={-1}
+              aria-label="クリア"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <button
           type="button"
-          title="統計ダッシュボード"
+          title={t('app.statsTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           disabled={!isDbReady}
           onClick={openStats}
@@ -219,7 +366,7 @@ function App() {
         </button>
         <button
           type="button"
-          title="エクスポート / インポート"
+          title={t('app.exportTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           disabled={!isDbReady}
           onClick={openExport}
@@ -228,16 +375,25 @@ function App() {
         </button>
         <button
           type="button"
-          title="重複動画を検出"
+          title={t('app.duplicatesTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           disabled={!isDbReady}
           onClick={openDuplicates}
         >
-          重複
+          {t('app.duplicatesButton')}
         </button>
         <button
           type="button"
-          title="設定"
+          title={t('app.missingTitle')}
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
+          disabled={!isDbReady}
+          onClick={openMissingFiles}
+        >
+          {t('app.missingButton')}
+        </button>
+        <button
+          type="button"
+          title={t('app.settingsTitle')}
           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
           onClick={openSettings}
         >
@@ -245,15 +401,16 @@ function App() {
         </button>
       </div>
 
-      {isThumbnailGenerating && thumbnailProgress && (
+      {isThumbnailGenerating && (
         <div className="px-4 py-1.5 flex items-center gap-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
           <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-            {isThumbnailPaused ? '一時停止中' : 'サムネイル生成中'} {thumbnailProgress.done}/{thumbnailProgress.total}
+            {isThumbnailPaused ? t('app.thumbnailPaused') : t('app.thumbnailGenerating')}
+            {thumbnailProgress && ` ${thumbnailProgress.done}/${thumbnailProgress.total}`}
           </span>
           <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
             <div
               className={`h-1 rounded-full transition-all duration-300 ${isThumbnailPaused ? 'bg-gray-400 dark:bg-gray-500' : 'bg-blue-500'}`}
-              style={{ width: `${(thumbnailProgress.done / thumbnailProgress.total) * 100}%` }}
+              style={{ width: thumbnailProgress ? `${(thumbnailProgress.done / thumbnailProgress.total) * 100}%` : '0%' }}
             />
           </div>
           {isThumbnailPaused ? (
@@ -262,7 +419,7 @@ function App() {
               onClick={resumeThumbnails}
               className="text-xs px-2 py-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white shrink-0"
             >
-              再開
+              {t('app.thumbnailResume')}
             </button>
           ) : (
             <button
@@ -270,7 +427,7 @@ function App() {
               onClick={pauseThumbnails}
               className="text-xs px-2 py-0.5 rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0"
             >
-              一時停止
+              {t('app.thumbnailPause')}
             </button>
           )}
         </div>
@@ -278,7 +435,7 @@ function App() {
 
       {/* AV1 変換ステータスバー */}
       {(isTranscoding || isTranscodeDone || transcodeError) && (
-        <div style={{ zIndex: 60 }} className={`fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl mx-auto px-4 py-2 flex items-center gap-3 rounded-xl shadow-lg border ${
+        <div style={{ zIndex: 60 }} className={`fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl mx-auto px-4 py-2 flex items-start gap-3 rounded-xl shadow-lg border ${
           transcodeError
             ? 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700'
             : isTranscodeDone
@@ -291,15 +448,25 @@ function App() {
             {transcodeError ? '✕' : isTranscodeDone ? '✓' : '⟳'}
           </span>
 
-          <span className={`text-xs shrink-0 font-medium truncate max-w-48 ${
-            transcodeError ? 'text-red-700 dark:text-red-300' : isTranscodeDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'
-          }`}>
-            {transcodeError
-              ? `変換失敗: ${transcodeVideoName}`
-              : isTranscodeDone
-              ? `変換完了: ${transcodeVideoName}`
-              : `AV1 変換中: ${transcodeVideoName}`}
-          </span>
+          {transcodeError ? (
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-xs font-medium text-red-700 dark:text-red-300 truncate">
+                {t('app.transcodeError', { name: transcodeVideoName })}
+              </span>
+              <span className="text-xs text-red-600 dark:text-red-400 line-clamp-2 break-all leading-tight mt-0.5">
+                {transcodeError}
+              </span>
+            </div>
+          ) : (
+            <span className={`text-xs shrink-0 font-medium truncate max-w-48 ${
+              isTranscodeDone ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'
+            }`}>
+              {isTranscodeDone
+                ? t('app.transcodeSuccess', { name: transcodeVideoName })
+                : t('app.transcodeInProgress', { name: transcodeVideoName })
+              }
+            </span>
+          )}
 
           {isTranscodeDone && transcodeInputSize != null && transcodeOutputSize != null && (() => {
             const fmt = (b: number) => b >= 1073741824
@@ -334,7 +501,8 @@ function App() {
               <span className="text-xs text-blue-600 dark:text-blue-400 shrink-0 tabular-nums">
                 {transcodeProgress && transcodeProgress.percent > 0
                   ? `${transcodeProgress.percent.toFixed(1)}%`
-                  : '開始中...'}
+                  : t('app.transcodeStarting')
+                }
               </span>
               {transcodeProgress && transcodeProgress.speed && transcodeProgress.speed !== 'N/A' && (
                 <span className="text-xs text-blue-500 dark:text-blue-500 shrink-0">
@@ -346,7 +514,7 @@ function App() {
                 className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-300 shrink-0 ml-auto"
                 onClick={cancelTranscode}
               >
-                キャンセル
+                {t('app.transcodeCancel')}
               </button>
             </>
           )}
@@ -357,14 +525,20 @@ function App() {
               className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 ml-auto"
               onClick={dismissTranscode}
             >
-              ✕
+              {t('app.transcodeDismiss')}
             </button>
           )}
         </div>
       )}
 
-      {/* ボディ: サイドバー + メインコンテンツ */}
-      <div className="flex flex-1 px-4 pt-4 pb-20 gap-4 min-h-0">
+      {/* ボディ: サイドバー + メインコンテンツ + 詳細パネル */}
+      <div className="flex flex-1 min-h-0">
+      {mainView === 'inbox' ? (
+        <div className="flex flex-1 min-h-0 min-w-0">
+          <InboxView />
+        </div>
+      ) : (
+      <div className="flex flex-1 px-4 pt-4 pb-10 gap-4 min-h-0">
         {/* サイドバー */}
         {isDbReady && (
           <div className="w-44 shrink-0 flex flex-col gap-2 min-h-0">
@@ -378,7 +552,18 @@ function App() {
                 }`}
                 onClick={() => setSidebarTab('category')}
               >
-                カテゴリ
+                {t('sidebar.categoryTab')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1 rounded font-medium transition-colors ${
+                  sidebarTab === 'folder'
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                }`}
+                onClick={() => setSidebarTab('folder')}
+              >
+                {t('sidebar.folderTab')}
               </button>
               <button
                 type="button"
@@ -389,7 +574,7 @@ function App() {
                 }`}
                 onClick={() => setSidebarTab('playlist')}
               >
-                リスト
+                {t('sidebar.playlistTab')}
               </button>
             </div>
 
@@ -398,6 +583,11 @@ function App() {
                 <CategorySidebar
                   selectedCategoryId={filterCategoryId}
                   onSelectCategory={setCategoryFilter}
+                />
+              ) : sidebarTab === 'folder' ? (
+                <WatchDirSidebar
+                  selectedDir={filterWatchDir}
+                  onSelectDir={setWatchDirFilter}
                 />
               ) : (
                 <PlaylistSidebar onOpenPlaylist={openPlaylist} />
@@ -409,10 +599,10 @@ function App() {
         {/* メインコンテンツ */}
         <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           {!isDbReady && !dbError && (
-            <p className="text-gray-500 text-sm dark:text-gray-400">DB 初期化中...</p>
+            <p className="text-gray-500 text-sm dark:text-gray-400">{t('app.dbInitializing')}</p>
           )}
           {dbError && (
-            <p className="text-red-500 text-sm dark:text-red-400">DB エラー: {dbError}</p>
+            <p className="text-red-500 text-sm dark:text-red-400">{t('app.dbError', { error: dbError })}</p>
           )}
 
           {isDbReady && (
@@ -439,13 +629,23 @@ function App() {
                             {tag.name}
                           </button>
                         ))}
+                        {filterTagIds.length >= 2 && (
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            title={filterTagMode === 'and' ? t('filters.tagFilterAnd') : t('filters.tagFilterOr')}
+                            onClick={() => setTagMode(filterTagMode === 'and' ? 'or' : 'and')}
+                          >
+                            {filterTagMode === 'and' ? 'AND' : 'OR'}
+                          </button>
+                        )}
                         {filterTagIds.length > 0 && (
                           <button
                             type="button"
                             className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
                             onClick={() => clearTagFilters()}
                           >
-                            クリア
+                            {t('filters.tagClear')}
                           </button>
                         )}
                       </>
@@ -458,14 +658,14 @@ function App() {
                       value={filterSortBy}
                       onChange={(e) => setSort(e.target.value as typeof filterSortBy, filterSortOrder)}
                     >
-                      <option value="created_at">追加日</option>
-                      <option value="duration">長さ</option>
-                      <option value="rating">評価</option>
+                      <option value="created_at">{t('filters.sortByCreatedAt')}</option>
+                      <option value="duration">{t('filters.sortByDuration')}</option>
+                      <option value="rating">{t('filters.sortByRating')}</option>
                     </Select>
                     <button
                       type="button"
                       className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
-                      title={filterSortOrder === 'desc' ? '降順 (クリックで昇順)' : '昇順 (クリックで降順)'}
+                      title={filterSortOrder === 'desc' ? t('filters.sortDescTitle') : t('filters.sortAscTitle')}
                       onClick={() => setSort(filterSortBy, filterSortOrder === 'desc' ? 'asc' : 'desc')}
                     >
                       {filterSortOrder === 'desc' ? '↓' : '↑'}
@@ -474,19 +674,19 @@ function App() {
                       <button
                         type="button"
                         className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-700 dark:hover:text-purple-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors"
-                        title={`現在のフィルター全 ${totalCount.toLocaleString()} 件をシャッフル再生`}
+                        title={t('app.shuffleAllTitle', { count: totalCount.toLocaleString() })}
                         onClick={playShuffleAll}
                       >
-                        ⇄ 全件
+                        {t('app.shuffleAll')}
                       </button>
                     )}
                     <button
                       type="button"
                       className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-400 dark:hover:border-amber-600 transition-colors"
-                      title="現在のフィルター条件をスマートプレイリストとして保存"
+                      title={t('app.saveSmartPlaylistTitle')}
                       onClick={openSmartPlaylist}
                     >
-                      💾 保存
+                      {t('app.saveSmartPlaylist')}
                     </button>
                   </div>
                 </div>
@@ -499,12 +699,13 @@ function App() {
                     onChange={(e) => setMinRating(Number(e.target.value))}
                     title="評価フィルタ"
                   >
-                    <option value={0}>評価: すべて</option>
-                    <option value={1}>★1以上</option>
-                    <option value={2}>★2以上</option>
-                    <option value={3}>★3以上</option>
-                    <option value={4}>★4以上</option>
-                    <option value={5}>★5のみ</option>
+                    <option value={0}>{t('filters.ratingAll')}</option>
+                    <option value={-1}>{t('filters.ratingUnrated')}</option>
+                    <option value={1}>{t('filters.ratingAbove1')}</option>
+                    <option value={2}>{t('filters.ratingAbove2')}</option>
+                    <option value={3}>{t('filters.ratingAbove3')}</option>
+                    <option value={4}>{t('filters.ratingAbove4')}</option>
+                    <option value={5}>{t('filters.ratingOnly5')}</option>
                   </Select>
 
                   <Select
@@ -516,9 +717,9 @@ function App() {
                     }}
                     title="音声フィルタ"
                   >
-                    <option value="">音声: すべて</option>
-                    <option value="1">音声あり</option>
-                    <option value="0">音声なし</option>
+                    <option value="">{t('filters.audioAll')}</option>
+                    <option value="1">{t('filters.audioYes')}</option>
+                    <option value="0">{t('filters.audioNo')}</option>
                   </Select>
 
                   <Select
@@ -527,9 +728,21 @@ function App() {
                     onChange={(e) => setWatchedStatus(e.target.value as WatchedStatus)}
                     title="視聴状態フィルタ"
                   >
-                    <option value="all">視聴: すべて</option>
-                    <option value="unwatched">未視聴</option>
-                    <option value="watched">視聴済み</option>
+                    <option value="all">{t('filters.watchedAll')}</option>
+                    <option value="unwatched">{t('filters.unwatched')}</option>
+                    <option value="watched">{t('filters.watched')}</option>
+                  </Select>
+
+                  <Select
+                    variant="sm"
+                    value={filterMediaType}
+                    onChange={(e) => setMediaType(e.target.value as MediaTypeFilter)}
+                    title="メディアタイプフィルタ"
+                  >
+                    <option value="all">{t('filters.mediaAll')}</option>
+                    <option value="video">{t('filters.mediaVideo')}</option>
+                    <option value="audio">{t('filters.mediaAudio')}</option>
+                    <option value="image">{t('filters.mediaImage')}</option>
                   </Select>
 
                   <div className="flex items-center gap-1">
@@ -538,11 +751,97 @@ function App() {
                       className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
                       value={durationInput}
                       onChange={(e) => setDurationInput(e.target.value)}
-                      placeholder="秒数"
+                      placeholder={t('filters.minDurationPlaceholder')}
                       min={0}
                       title="最小長さ (秒)"
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">秒以上</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">〜</span>
+                    <input
+                      type="number"
+                      className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                      value={maxDurationInput}
+                      onChange={(e) => setMaxDurationInput(e.target.value)}
+                      placeholder={t('filters.maxDurationPlaceholder')}
+                      min={0}
+                      title="最大長さ (秒)"
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('filters.durationSuffix')}</span>
+                  </div>
+
+                  {/* 表示モード・グリッドサイズ */}
+                  <div className="flex items-center gap-1 ml-auto shrink-0">
+                    {/* グリッド/リスト切替 */}
+                    <div className="flex gap-0.5 border border-gray-300 dark:border-gray-600 rounded p-0.5">
+                      <button
+                        type="button"
+                        className={`p-1 rounded transition-colors ${
+                          viewMode === 'grid'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        onClick={() => setViewMode('grid')}
+                        title="グリッド表示"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                          <rect x="1" y="1" width="6" height="6" rx="0.8" />
+                          <rect x="9" y="1" width="6" height="6" rx="0.8" />
+                          <rect x="1" y="9" width="6" height="6" rx="0.8" />
+                          <rect x="9" y="9" width="6" height="6" rx="0.8" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className={`p-1 rounded transition-colors ${
+                          viewMode === 'list'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        onClick={() => setViewMode('list')}
+                        title="リスト表示"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                          <rect x="1" y="2" width="14" height="2.5" rx="0.8" />
+                          <rect x="1" y="6.75" width="14" height="2.5" rx="0.8" />
+                          <rect x="1" y="11.5" width="14" height="2.5" rx="0.8" />
+                        </svg>
+                      </button>
+                    </div>
+                    {/* サイズボタン (モードに応じて切替) */}
+                    {viewMode === 'grid' && ([
+                      { label: 'S', value: 120 },
+                      { label: 'M', value: 180 },
+                      { label: 'L', value: 240 },
+                      { label: 'XL', value: 320 },
+                    ] as const).map(({ label, value }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          gridItemMinWidth === value
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                        onClick={() => setGridItemMinWidth(value)}
+                        title={`カードサイズ: ${label}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    {viewMode === 'list' && (['S', 'M', 'L', 'XL'] as const).map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          listItemSize === size
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                        onClick={() => setListItemSize(size)}
+                        title={`行サイズ: ${size}`}
+                      >
+                        {size}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -551,21 +850,21 @@ function App() {
               {selectedVideoIds.size > 0 && (
                 <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg shrink-0">
                   <span className="text-xs font-medium text-blue-700 dark:text-blue-300 shrink-0">
-                    {selectedVideoIds.size} 件選択中
+                    {t('batch.selectedCount', { count: selectedVideoIds.size })}
                   </span>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
                     onClick={() => openBulkModal('tag')}
                   >
-                    タグ設定
+                    {t('batch.setTag')}
                   </button>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
                     onClick={() => openBulkModal('category')}
                   >
-                    カテゴリ設定
+                    {t('batch.setCategory')}
                   </button>
                   <button
                     type="button"
@@ -575,42 +874,82 @@ function App() {
                       setSelectedVideoIds(new Set());
                     }}
                   >
-                    フォルダ名をカテゴリに
+                    {t('batch.assignDirCategory')}
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-yellow-500 hover:bg-yellow-600 text-white rounded"
+                    onClick={() => openBulkModal('rating')}
+                  >
+                    {t('batch.setRating')}
                   </button>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded"
                     onClick={() => openBulkModal('rename')}
                   >
-                    リネーム
+                    {t('batch.rename')}
                   </button>
                   <button
                     type="button"
                     className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
                     onClick={() => openBulkModal('delete')}
                   >
-                    削除
+                    {t('batch.delete')}
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-gray-600 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400 text-white rounded disabled:opacity-50"
+                    disabled={isThumbnailGenerating}
+                    onClick={async () => {
+                      await rescanMultiple(Array.from(selectedVideoIds));
+                      setSelectedVideoIds(new Set());
+                    }}
+                  >
+                    {t('batch.rescan')}
                   </button>
                   <button
                     type="button"
                     className="ml-auto text-xs text-blue-500 dark:text-blue-400 hover:underline"
                     onClick={() => setSelectedVideoIds(new Set())}
                   >
-                    選択解除
+                    {t('batch.deselect')}
                   </button>
                 </div>
               )}
 
               <div className="flex-1 min-h-0">
-                <LibraryGrid
-                  videos={videos}
-                  currentVideoId={currentVideo?.id ?? null}
-                  onPlay={handlePlay}
-                  onShowDetail={openDetailVideo}
-                  onAddToPlaylist={openAddToPlaylist}
-                  selectedIds={selectedVideoIds}
-                  onSelectionChange={setSelectedVideoIds}
-                />
+                {viewMode === 'list' ? (
+                  <LibraryList
+                    videos={videos}
+                    currentVideoId={currentVideo?.id ?? null}
+                    detailVideoId={detailVideo?.id ?? null}
+                    scrollResetKey={scrollResetKey}
+                    listRowSize={listItemSize}
+                    onPlay={handlePlay}
+                    onShowDetail={openDetailVideo}
+                    onAddToPlaylist={openAddToPlaylist}
+                    onSetTag={handleContextSetTag}
+                    onSetCategory={handleContextSetCategory}
+                    selectedIds={selectedVideoIds}
+                    onSelectionChange={setSelectedVideoIds}
+                  />
+                ) : (
+                  <LibraryGrid
+                    videos={videos}
+                    currentVideoId={currentVideo?.id ?? null}
+                    detailVideoId={detailVideo?.id ?? null}
+                    scrollResetKey={scrollResetKey}
+                    itemMinWidth={gridItemMinWidth}
+                    onPlay={handlePlay}
+                    onShowDetail={openDetailVideo}
+                    onAddToPlaylist={openAddToPlaylist}
+                    onSetTag={handleContextSetTag}
+                    onSetCategory={handleContextSetCategory}
+                    selectedIds={selectedVideoIds}
+                    onSelectionChange={setSelectedVideoIds}
+                  />
+                )}
               </div>
 
               {/* ページネーション */}
@@ -622,11 +961,11 @@ function App() {
                     disabled={currentPage <= 1}
                     onClick={() => handleSetPage(currentPage - 1)}
                   >
-                    ← 前
+                    {t('pagination.prev')}
                   </button>
                   <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
                     {currentPage} / {totalPages}
-                    <span className="ml-2 text-gray-400 dark:text-gray-500">({totalCount.toLocaleString()}件)</span>
+                    <span className="ml-2 text-gray-400 dark:text-gray-500">{t('pagination.count', { count: totalCount.toLocaleString() })}</span>
                   </span>
                   <button
                     type="button"
@@ -634,16 +973,53 @@ function App() {
                     disabled={currentPage >= totalPages}
                     onClick={() => handleSetPage(currentPage + 1)}
                   >
-                    次 →
+                    {t('pagination.next')}
                   </button>
                 </div>
               )}
             </div>
           )}
         </div>
+
+      </div>
+      )}
+
+      {/* 詳細パネル */}
+      <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
+        {detailVideo ? (
+          <VideoDetailModal
+            key={detailVideo.id}
+            video={detailVideo}
+            onClose={() => {
+              closeDetailVideo();
+              fetchVideos();
+            }}
+            onViewImage={setViewingImage}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600 select-none gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+              <rect x="3" y="5" width="18" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 9l5 3-5 3V9z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <p className="text-xs">動画を選択してください</p>
+          </div>
+        )}
+      </div>
       </div>
 
-      <PlayerControls />
+      {mainView !== 'inbox' && <PlayerControls />}
+      </>
+      )}
+
+      {viewingImage && (
+        <ImageViewerModal
+          video={viewingImage}
+          allImages={imageList}
+          onClose={() => setViewingImage(null)}
+          onNavigate={setViewingImage}
+        />
+      )}
 
       <AppModals
         selectedVideoIds={selectedVideoIds}
@@ -651,7 +1027,22 @@ function App() {
         onClearSelection={() => setSelectedVideoIds(new Set())}
       />
 
+      <DownloadQueuePanel />
+
       <ToastContainer />
+
+      {pendingImport && (
+        <ConfirmModal
+          message={t('app.confirmImport', { count: pendingImport.fileCount.toLocaleString() })}
+          confirmLabel={t('app.confirmImportButton')}
+          onConfirm={() => {
+            const { path, useDirAsCategory: udc } = pendingImport;
+            setPendingImport(null);
+            scanAndImport(path, udc);
+          }}
+          onCancel={() => setPendingImport(null)}
+        />
+      )}
 
       {/* D&D インポートオーバーレイ */}
       {isDragging && (
@@ -660,10 +1051,10 @@ function App() {
           <div className="relative flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed border-blue-500 dark:border-blue-400 bg-white/80 dark:bg-gray-900/80 shadow-2xl">
             <span className="text-4xl">🎬</span>
             <p className="text-lg font-semibold text-blue-700 dark:text-blue-300">
-              動画をドロップしてインポート
+              {t('app.dropImport')}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              mp4 / mkv / webm / avi / mov などに対応
+              {t('app.dropFormats')}
             </p>
           </div>
         </div>

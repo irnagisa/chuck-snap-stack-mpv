@@ -1,3 +1,11 @@
+pub mod ai;
+pub mod db_export;
+pub mod db_playlists;
+pub mod db_settings;
+pub mod db_stats;
+pub mod db_tags;
+pub mod db_videos;
+pub mod db_videos_scan;
 pub mod download;
 pub mod library;
 pub mod mpv;
@@ -5,4 +13,6 @@ pub mod settings;
 pub mod transcode;
 pub mod utils;
 pub mod watcher;
+pub mod window;
 pub mod ytdlp;
+pub mod webserver;

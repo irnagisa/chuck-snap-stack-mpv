@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
+import i18n, { type Language } from "../i18n";
 
 export type KeyAction =
   | 'pause'
@@ -27,19 +27,22 @@ export const DEFAULT_KEYBINDINGS: KeyBindings = {
   escape: 'Escape',
 };
 
-export const KEY_ACTION_LABELS: Record<KeyAction, string> = {
-  pause: '一時停止/再開',
-  seekForward: '5秒進む',
-  seekBackward: '5秒戻る',
-  volumeUp: '音量+',
-  volumeDown: '音量-',
-  fullscreen: 'フルスクリーン',
-  next: '次の動画',
-  prev: '前の動画',
-  escape: 'モーダルを閉じる',
+/** i18n キーのみ残す（表示は t('keybindings.xxx') で行う） */
+export const KEY_ACTION_KEYS: Record<KeyAction, string> = {
+  pause: 'keybindings.pause',
+  seekForward: 'keybindings.seekForward',
+  seekBackward: 'keybindings.seekBackward',
+  volumeUp: 'keybindings.volumeUp',
+  volumeDown: 'keybindings.volumeDown',
+  fullscreen: 'keybindings.fullscreen',
+  next: 'keybindings.next',
+  prev: 'keybindings.prev',
+  escape: 'keybindings.escape',
 };
 
 export type Theme = 'light' | 'dark' | 'auto';
+
+export type CategoryMode = 'virtual' | 'sync';
 
 export interface AppSettings {
   mpvPath: string;
@@ -50,6 +53,10 @@ export interface AppSettings {
   screenshotDir: string;
   keybindings: KeyBindings;
   theme: Theme;
+  autoPlayNext: boolean;
+  language: Language;
+  categoryMode: CategoryMode;
+  aiEnabled: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -61,13 +68,18 @@ const DEFAULTS: AppSettings = {
   screenshotDir: "",
   keybindings: DEFAULT_KEYBINDINGS,
   theme: "auto",
+  autoPlayNext: false,
+  language: "ja",
+  categoryMode: 'virtual',
+  aiEnabled: false,
 };
 
 interface SettingsStore extends AppSettings {
   isLoaded: boolean;
-  loadSettings: (db: Database) => Promise<void>;
-  saveSettings: (db: Database, settings: AppSettings) => Promise<void>;
-  saveKeybindings: (db: Database, bindings: KeyBindings) => Promise<void>;
+  loadSettings: () => Promise<void>;
+  saveSettings: (settings: AppSettings) => Promise<void>;
+  saveKeybindings: (bindings: KeyBindings) => Promise<void>;
+  setCategoryMode: (mode: CategoryMode) => Promise<void>;
 }
 
 async function syncToRust(settings: AppSettings) {
@@ -95,22 +107,8 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   ...DEFAULTS,
   isLoaded: false,
 
-  loadSettings: async (db: Database) => {
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key   TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )
-    `);
-
-    const rows = await db.select<{ key: string; value: string }[]>(
-      "SELECT key, value FROM settings WHERE key IN ('mpv_path', 'ffmpeg_path', 'ffprobe_path', 'ytdlp_path', 'download_dir', 'screenshot_dir', 'keybindings', 'theme')"
-    );
-
-    const map: Record<string, string> = {};
-    for (const row of rows) {
-      map[row.key] = row.value;
-    }
+  loadSettings: async () => {
+    const map = await invoke<Record<string, string>>("db_load_settings");
 
     const savedMpvPath = map["mpv_path"];
     const resolvedMpvPath = await resolveMpvPath(savedMpvPath);
@@ -123,6 +121,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       } catch { /* use defaults */ }
     }
 
+    const language = (map["language"] as Language | undefined) ?? DEFAULTS.language;
+    await i18n.changeLanguage(language);
+
     const settings: AppSettings = {
       mpvPath: resolvedMpvPath,
       ffmpegPath: map["ffmpeg_path"] ?? DEFAULTS.ffmpegPath,
@@ -132,51 +133,41 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       screenshotDir: map["screenshot_dir"] ?? DEFAULTS.screenshotDir,
       keybindings,
       theme: (map["theme"] as Theme | undefined) ?? DEFAULTS.theme,
+      autoPlayNext: map["auto_play_next"] === "true",
+      language,
+      categoryMode: (map["category_mode"] as CategoryMode | undefined) ?? 'virtual',
+      aiEnabled: map["ai_enabled"] === "true",
     };
 
     set({ ...settings, isLoaded: true });
     await syncToRust(settings);
   },
 
-  saveSettings: async (db: Database, settings: AppSettings) => {
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('mpv_path', ?)",
-      [settings.mpvPath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('ffmpeg_path', ?)",
-      [settings.ffmpegPath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('ffprobe_path', ?)",
-      [settings.ffprobePath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('ytdlp_path', ?)",
-      [settings.ytdlpPath]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('download_dir', ?)",
-      [settings.downloadDir]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('screenshot_dir', ?)",
-      [settings.screenshotDir]
-    );
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('theme', ?)",
-      [settings.theme]
-    );
-
-    set({ ...settings });
+  saveSettings: async (settings: AppSettings) => {
+    await invoke("db_save_settings", {
+      mpvPath: settings.mpvPath,
+      ffmpegPath: settings.ffmpegPath,
+      ffprobePath: settings.ffprobePath,
+      ytdlpPath: settings.ytdlpPath,
+      downloadDir: settings.downloadDir,
+      screenshotDir: settings.screenshotDir,
+      theme: settings.theme,
+      autoPlayNext: settings.autoPlayNext,
+      language: settings.language,
+    });
+    await i18n.changeLanguage(settings.language);
+    // categoryMode は setCategoryMode で独立管理するため上書きしない
+    set((state) => ({ ...settings, categoryMode: state.categoryMode }));
     await syncToRust(settings);
   },
 
-  saveKeybindings: async (db: Database, bindings: KeyBindings) => {
-    await db.execute(
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('keybindings', ?)",
-      [JSON.stringify(bindings)]
-    );
+  saveKeybindings: async (bindings: KeyBindings) => {
+    await invoke("db_save_keybindings", { bindingsJson: JSON.stringify(bindings) });
     set({ keybindings: bindings });
+  },
+
+  setCategoryMode: async (mode: CategoryMode) => {
+    await invoke("db_set_setting", { key: "category_mode", value: mode });
+    set({ categoryMode: mode });
   },
 }));

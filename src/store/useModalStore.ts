@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import type { Video, Playlist } from '../types';
 
-type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | null;
+type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | 'rating' | null;
 
 interface ModalStore {
   showSettings: boolean;
   showDownload: boolean;
   showDuplicates: boolean;
+  showMissingFiles: boolean;
   showStats: boolean;
   showQueuePanel: boolean;
   showExport: boolean;
@@ -15,6 +16,8 @@ interface ModalStore {
   activePlaylist: Playlist | null;
   addToPlaylistVideo: Video | null;
   bulkModal: BulkModal;
+  dndPendingFiles: string[] | null;
+  dndOnSelect: ((dir: string | null) => void) | null;
 
   openSettings: () => void;
   closeSettings: () => void;
@@ -22,6 +25,8 @@ interface ModalStore {
   closeDownload: () => void;
   openDuplicates: () => void;
   closeDuplicates: () => void;
+  openMissingFiles: () => void;
+  closeMissingFiles: () => void;
   openStats: () => void;
   closeStats: () => void;
   toggleQueuePanel: () => void;
@@ -38,6 +43,8 @@ interface ModalStore {
   closeAddToPlaylist: () => void;
   openBulkModal: (modal: Exclude<BulkModal, null>) => void;
   closeBulkModal: () => void;
+  openDndDestDir: (files: string[], onSelect: (dir: string | null) => void) => void;
+  closeDndDestDir: () => void;
   closeAll: () => void;
 }
 
@@ -45,6 +52,7 @@ export const useModalStore = create<ModalStore>((set) => ({
   showSettings: false,
   showDownload: false,
   showDuplicates: false,
+  showMissingFiles: false,
   showStats: false,
   showQueuePanel: false,
   showExport: false,
@@ -53,6 +61,8 @@ export const useModalStore = create<ModalStore>((set) => ({
   activePlaylist: null,
   addToPlaylistVideo: null,
   bulkModal: null,
+  dndPendingFiles: null,
+  dndOnSelect: null,
 
   openSettings: () => set({ showSettings: true }),
   closeSettings: () => set({ showSettings: false }),
@@ -60,6 +70,8 @@ export const useModalStore = create<ModalStore>((set) => ({
   closeDownload: () => set({ showDownload: false }),
   openDuplicates: () => set({ showDuplicates: true }),
   closeDuplicates: () => set({ showDuplicates: false }),
+  openMissingFiles: () => set({ showMissingFiles: true }),
+  closeMissingFiles: () => set({ showMissingFiles: false }),
   openStats: () => set({ showStats: true }),
   closeStats: () => set({ showStats: false }),
   toggleQueuePanel: () => set((s) => ({ showQueuePanel: !s.showQueuePanel })),
@@ -76,10 +88,13 @@ export const useModalStore = create<ModalStore>((set) => ({
   closeAddToPlaylist: () => set({ addToPlaylistVideo: null }),
   openBulkModal: (modal) => set({ bulkModal: modal }),
   closeBulkModal: () => set({ bulkModal: null }),
+  openDndDestDir: (files, onSelect) => set({ dndPendingFiles: files, dndOnSelect: onSelect }),
+  closeDndDestDir: () => set({ dndPendingFiles: null, dndOnSelect: null }),
   closeAll: () => set({
     showSettings: false,
     showDownload: false,
     showDuplicates: false,
+    showMissingFiles: false,
     showStats: false,
     showQueuePanel: false,
     showExport: false,
@@ -88,5 +103,7 @@ export const useModalStore = create<ModalStore>((set) => ({
     activePlaylist: null,
     addToPlaylistVideo: null,
     bulkModal: null,
+    dndPendingFiles: null,
+    dndOnSelect: null,
   }),
 }));

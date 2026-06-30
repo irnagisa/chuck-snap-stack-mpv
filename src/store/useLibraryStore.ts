@@ -1,15 +1,25 @@
 import { create } from 'zustand';
-import Database from '@tauri-apps/plugin-sql';
 import { invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
-import type { Video, ScannedFile } from '../types';
+import type { Video, Tag } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
+import { useToastStore, toast } from './useToastStore';
 
 export type SortBy = 'created_at' | 'duration' | 'rating';
 export type SortOrder = 'desc' | 'asc';
 export type WatchedStatus = 'all' | 'watched' | 'unwatched';
+export type TagFilterMode = 'and' | 'or';
+export type MediaTypeFilter = 'all' | 'video' | 'audio' | 'image';
+
+interface ScanResult {
+  newCount: number;
+  scannedCount: number;
+  errors: string[];
+  truncated: boolean;
+  skippedCount: number;
+}
 
 interface LibraryState {
   videos: Video[];
@@ -19,10 +29,14 @@ interface LibraryState {
   filterSearch: string;
   filterCategoryId: number | null;
   filterTagIds: number[];
+  filterTagMode: TagFilterMode;
   filterMinRating: number;
   filterHasAudio: number | null;
   filterMinDuration: number;
+  filterMaxDuration: number;
   filterWatchedStatus: WatchedStatus;
+  filterWatchDir: string | null;
+  filterMediaType: MediaTypeFilter;
   filterSortBy: SortBy;
   filterSortOrder: SortOrder;
   watchDirs: string[];
@@ -32,7 +46,6 @@ interface LibraryState {
   thumbnailProgress: { done: number; total: number } | null;
   isDbReady: boolean;
   dbError: string | null;
-  db: Database | null;
 }
 
 interface LibraryActions {
@@ -44,169 +57,60 @@ interface LibraryActions {
   setCategoryFilter: (id: number | null) => Promise<void>;
   toggleTagFilter: (tagId: number) => Promise<void>;
   clearTagFilters: () => Promise<void>;
+  setTagMode: (mode: TagFilterMode) => Promise<void>;
   setMinRating: (rating: number) => Promise<void>;
   setHasAudio: (hasAudio: number | null) => Promise<void>;
   setMinDuration: (seconds: number) => Promise<void>;
+  setMaxDuration: (seconds: number) => Promise<void>;
   setWatchedStatus: (status: WatchedStatus) => Promise<void>;
+  setWatchDirFilter: (dir: string | null) => Promise<void>;
+  setMediaType: (mediaType: MediaTypeFilter) => Promise<void>;
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
+  rescanAllDirs: (targetDir?: string) => Promise<void>;
   removeWatchDir: (path: string) => Promise<void>;
   generateThumbnails: () => Promise<void>;
+  rescanVideo: (videoId: number) => Promise<void>;
+  rescanMultiple: (videoIds: number[]) => Promise<void>;
   pauseThumbnails: () => void;
   resumeThumbnails: () => void;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
-  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => Promise<void>;
+  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
   assignCategoryFromPath: (videoIds: number[]) => Promise<void>;
-  addVideoFromPath: (path: string, title: string) => Promise<number | null>;
+  addVideoFromPath: (path: string, title: string, sourceUrl?: string, sourceType?: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
+  batchWatcherUpdate: (batch: { creates: { path: string; title: string }[]; removes: string[]; renames: { old_path: string; new_path: string; title: string }[] }) => Promise<void>;
   moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
   renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
+  updateVideoPath: (oldPath: string, newPath: string) => Promise<void>;
 }
-
-const CREATE_VIDEOS_TABLE = `
-  CREATE TABLE IF NOT EXISTS videos (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    path        TEXT NOT NULL UNIQUE,
-    title       TEXT,
-    duration    REAL,
-    thumbnail   TEXT,
-    watched_at  TEXT,
-    progress    REAL DEFAULT 0,
-    rating      INTEGER DEFAULT 0,
-    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`;
-
-const CREATE_PLAYLISTS_TABLE = `
-  CREATE TABLE IF NOT EXISTS playlists (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`;
-
-const CREATE_PLAYLIST_ITEMS_TABLE = `
-  CREATE TABLE IF NOT EXISTS playlist_items (
-    playlist_id INTEGER REFERENCES playlists(id),
-    video_id    INTEGER REFERENCES videos(id),
-    position    INTEGER,
-    PRIMARY KEY (playlist_id, video_id)
-  )
-`;
-
-const CREATE_TAGS_TABLE = `
-  CREATE TABLE IF NOT EXISTS tags (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL UNIQUE,
-    color      TEXT NOT NULL DEFAULT '#6366f1',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`;
-
-const CREATE_VIDEO_TAGS_TABLE = `
-  CREATE TABLE IF NOT EXISTS video_tags (
-    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
-    tag_id   INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (video_id, tag_id)
-  )
-`;
-
-const CREATE_CATEGORIES_TABLE = `
-  CREATE TABLE IF NOT EXISTS categories (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL UNIQUE,
-    color      TEXT NOT NULL DEFAULT '#6366f1',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`;
-
-const CREATE_TAG_CATEGORIES_TABLE = `
-  CREATE TABLE IF NOT EXISTS tag_categories (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL UNIQUE,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`;
-
-const CREATE_WATCH_DIRS_TABLE = `
-  CREATE TABLE IF NOT EXISTS watch_dirs (
-    path       TEXT PRIMARY KEY,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`;
-
-const CREATE_SMART_PLAYLISTS_TABLE = `
-  CREATE TABLE IF NOT EXISTS smart_playlists (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    filter_json TEXT NOT NULL,
-    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`;
-
-type FilterState = Pick<LibraryState,
-  'filterSearch' | 'filterCategoryId' | 'filterTagIds' |
-  'filterMinRating' | 'filterHasAudio' | 'filterMinDuration' | 'filterWatchedStatus'
->;
-
-function buildWhereClause(f: FilterState): { where: string; params: unknown[] } {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-
-  if (f.filterSearch.trim()) {
-    conditions.push('(v.title LIKE ? OR v.path LIKE ?)');
-    const s = `%${f.filterSearch.trim()}%`;
-    params.push(s, s);
-  }
-  if (f.filterCategoryId !== null) {
-    if (f.filterCategoryId === -1) {
-      conditions.push('v.category_id IS NULL');
-    } else {
-      conditions.push('v.category_id = ?');
-      params.push(f.filterCategoryId);
-    }
-  }
-  if (f.filterTagIds.length > 0) {
-    const ph = f.filterTagIds.map(() => '?').join(', ');
-    // 相関サブクエリを非相関サブクエリ (GROUP BY + HAVING) に変更
-    conditions.push(
-      `v.id IN (SELECT vt.video_id FROM video_tags vt WHERE vt.tag_id IN (${ph}) GROUP BY vt.video_id HAVING COUNT(*) = ?)`
-    );
-    params.push(...f.filterTagIds);
-    params.push(f.filterTagIds.length);
-  }
-  if (f.filterMinRating > 0) {
-    conditions.push('v.rating >= ?');
-    params.push(f.filterMinRating);
-  }
-  if (f.filterHasAudio !== null) {
-    conditions.push('v.has_audio = ?');
-    params.push(f.filterHasAudio);
-  }
-  if (f.filterMinDuration > 0) {
-    conditions.push('v.duration >= ?');
-    params.push(f.filterMinDuration);
-  }
-  if (f.filterWatchedStatus === 'unwatched') {
-    conditions.push('v.watched_at IS NULL');
-  } else if (f.filterWatchedStatus === 'watched') {
-    conditions.push('v.watched_at IS NOT NULL');
-  }
-
-  return {
-    where: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
-    params,
-  };
-}
-
-// デバウンスタイマー: setSearch が連続呼び出しされたとき最後の呼び出しだけ fetchVideos を実行する
-
 
 const THUMBNAIL_CONCURRENCY = 3;
+
+function notifyScanResult(result: ScanResult): void {
+  if (result.errors.length > 0) {
+    const count = result.errors.length;
+    toast.error(
+      `スキャンエラー ${count}件: ${result.errors[0]}${count > 1 ? ` 他${count - 1}件` : ''}`,
+      8000
+    );
+  }
+  if (result.truncated) {
+    toast.info('50,000件の上限に達しました。一部ファイルが取り込まれていない可能性があります。', 8000);
+  }
+  if (result.scannedCount === 0 && result.skippedCount > 0) {
+    toast.info(`対応するメディアファイルが見つかりませんでした（${result.skippedCount}件は非対応形式）`, 8000);
+  }
+  if (result.newCount > 0) {
+    toast.success(`${result.newCount}件の新しいファイルを追加しました (スキャン: ${result.scannedCount}件)`, 5000);
+  } else if (result.scannedCount > 0) {
+    toast.info(`スキャン完了 (${result.scannedCount}件はすでにライブラリに登録済み)`, 5000);
+  }
+}
 
 export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) => ({
   videos: [],
@@ -216,10 +120,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterSearch: '',
   filterCategoryId: null,
   filterTagIds: [],
+  filterTagMode: 'and',
   filterMinRating: 0,
   filterHasAudio: null,
   filterMinDuration: 0,
+  filterMaxDuration: 0,
   filterWatchedStatus: 'all',
+  filterWatchDir: null,
+  filterMediaType: 'all',
   filterSortBy: 'created_at',
   filterSortOrder: 'desc',
   watchDirs: [],
@@ -229,51 +137,30 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   thumbnailProgress: null,
   isDbReady: false,
   dbError: null,
-  db: null,
 
   initDb: async () => {
     try {
-      const db = await Database.load('sqlite:videos.db');
-      await db.execute(CREATE_VIDEOS_TABLE);
-      await db.execute(CREATE_PLAYLISTS_TABLE);
-      await db.execute(CREATE_PLAYLIST_ITEMS_TABLE);
-      await db.execute(CREATE_TAGS_TABLE);
-      await db.execute(CREATE_VIDEO_TAGS_TABLE);
-      await db.execute(CREATE_CATEGORIES_TABLE);
-      await db.execute(CREATE_TAG_CATEGORIES_TABLE);
-      try {
-        await db.execute('ALTER TABLE videos ADD COLUMN category_id INTEGER REFERENCES categories(id)');
-      } catch { /* already exists */ }
-      try {
-        await db.execute('ALTER TABLE tags ADD COLUMN tag_category_id INTEGER REFERENCES tag_categories(id)');
-      } catch { /* already exists */ }
-      try {
-        await db.execute('ALTER TABLE videos ADD COLUMN has_audio INTEGER');
-      } catch { /* already exists */ }
-      try {
-        await db.execute('ALTER TABLE videos ADD COLUMN watch_count INTEGER DEFAULT 0');
-      } catch { /* already exists */ }
-      // パフォーマンス最適化: よく使うフィルター/ソートカラムにインデックスを作成
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_rating ON videos(rating)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_category_id ON videos(category_id)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_video_tags_tag_id ON video_tags(tag_id)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_video_tags_video_id ON video_tags(video_id)');
-      set({ db, isDbReady: true });
-      await useSettingsStore.getState().loadSettings(db);
+      set({ isDbReady: true });
+      await useSettingsStore.getState().loadSettings();
       await get().fetchVideos();
-      await useTagStore.getState().init(db);
-      await usePlaylistStore.getState().init(db);
-      await db.execute(CREATE_WATCH_DIRS_TABLE);
-      await db.execute(CREATE_SMART_PLAYLISTS_TABLE);
-      const savedDirs = await db.select<{ path: string }[]>('SELECT path FROM watch_dirs');
-      set({ watchDirs: savedDirs.map((d) => d.path) });
-      for (const dir of savedDirs) {
-        invoke('start_watching', { path: dir.path }).catch(() => {});
+      await useTagStore.getState().init();
+      await usePlaylistStore.getState().init();
+      const watchDirRows = await invoke<{ path: string; useDirAsCategory: number }[]>('db_get_watch_dirs');
+      const canonicalDirs: string[] = [];
+      for (const d of watchDirRows) {
+        const canonical = await invoke<string>('canonicalize_path', { path: d.path }).catch(() => d.path);
+        canonicalDirs.push(canonical);
       }
-      get().generateThumbnails().catch(() => {});
+      set({ watchDirs: canonicalDirs });
+      for (const dir of canonicalDirs) {
+        invoke('start_watching', { path: dir }).catch((e: unknown) => {
+          console.error(`[initDb] フォルダ監視の開始に失敗しました (${dir}):`, e);
+          toast.error(`フォルダ監視の開始に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+        });
+      }
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[initDb] サムネイル生成エラー:', e);
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('initDb failed:', msg);
@@ -282,54 +169,77 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   fetchVideos: async () => {
-    const { db, currentPage, pageSize, filterSortBy, filterSortOrder } = get();
-    if (!db) return;
+    const { currentPage, pageSize, filterSortBy, filterSortOrder } = get();
 
-    const { where, params: baseParams } = buildWhereClause(get());
-    const sortCol =
-      filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
-      filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';
-    const dir = filterSortOrder === 'desc' ? 'DESC' : 'ASC';
+    const result = await invoke<{
+      videos: Video[];
+      totalCount: number;
+      videoTags: { videoId: number; id: number; name: string; color: string; icon: string | null; tagCategoryId: number | null; createdAt: string }[];
+    }>('db_fetch_videos', {
+      filter: {
+        filterSearch: get().filterSearch,
+        filterCategoryId: get().filterCategoryId,
+        filterTagIds: get().filterTagIds,
+        filterTagMode: get().filterTagMode,
+        filterMinRating: get().filterMinRating,
+        filterHasAudio: get().filterHasAudio,
+        filterMinDuration: get().filterMinDuration,
+        filterMaxDuration: get().filterMaxDuration > 0 ? get().filterMaxDuration : null,
+        filterWatchedStatus: get().filterWatchedStatus,
+        filterWatchDir: get().filterWatchDir,
+        filterMediaType: get().filterMediaType,
+        filterSortBy,
+        filterSortOrder,
+        currentPage,
+        pageSize,
+      },
+    });
 
-    const countResult = await db.select<{ total: number }[]>(
-      `SELECT COUNT(*) as total FROM videos v ${where}`,
-      baseParams
-    );
-    const totalCount = countResult[0]?.total ?? 0;
-
+    const { videos, totalCount, videoTags: videoTagRows } = result;
     const maxPage = Math.max(1, Math.ceil(totalCount / pageSize));
     const page = Math.min(currentPage, maxPage);
-
-    const videos = await db.select<Video[]>(
-      `SELECT v.* FROM videos v ${where} ORDER BY ${sortCol} ${dir} LIMIT ? OFFSET ?`,
-      [...baseParams, pageSize, (page - 1) * pageSize]
-    );
-
     set({ videos, totalCount, currentPage: page });
 
-    const videoIds = videos.map((v) => v.id);
-    await useTagStore.getState().fetchVideoTagsForIds(db, videoIds);
+    const videoTagsMap: Record<number, Tag[]> = {};
+    for (const row of videoTagRows) {
+      if (!videoTagsMap[row.videoId]) videoTagsMap[row.videoId] = [];
+      videoTagsMap[row.videoId].push({
+        id: row.id,
+        name: row.name,
+        color: row.color,
+        icon: row.icon,
+        tag_category_id: row.tagCategoryId,
+        created_at: row.createdAt,
+      });
+    }
+    useTagStore.setState({ videoTags: videoTagsMap });
   },
 
   fetchAllForShuffle: async () => {
-    const { db, filterSortBy, filterSortOrder } = get();
-    if (!db) return [];
-
-    const { where, params: baseParams } = buildWhereClause(get());
-    const sortCol =
-      filterSortBy === 'duration' ? 'COALESCE(v.duration, -1)' :
-      filterSortBy === 'rating' ? 'v.rating' : 'v.created_at';
-    const dir = filterSortOrder === 'desc' ? 'DESC' : 'ASC';
-
-    return db.select<Video[]>(
-      `SELECT v.* FROM videos v ${where} ORDER BY ${sortCol} ${dir}`,
-      baseParams
-    );
+    const { filterSortBy, filterSortOrder } = get();
+    return invoke<Video[]>('db_fetch_all_for_shuffle', {
+      filter: {
+        filterSearch: get().filterSearch,
+        filterCategoryId: get().filterCategoryId,
+        filterTagIds: get().filterTagIds,
+        filterTagMode: get().filterTagMode,
+        filterMinRating: get().filterMinRating,
+        filterHasAudio: get().filterHasAudio,
+        filterMinDuration: get().filterMinDuration,
+        filterMaxDuration: get().filterMaxDuration > 0 ? get().filterMaxDuration : null,
+        filterWatchedStatus: get().filterWatchedStatus,
+        filterWatchDir: get().filterWatchDir,
+        filterMediaType: get().filterMediaType,
+        filterSortBy,
+        filterSortOrder,
+        currentPage: 1,
+        pageSize: 999999,
+      },
+    });
   },
 
   setSearch: async (search: string) => {
     set({ filterSearch: search, currentPage: 1 });
-    // App.tsx 側で 500ms デバウンス済みのため、ストアでは即座に DB クエリを実行する
     await get().fetchVideos();
   },
 
@@ -352,6 +262,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await get().fetchVideos();
   },
 
+  setTagMode: async (mode: TagFilterMode) => {
+    set({ filterTagMode: mode, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
   setMinRating: async (rating: number) => {
     set({ filterMinRating: rating, currentPage: 1 });
     await get().fetchVideos();
@@ -367,8 +282,23 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await get().fetchVideos();
   },
 
+  setMaxDuration: async (seconds: number) => {
+    set({ filterMaxDuration: seconds, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
   setWatchedStatus: async (status: WatchedStatus) => {
     set({ filterWatchedStatus: status, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setWatchDirFilter: async (dir: string | null) => {
+    set({ filterWatchDir: dir, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setMediaType: async (mediaType: MediaTypeFilter) => {
+    set({ filterMediaType: mediaType, currentPage: 1 });
     await get().fetchVideos();
   },
 
@@ -383,69 +313,97 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   scanAndImport: async (path: string, useDirectoryAsCategory = false) => {
-    const { db } = get();
-    if (!db) return;
     set({ isScanning: true });
     try {
-      await db.execute('INSERT OR IGNORE INTO watch_dirs (path) VALUES (?)', [path]);
+      const canonicalPath = await invoke<string>('canonicalize_path', { path }).catch(() => path);
+      // Register as watch dir
+      await invoke('db_add_watch_dir', { path: canonicalPath, useDirAsCategory: useDirectoryAsCategory });
       set((state) => ({
-        watchDirs: state.watchDirs.includes(path) ? state.watchDirs : [...state.watchDirs, path],
+        watchDirs: state.watchDirs.includes(canonicalPath)
+          ? state.watchDirs
+          : [...state.watchDirs, canonicalPath],
       }));
-      invoke('start_watching', { path }).catch(() => {});
-      const files = await invoke<ScannedFile[]>('scan_directory', { path });
+      invoke('start_watching', { path: canonicalPath }).catch((e: unknown) => {
+        console.error(`[scanAndImport] フォルダ監視の開始に失敗しました (${canonicalPath}):`, e);
+        toast.error(`フォルダ監視の開始に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      });
 
-      const categoryIdMap: Record<string, number> = {};
-      if (useDirectoryAsCategory) {
-        const uniqueDirNames = [...new Set(files.map((f) => f.parent_dir_name).filter((n): n is string => n != null))];
-        await db.execute('BEGIN');
-        try {
-          for (const name of uniqueDirNames) {
-            await db.execute('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [name, '#6366f1']);
-          }
-          await db.execute('COMMIT');
-        } catch (e) {
-          await db.execute('ROLLBACK');
-          throw e;
-        }
-        for (const name of uniqueDirNames) {
-          const rows = await db.select<{ id: number }[]>('SELECT id FROM categories WHERE name = ?', [name]);
-          if (rows[0]) categoryIdMap[name] = rows[0].id;
-        }
-        if (uniqueDirNames.length > 0) {
-          await useTagStore.getState().init(db);
-        }
-      }
+      const result = await invoke<ScanResult>('db_scan_and_import', {
+        path: canonicalPath,
+        useDirAsCategory: useDirectoryAsCategory,
+      });
 
-      await db.execute('BEGIN');
-      try {
-        for (const file of files) {
-          const categoryId = useDirectoryAsCategory && file.parent_dir_name != null
-            ? (categoryIdMap[file.parent_dir_name] ?? null)
-            : null;
-          await db.execute(
-            'INSERT OR IGNORE INTO videos (path, title, category_id) VALUES (?, ?, ?)',
-            [file.path, file.title, categoryId]
-          );
-        }
-        await db.execute('COMMIT');
-      } catch (e) {
-        await db.execute('ROLLBACK');
-        throw e;
-      }
-      set({ currentPage: 1, isScanning: false });
+      notifyScanResult(result);
+
+      set({ currentPage: 1 });
       await get().fetchVideos();
+      await useTagStore.getState().fetchCategories();
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[scanAndImport] サムネイル生成エラー:', e);
+      });
     } finally {
       set({ isScanning: false });
     }
-    get().generateThumbnails().catch(() => {});
+  },
+
+  rescanAllDirs: async (targetDir?: string) => {
+    set({ isScanning: true });
+    try {
+      const { downloadDir, categoryMode } = useSettingsStore.getState();
+
+      // Sync モード: ルート直下ファイルを Inbox サブフォルダへ移行
+      if (categoryMode === 'sync') {
+        const dirsToMigrate = targetDir ? [targetDir] : get().watchDirs;
+        for (const dir of dirsToMigrate) {
+          try {
+            const migrateResult = await invoke<{ moved: number; skipped: number; errors: string[] }>(
+              'migrate_root_files_to_inbox',
+              { watchDir: dir }
+            );
+            if (migrateResult.moved > 0) {
+              toast.success(`${migrateResult.moved}件のファイルを Inbox に移動しました`);
+            }
+            for (const err of migrateResult.errors) {
+              console.error('[migrateRootToInbox]', err);
+              toast.error(`Inbox 移行エラー: ${err}`, 8000);
+            }
+          } catch (migrateErr) {
+            console.error('[migrateRootToInbox] 失敗:', migrateErr);
+            toast.error(`Inbox 移行に失敗しました: ${String(migrateErr)}`, 8000);
+          }
+        }
+      }
+
+      const result = await invoke<ScanResult>('db_rescan_all_dirs', {
+        targetDir: targetDir ?? null,
+        downloadDir: downloadDir || null,
+      });
+
+      notifyScanResult(result);
+
+      set({ currentPage: 1 });
+      await get().fetchVideos();
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[rescanAllDirs] サムネイル生成エラー:', e);
+      });
+    } catch (e) {
+      console.error('rescanAllDirs failed:', e);
+      toast.error(`スキャン中にエラーが発生しました: ${String(e)}`, 8000);
+    } finally {
+      set({ isScanning: false });
+    }
   },
 
   removeWatchDir: async (path: string) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute('DELETE FROM watch_dirs WHERE path = ?', [path]);
-    await invoke('stop_watching', { path }).catch(() => {});
-    set((state) => ({ watchDirs: state.watchDirs.filter((d) => d !== path) }));
+    await invoke('db_remove_watch_dir', { path });
+    await invoke('stop_watching', { path }).catch((e: unknown) => {
+      console.error(`[removeWatchDir] ウォッチャー停止に失敗しました (${path}):`, e);
+    });
+    set((state) => ({
+      watchDirs: state.watchDirs.filter((d) => d !== path),
+      filterWatchDir: state.filterWatchDir === path ? null : state.filterWatchDir,
+    }));
+    await get().fetchVideos();
   },
 
   pauseThumbnails: () => {
@@ -459,52 +417,64 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   generateThumbnails: async () => {
     if (get().isThumbnailGenerating) return;
 
-    const { db } = get();
-    if (!db) return;
-
     const cacheDir = await appCacheDir();
     const thumbDir = await join(cacheDir, 'thumbnails');
 
-    // ペンディング件数が多い場合でもメモリを大量消費しないよう 500 件ずつ処理する
-    const PENDING_BATCH_SIZE = 500;
-    const pending = await db.select<{ id: number; path: string; thumbnail: string | null }[]>(
-      'SELECT id, path, thumbnail FROM videos WHERE thumbnail IS NULL OR has_audio IS NULL LIMIT ?',
-      [PENDING_BATCH_SIZE]
-    );
-    if (pending.length === 0) return;
+    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: null });
 
-    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: pending.length } });
+    type VideoUpdate = { id: number; thumbnail?: string | null; duration?: number | null; hasAudio: number };
 
-    type VideoUpdate = { id: number; thumbnail?: string; duration?: number | null; has_audio: number };
+    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
 
     const processVideoData = async (video: { id: number; path: string; thumbnail: string | null }): Promise<VideoUpdate | null> => {
       try {
+        const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+        const isImage = imageExts.includes(ext);
+        const isAudio = audioExts.includes(ext);
+
+        if (isImage) {
+          if (video.thumbnail) {
+            return { id: video.id, hasAudio: 0 };
+          }
+          const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+          const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
+          try {
+            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+              'generate_thumbnail',
+              { videoPath: video.path, outputPath }
+            );
+            return { id: video.id, thumbnail: result.thumbnail_path, duration: null, hasAudio: 0 };
+          } catch {
+            return { id: video.id, thumbnail: '', duration: null, hasAudio: 0 };
+          }
+        }
+
         if (!video.thumbnail) {
-          const hashBuffer = await crypto.subtle.digest(
-            'SHA-256',
-            new TextEncoder().encode(video.path)
-          );
-          const hash = Array.from(new Uint8Array(hashBuffer))
-            .map((b) => b.toString(16).padStart(2, '0'))
-            .join('');
-          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.jpg`);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+          const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
+
+          if (isAudio) {
+            try {
+              const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+                'generate_thumbnail', { videoPath: video.path, outputPath }
+              );
+              return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: 1 };
+            } catch {
+              return { id: video.id, thumbnail: '', duration: null, hasAudio: 1 };
+            }
+          }
 
           const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-            'generate_thumbnail',
-            { videoPath: video.path, outputPath }
+            'generate_thumbnail', { videoPath: video.path, outputPath }
           );
-          const hasAudio = result.has_audio ? 1 : 0;
-          await db.execute(
-            'UPDATE videos SET thumbnail = ?, duration = ?, has_audio = ? WHERE id = ?',
-            [result.thumbnail_path, result.duration, hasAudio, video.id]
-          );
-          return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, has_audio: hasAudio };
+          return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: result.has_audio ? 1 : 0 };
         } else {
-          // サムネイルはあるが音声情報が未取得の動画
+          if (isAudio) return { id: video.id, hasAudio: 1 };
           const hasAudioRaw = await invoke<boolean>('check_has_audio', { videoPath: video.path });
-          const hasAudio = hasAudioRaw ? 1 : 0;
-          await db.execute('UPDATE videos SET has_audio = ? WHERE id = ?', [hasAudio, video.id]);
-          return { id: video.id, has_audio: hasAudio };
+          return { id: video.id, hasAudio: hasAudioRaw ? 1 : 0 };
         }
       } catch (e) {
         console.warn(`Audio/thumbnail processing failed for ${video.path}:`, e);
@@ -512,30 +482,251 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
     };
 
-    try {
-      let doneCount = 0;
-      for (let i = 0; i < pending.length; i += THUMBNAIL_CONCURRENCY) {
-        // ストアの isThumbnailPaused を参照 (モジュール変数を排除)
-        while (get().isThumbnailPaused) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 200));
-        }
-        const batch = pending.slice(i, i + THUMBNAIL_CONCURRENCY);
-        const results = await Promise.all(batch.map(processVideoData));
-        doneCount += batch.length;
+    const processedIds = new Set<number>();
+    const PENDING_BATCH_SIZE = 500;
+    let cumulativeDone = 0;
+    let cumulativeTotal = 0;
 
-        // バッチ完了後に一括 set（動画更新 + 進捗を1回の state 更新で処理）
-        const updateMap = new Map(
-          results
-            .filter((r): r is VideoUpdate => r !== null)
-            .map((r) => [r.id, r])
+    try {
+      while (true) {
+        const pending = await invoke<{ id: number; path: string; thumbnail: string | null }[]>(
+          'db_get_pending_thumbnails', { limit: PENDING_BATCH_SIZE }
         );
-        set((state) => ({
-          videos: state.videos.map((v) => {
-            const upd = updateMap.get(v.id);
-            return upd ? { ...v, ...upd } : v;
-          }),
-          thumbnailProgress: { done: doneCount, total: pending.length },
-        }));
+        const toProcess = pending.filter((v) => !processedIds.has(v.id));
+        if (toProcess.length === 0) break;
+
+        cumulativeTotal += toProcess.length;
+        set({ thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal } });
+
+        for (let i = 0; i < toProcess.length; i += THUMBNAIL_CONCURRENCY) {
+          while (get().isThumbnailPaused || get().isScanning) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+          }
+          const batch = toProcess.slice(i, i + THUMBNAIL_CONCURRENCY);
+          const results = await Promise.all(batch.map(processVideoData));
+          cumulativeDone += batch.length;
+          for (const v of batch) processedIds.add(v.id);
+
+          while (get().isThumbnailPaused || get().isScanning) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+          }
+
+          const withThumb = results.filter((r): r is VideoUpdate => r !== null && r.thumbnail !== undefined);
+          const withoutThumb = results.filter((r): r is VideoUpdate => r !== null && r.thumbnail === undefined);
+
+          if (withThumb.length > 0) {
+            try {
+              await invoke('db_update_thumbnails_batch', {
+                updates: withThumb.map((r) => ({
+                  id: r.id,
+                  thumbnail: r.thumbnail ?? null,
+                  duration: r.duration ?? null,
+                  hasAudio: r.hasAudio,
+                })),
+              });
+            } catch (e) {
+              console.error('[generateThumbnails] サムネイルバッチDB更新失敗:', e);
+            }
+          }
+
+          if (withoutThumb.length > 0) {
+            try {
+              await invoke('db_update_audio_only_batch', {
+                updates: withoutThumb.map((r) => ({ id: r.id, hasAudio: r.hasAudio })),
+              });
+            } catch (e) {
+              console.error('[generateThumbnails] 音声情報バッチDB更新失敗:', e);
+            }
+          }
+
+          // processVideoData が null を返したアイテムを「処理試行済み」としてDBに記録し、
+          // 次回 generateThumbnails 呼び出し時に無限リトライされるのを防ぐ
+          const failedBatch = batch.filter((_, idx) => results[idx] === null);
+          if (failedBatch.length > 0) {
+            // リネーム/移動中にパスが変わった動画は永続失敗扱いにしない:
+            // thumbnail='' をセットすると再試行されなくなるため、
+            // ストアの現在パスとバッチ取得時のパスが異なる場合はスキップする
+            const currentVideos = get().videos;
+            const failedNoThumb = failedBatch.filter((v) => {
+              if (!v.thumbnail) {
+                const current = currentVideos.find((cv) => cv.id === v.id);
+                if (current && current.path !== v.path) return false;
+                return true;
+              }
+              return false;
+            });
+            const failedHasThumb = failedBatch.filter((v) => !!v.thumbnail);
+            if (failedNoThumb.length > 0) {
+              try {
+                await invoke('db_update_thumbnails_batch', {
+                  updates: failedNoThumb.map((v) => ({ id: v.id, thumbnail: '', duration: null, hasAudio: 0 })),
+                });
+              } catch (e) {
+                console.error('[generateThumbnails] 失敗レコードのDB記録に失敗:', e);
+              }
+            }
+            if (failedHasThumb.length > 0) {
+              try {
+                await invoke('db_update_audio_only_batch', {
+                  updates: failedHasThumb.map((v) => ({ id: v.id, hasAudio: 0 })),
+                });
+              } catch (e) {
+                console.error('[generateThumbnails] 失敗レコードの音声情報DB記録に失敗:', e);
+              }
+            }
+          }
+
+          const updateMap = new Map(
+            results
+              .filter((r): r is VideoUpdate => r !== null)
+              .map((r) => [r.id, r])
+          );
+          set((state) => ({
+            videos: state.videos.map((v) => {
+              const upd = updateMap.get(v.id);
+              return upd ? { ...v, ...upd } : v;
+            }),
+            thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal },
+          }));
+        }
+      }
+    } finally {
+      set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
+      await get().fetchVideos();
+    }
+  },
+
+  rescanVideo: async (videoId: number) => {
+    const video = get().videos.find((v) => v.id === videoId);
+    if (!video) return;
+
+    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+    const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+    const isImage = imageExts.includes(ext);
+    const isAudio = audioExts.includes(ext);
+    const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
+
+    const cacheDir = await appCacheDir();
+    const thumbDir = await join(cacheDir, 'thumbnails');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+    const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
+
+    try {
+      let thumbnail: string | null = null;
+      let duration: number | null = null;
+      let hasAudio = 0;
+
+      if (isImage) {
+        try {
+          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+            'generate_thumbnail', { videoPath: video.path, outputPath }
+          );
+          thumbnail = result.thumbnail_path;
+        } catch { /* leave null */ }
+      } else if (isAudio) {
+        try {
+          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+            'generate_thumbnail', { videoPath: video.path, outputPath }
+          );
+          thumbnail = result.thumbnail_path;
+          duration = result.duration;
+          hasAudio = 1;
+        } catch {
+          hasAudio = 1;
+        }
+      } else {
+        const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+          'generate_thumbnail', { videoPath: video.path, outputPath }
+        );
+        thumbnail = result.thumbnail_path;
+        duration = result.duration;
+        hasAudio = result.has_audio ? 1 : 0;
+      }
+
+      await invoke('db_update_video', { videoId, mediaType });
+      await invoke('db_update_thumbnails_batch', {
+        updates: [{ id: videoId, thumbnail, duration, hasAudio }],
+      });
+    } catch (e) {
+      console.warn('rescanVideo failed:', e);
+    }
+
+    await get().fetchVideos();
+  },
+
+  rescanMultiple: async (videoIds: number[]) => {
+    if (videoIds.length === 0) return;
+
+    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
+
+    const rows = get().videos.filter((v) => videoIds.includes(v.id));
+
+    const cacheDir = await appCacheDir();
+    const thumbDir = await join(cacheDir, 'thumbnails');
+
+    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: rows.length } });
+
+    type RescanUpdate = { id: number; mediaType: string; thumbnail: string | null; duration: number | null; hasAudio: number };
+
+    const processOne = async (video: Video): Promise<RescanUpdate | null> => {
+      const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
+      const isImage = imageExts.includes(ext);
+      const isAudio = audioExts.includes(ext);
+      const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
+      const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
+      try {
+        if (isImage) {
+          try {
+            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+              'generate_thumbnail', { videoPath: video.path, outputPath }
+            );
+            return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: null, hasAudio: 0 };
+          } catch {
+            return { id: video.id, mediaType, thumbnail: null, duration: null, hasAudio: 0 };
+          }
+        } else if (isAudio) {
+          try {
+            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+              'generate_thumbnail', { videoPath: video.path, outputPath }
+            );
+            return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: 1 };
+          } catch {
+            return { id: video.id, mediaType, thumbnail: null, duration: null, hasAudio: 1 };
+          }
+        } else {
+          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
+            'generate_thumbnail', { videoPath: video.path, outputPath }
+          );
+          return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: result.has_audio ? 1 : 0 };
+        }
+      } catch (e) {
+        console.warn('rescanMultiple failed for:', video.path, e);
+        return null;
+      }
+    };
+
+    let done = 0;
+    try {
+      for (let i = 0; i < rows.length; i += THUMBNAIL_CONCURRENCY) {
+        const batch = rows.slice(i, i + THUMBNAIL_CONCURRENCY);
+        const results = await Promise.all(batch.map(processOne));
+        done += batch.length;
+        const valid = results.filter((r): r is RescanUpdate => r !== null);
+        if (valid.length > 0) {
+          // Update media_type for each
+          for (const r of valid) {
+            await invoke('db_update_video', { videoId: r.id, mediaType: r.mediaType });
+          }
+          await invoke('db_update_thumbnails_batch', {
+            updates: valid.map((r) => ({ id: r.id, thumbnail: r.thumbnail, duration: r.duration, hasAudio: r.hasAudio })),
+          });
+        }
+        set({ thumbnailProgress: { done, total: rows.length } });
       }
     } finally {
       set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
@@ -544,187 +735,150 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   updateProgress: async (videoId: number, progress: number) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute(
-      'UPDATE videos SET progress = ?, watched_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [progress, videoId]
-    );
+    await invoke('db_update_progress', { videoId, progress });
     set((state) => ({
-      videos: state.videos.map((v) =>
-        v.id === videoId ? { ...v, progress } : v
-      ),
+      videos: state.videos.map((v) => v.id === videoId ? { ...v, progress } : v),
     }));
   },
 
-  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating'>>) => {
-    const { db } = get();
-    if (!db) return;
-    const fields = Object.keys(updates) as (keyof typeof updates)[];
-    if (fields.length === 0) return;
-    const setClauses = fields.map((f) => `${f} = ?`).join(', ');
-    await db.execute(
-      `UPDATE videos SET ${setClauses} WHERE id = ?`,
-      [...fields.map((f) => updates[f]), videoId]
-    );
+  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url'>>) => {
+    await invoke('db_update_video', {
+      videoId,
+      title: updates.title ?? null,
+      rating: updates.rating ?? null,
+      path: updates.path ?? null,
+      mediaType: updates.media_type ?? null,
+      sourceUrl: updates.source_url ?? null,
+    });
     set((state) => ({
       videos: state.videos.map((v) => v.id === videoId ? { ...v, ...updates } : v),
     }));
   },
 
   deleteVideo: async (videoId: number) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+    await invoke('db_delete_video', { videoId });
     await get().fetchVideos();
-  },
-
-  assignCategoryFromPath: async (videoIds: number[]) => {
-    const { db, watchDirs } = get();
-    if (!db || videoIds.length === 0) return;
-
-    const ph = videoIds.map(() => '?').join(', ');
-    const rows = await db.select<{ id: number; path: string }[]>(
-      `SELECT id, path FROM videos WHERE id IN (${ph})`,
-      videoIds
-    );
-
-    const normalizeDir = (p: string) => p.replace(/\\/g, '/').replace(/\/$/, '');
-    const rootDirs = new Set(watchDirs.map(normalizeDir));
-
-    const getParentDirName = (filePath: string): string | null => {
-      const parts = filePath.replace(/\\/g, '/').split('/');
-      parts.pop();
-      const parentPath = parts.join('/');
-      if (rootDirs.has(parentPath)) return null;
-      return parts[parts.length - 1] || null;
-    };
-
-    const uniqueDirNames = [...new Set(
-      rows.map((r) => getParentDirName(r.path)).filter((n): n is string => n != null)
-    )];
-
-    if (uniqueDirNames.length === 0) {
-      await get().fetchVideos();
-      return;
-    }
-
-    // バッチ INSERT: N 回の個別 INSERT を 1 回にまとめる
-    const insertPh = uniqueDirNames.map(() => '(?, ?)').join(', ');
-    const insertParams: unknown[] = [];
-    for (const name of uniqueDirNames) insertParams.push(name, '#6366f1');
-    await db.execute(
-      `INSERT OR IGNORE INTO categories (name, color) VALUES ${insertPh}`,
-      insertParams
-    );
-
-    // バッチ SELECT: N 回の個別 SELECT を 1 回にまとめる
-    const selectPh = uniqueDirNames.map(() => '?').join(', ');
-    const catRows = await db.select<{ id: number; name: string }[]>(
-      `SELECT id, name FROM categories WHERE name IN (${selectPh})`,
-      uniqueDirNames
-    );
-    const categoryIdMap: Record<string, number> = {};
-    for (const row of catRows) categoryIdMap[row.name] = row.id;
-
-    // 動画の category_id を一括更新 (トランザクションでバッチ化)
-    await db.execute('BEGIN');
-    try {
-      for (const row of rows) {
-        const dirName = getParentDirName(row.path);
-        if (dirName && categoryIdMap[dirName] != null) {
-          await db.execute('UPDATE videos SET category_id = ? WHERE id = ?', [categoryIdMap[dirName], row.id]);
-        }
-      }
-      await db.execute('COMMIT');
-    } catch (e) {
-      await db.execute('ROLLBACK');
-      throw e;
-    }
-
-    await useTagStore.getState().init(db);
-    await get().fetchVideos();
-  },
-
-  addVideoFromPath: async (path: string, title: string) => {
-    const { db } = get();
-    if (!db) return null;
-    await db.execute(
-      'INSERT OR IGNORE INTO videos (path, title) VALUES (?, ?)',
-      [path, title]
-    );
-    const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [path]);
-    const newId = rows[0]?.id ?? null;
-    await get().fetchVideos();
-    get().generateThumbnails().catch(() => {});
-    return newId;
-  },
-
-  removeVideoByPath: async (path: string) => {
-    const { db } = get();
-    if (!db) return;
-    const rows = await db.select<{ id: number }[]>('SELECT id FROM videos WHERE path = ?', [path]);
-    if (rows.length === 0) return;
-    await get().removeVideo(rows[0].id);
   },
 
   removeVideo: async (videoId: number) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute('DELETE FROM playlist_items WHERE video_id = ?', [videoId]);
-    await db.execute('DELETE FROM video_tags WHERE video_id = ?', [videoId]);
-    await db.execute('DELETE FROM videos WHERE id = ?', [videoId]);
+    await invoke('db_remove_video', { videoId });
     await get().fetchVideos();
   },
 
   removeMultiple: async (videoIds: number[]) => {
-    const { db } = get();
-    if (!db || videoIds.length === 0) return;
-    // N+1 クエリを避けるため IN (...) でバッチ削除
-    const ph = videoIds.map(() => '?').join(', ');
-    await db.execute(`DELETE FROM playlist_items WHERE video_id IN (${ph})`, videoIds);
-    await db.execute(`DELETE FROM video_tags WHERE video_id IN (${ph})`, videoIds);
-    await db.execute(`DELETE FROM videos WHERE id IN (${ph})`, videoIds);
+    if (videoIds.length === 0) return;
+    await invoke('db_remove_multiple', { videoIds });
     await get().fetchVideos();
   },
 
-  incrementWatchCount: async (videoId: number) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute('UPDATE videos SET watch_count = COALESCE(watch_count, 0) + 1 WHERE id = ?', [videoId]);
-    set((state) => ({
-      videos: state.videos.map((v) =>
-        v.id === videoId ? { ...v, watch_count: (v.watch_count ?? 0) + 1 } : v
-      ),
-    }));
+  assignCategoryFromPath: async (videoIds: number[]) => {
+    if (videoIds.length === 0) return;
+
+    const total = videoIds.length;
+    const { addToast, removeToast } = useToastStore.getState();
+    const toastId = addToast(`カテゴリ割り当て中... 0 / ${total}`, 'info', 0);
+    try {
+      const assigned = await invoke<number>('db_assign_category_from_path', { videoIds });
+      await useTagStore.getState().fetchCategories();
+      await get().fetchVideos();
+      removeToast(toastId);
+      addToast(
+        assigned > 0 ? `カテゴリを割り当てました（${assigned} 件）` : 'カテゴリ割り当て完了',
+        'success'
+      );
+    } catch (e) {
+      removeToast(toastId);
+      throw e;
+    }
+  },
+
+  addVideoFromPath: async (path: string, title: string, sourceUrl?: string, sourceType?: string) => {
+    const newId = await invoke<number | null>('db_add_video_from_path', {
+      path,
+      title,
+      sourceUrl: sourceUrl ?? null,
+      sourceType: sourceType ?? null,
+    });
+    await get().fetchVideos();
+    get().generateThumbnails().catch((e: unknown) => {
+      console.error('[addVideoFromPath] サムネイル生成エラー:', e);
+    });
+    return newId;
+  },
+
+  removeVideoByPath: async (path: string) => {
+    await invoke('db_remove_video_by_path', { path });
+    await get().fetchVideos();
+  },
+
+  batchWatcherUpdate: async ({ creates, removes, renames }) => {
+    await invoke('db_batch_watcher_update', {
+      creates,
+      removes,
+      renames: renames.map((r) => ({ oldPath: r.old_path, newPath: r.new_path, title: r.title })),
+    });
+    await get().fetchVideos();
+    get().generateThumbnails().catch((e: unknown) => {
+      console.error('[batchWatcherUpdate] サムネイル生成エラー:', e);
+    });
   },
 
   moveVideoFile: async (videoId: number, destDir: string) => {
-    const { db, videos } = get();
-    if (!db) return null;
-    const video = videos.find((v) => v.id === videoId);
+    const video = get().videos.find((v) => v.id === videoId);
     if (!video) return null;
     try {
       const newPath = await invoke<string>('move_video_file', {
         sourcePath: video.path,
         destDir,
       });
-      await db.execute('UPDATE videos SET path = ? WHERE id = ?', [newPath, videoId]);
+      try {
+        await invoke('db_move_video_file_db', { videoId, newPath });
+      } catch (dbErr) {
+        // ファイルは移動済みだがDB更新が失敗した場合: ユーザーに再スキャンを促す
+        const dbMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+        console.error('[moveVideoFile] DB更新失敗 (ファイルは移動済み):', dbMsg);
+        toast.error(
+          `ファイルは移動しましたがデータベースの更新に失敗しました。\nライブラリを再スキャンしてください。\n詳細: ${dbMsg}`,
+          8000
+        );
+        return null;
+      }
       set((state) => ({
         videos: state.videos.map((v) => v.id === videoId ? { ...v, path: newPath } : v),
       }));
+      // 移動後はサムネイル再生成をトリガーする (移動中に生成が失敗した場合に備えて)
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[moveVideoFile] サムネイル再生成トリガー失敗:', e);
+      });
       return newPath;
     } catch (e) {
-      console.error('Failed to move video file:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[moveVideoFile] ファイル移動に失敗しました:', msg);
+      toast.error(`ファイルの移動に失敗しました: ${msg}`);
       return null;
     }
   },
+
   renameVideoFile: async (videoId: number, newPath: string) => {
-    const { db } = get();
-    if (!db) return;
-    await db.execute('UPDATE videos SET path = ? WHERE id = ?', [newPath, videoId]);
+    await invoke('db_rename_video_file', { videoId, newPath });
+    await get().fetchVideos();
+    // リネーム後はサムネイル再生成をトリガーする (リネーム中に生成が失敗した場合に備えて)
+    get().generateThumbnails().catch((e: unknown) => {
+      console.error('[renameVideoFile] サムネイル再生成トリガー失敗:', e);
+    });
+  },
+
+  updateVideoPath: async (oldPath: string, newPath: string) => {
+    await invoke('db_update_video_path', { oldPath, newPath });
+    await get().fetchVideos();
+  },
+
+  incrementWatchCount: async (videoId: number) => {
+    await invoke('db_increment_watch_count', { videoId });
     set((state) => ({
-      videos: state.videos.map((v) => v.id === videoId ? { ...v, path: newPath } : v),
+      videos: state.videos.map((v) =>
+        v.id === videoId ? { ...v, watch_count: (v.watch_count ?? 0) + 1 } : v
+      ),
     }));
   },
 }));

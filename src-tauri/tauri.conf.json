@@ -23,7 +23,10 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' asset: https://asset.localhost data:; connect-src ipc: http://ipc.localhost",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPCACHE/thumbnails/**", "$APPDATA/thumbnails/**"]
+        "scope": {
+          "requireLiteralLeadingDot": false,
+          "allow": ["$APPCACHE/thumbnails/**", "$APPDATA/thumbnails/**", "$HOME/**", "/Volumes/**"]
+        }
       }
     }
   },

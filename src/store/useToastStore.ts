@@ -10,7 +10,8 @@ export interface Toast {
 
 interface ToastStore {
   toasts: Toast[];
-  addToast: (message: string, type?: ToastType, duration?: number) => void;
+  addToast: (message: string, type?: ToastType, duration?: number) => string;
+  updateToast: (id: string, message: string, type?: ToastType) => void;
   removeToast: (id: string) => void;
 }
 
@@ -25,6 +26,15 @@ export const useToastStore = create<ToastStore>((set) => ({
         set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
       }, duration);
     }
+    return id;
+  },
+
+  updateToast: (id, message, type) => {
+    set((state) => ({
+      toasts: state.toasts.map((t) =>
+        t.id === id ? { ...t, message, ...(type ? { type } : {}) } : t
+      ),
+    }));
   },
 
   removeToast: (id) => {

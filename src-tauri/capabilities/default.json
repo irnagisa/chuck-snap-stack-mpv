@@ -9,9 +9,6 @@
     "core:default",
     "opener:default",
     "dialog:allow-open",
-    "sql:allow-load",
-    "sql:allow-execute",
-    "sql:allow-select",
-    "sql:allow-close"
+    "dialog:allow-save"
   ]
 }
