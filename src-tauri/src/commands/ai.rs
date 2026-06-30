@@ -12,6 +12,10 @@ const MODEL_URL: &str =
 const TAGS_URL: &str =
     "https://huggingface.co/SmilingWolf/wd-vit-tagger-v3/resolve/main/selected_tags.csv";
 
+/// Expected SHA-256 digests for the downloaded model files (LFS / curl-verified).
+const MODEL_SHA256: &str = "35f23693620b668f4d53fd3c62bf65e40af739bc52c7eb0fbc49258b58d065b6";
+const TAGS_SHA256: &str  = "298633d94d0031d2081c0893f29c82eab7f0df00b08483ba8f29d1e979441217";
+
 #[derive(Serialize)]
 pub struct ModelStatus {
     pub downloaded: bool,
@@ -92,7 +96,8 @@ async fn download_files(
     if !tags_dest.exists() {
         let resp = reqwest::get(TAGS_URL).await.map_err(|e| e.to_string())?;
         let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-        std::fs::write(&tags_dest, bytes).map_err(|e| e.to_string())?;
+        std::fs::write(&tags_dest, &bytes).map_err(|e| e.to_string())?;
+        verify_sha256(&tags_dest, TAGS_SHA256)?;
     }
     emit_progress(app, state, 0.05);
 
@@ -117,10 +122,37 @@ async fn download_files(
                 }
             }
         }
+        verify_sha256(&tmp, MODEL_SHA256)?;
         std::fs::rename(&tmp, &model_dest).map_err(|e| e.to_string())?;
     }
 
     emit_progress(app, state, 1.0);
+    Ok(())
+}
+
+/// Compute the SHA-256 digest of `path` and compare it to `expected` (lowercase hex).
+/// Returns `Err` if the file cannot be read or the digest does not match.
+fn verify_sha256(path: &std::path::Path, expected: &str) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
+    let actual = format!("{:x}", hasher.finalize());
+    if actual != expected {
+        // Remove the corrupted/untrusted file so the next download attempt starts fresh.
+        let _ = std::fs::remove_file(path);
+        return Err(format!(
+            "整合性チェック失敗: {}\n  expected: {}\n  got:      {}",
+            path.display(), expected, actual
+        ));
+    }
     Ok(())
 }
 
@@ -184,9 +216,13 @@ pub async fn analyze_thumbnail_for_tags(
         if !mp.exists() || !tp.exists() {
             return Err("AIモデルがダウンロードされていません".into());
         }
-        let tagger = tokio::task::spawn_blocking(move || WdTagger::load(&mp, &tp))
-            .await
-            .map_err(|e| e.to_string())??;
+        let tagger = tokio::task::spawn_blocking(move || {
+            verify_sha256(&mp, MODEL_SHA256)?;
+            verify_sha256(&tp, TAGS_SHA256)?;
+            WdTagger::load(&mp, &tp)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         let mut inner = ai.0.lock().map_err(|e| e.to_string())?;
         inner.tagger = Some(tagger);
     }
