@@ -543,7 +543,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
           // 次回 generateThumbnails 呼び出し時に無限リトライされるのを防ぐ
           const failedBatch = batch.filter((_, idx) => results[idx] === null);
           if (failedBatch.length > 0) {
-            const failedNoThumb = failedBatch.filter((v) => !v.thumbnail);
+            // リネーム/移動中にパスが変わった動画は永続失敗扱いにしない:
+            // thumbnail='' をセットすると再試行されなくなるため、
+            // ストアの現在パスとバッチ取得時のパスが異なる場合はスキップする
+            const currentVideos = get().videos;
+            const failedNoThumb = failedBatch.filter((v) => {
+              if (!v.thumbnail) {
+                const current = currentVideos.find((cv) => cv.id === v.id);
+                if (current && current.path !== v.path) return false;
+                return true;
+              }
+              return false;
+            });
             const failedHasThumb = failedBatch.filter((v) => !!v.thumbnail);
             if (failedNoThumb.length > 0) {
               try {
@@ -835,6 +846,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       set((state) => ({
         videos: state.videos.map((v) => v.id === videoId ? { ...v, path: newPath } : v),
       }));
+      // 移動後はサムネイル再生成をトリガーする (移動中に生成が失敗した場合に備えて)
+      get().generateThumbnails().catch((e: unknown) => {
+        console.error('[moveVideoFile] サムネイル再生成トリガー失敗:', e);
+      });
       return newPath;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -847,6 +862,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   renameVideoFile: async (videoId: number, newPath: string) => {
     await invoke('db_rename_video_file', { videoId, newPath });
     await get().fetchVideos();
+    // リネーム後はサムネイル再生成をトリガーする (リネーム中に生成が失敗した場合に備えて)
+    get().generateThumbnails().catch((e: unknown) => {
+      console.error('[renameVideoFile] サムネイル再生成トリガー失敗:', e);
+    });
   },
 
   updateVideoPath: async (oldPath: string, newPath: string) => {

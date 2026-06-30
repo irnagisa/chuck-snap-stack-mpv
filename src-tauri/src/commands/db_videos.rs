@@ -451,6 +451,8 @@ pub async fn db_update_video(
     if let Some(v) = path {
         set_parts.push("path = ?");
         params.push(rusqlite::types::Value::Text(v));
+        // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
+        set_parts.push("thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END");
     }
     if let Some(v) = media_type {
         set_parts.push("media_type = ?");
@@ -784,8 +786,12 @@ pub async fn db_rename_video_file(
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
     let result: Result<(), String> = (|| {
         remove_conflicting_videos(&conn, &new_path, video_id)?;
-        conn.execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
-            .map_err(|e| e.to_string())?;
+        // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
+        conn.execute(
+            "UPDATE videos SET path = ?1, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
+            rusqlite::params![new_path, video_id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     })();
     if result.is_ok() {
@@ -805,8 +811,12 @@ pub async fn db_move_video_file_db(
     new_path: String,
 ) -> Result<(), String> {
     let conn = state.conn()?;
+    // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
     let rows_affected = conn
-        .execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
+        .execute(
+            "UPDATE videos SET path = ?1, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
+            rusqlite::params![new_path, video_id],
+        )
         .map_err(|e| e.to_string())?;
     if rows_affected == 0 {
         log::warn!("[db_move_video_file_db] video_id={video_id} がデータベースに存在しません");

@@ -51,7 +51,10 @@ pub fn init_db(conn: &Connection) -> Result<()> {
           media_type  TEXT DEFAULT 'video',
           source_url  TEXT,
           status      TEXT,
-          source_type TEXT
+          source_type TEXT,
+          ai_tag_suggestions TEXT,
+          ai_new_suggestions TEXT,
+          ai_analyzed_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS playlists (
@@ -114,6 +117,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)",
         "ALTER TABLE categories ADD COLUMN icon TEXT DEFAULT NULL",
         "ALTER TABLE watch_dirs ADD COLUMN use_dir_as_category INTEGER DEFAULT 0",
+        "ALTER TABLE videos ADD COLUMN ai_tag_suggestions TEXT",
+        "ALTER TABLE videos ADD COLUMN ai_new_suggestions TEXT",
+        "ALTER TABLE videos ADD COLUMN ai_analyzed_at TEXT",
     ];
     for stmt in &alter_stmts {
         let _ = conn.execute_batch(stmt); // ignore "duplicate column" errors

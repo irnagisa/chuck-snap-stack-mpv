@@ -84,6 +84,9 @@ export default function InboxView() {
       <div className="px-4 pt-3 pb-2 border-b border-gray-100 dark:border-gray-800 shrink-0">
         <div className="flex items-center gap-3 mb-2">
           <h2 className="text-base font-semibold">Inbox</h2>
+          {isLoading && (
+            <div className="w-3 h-3 border-[1.5px] border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+          )}
           {stats && (
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {stats.inboxCount} 件の未整理ファイル
@@ -145,10 +148,20 @@ export default function InboxView() {
         </div>
       )}
 
+      {/* Loading bar */}
+      <div className="h-[2px] shrink-0 overflow-hidden bg-transparent">
+        {isLoading && (
+          <div className="h-full w-1/4 bg-blue-500 inbox-loading-bar" />
+        )}
+      </div>
+
       {/* Workbench */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {isLoading && videos.length === 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">読み込み中...</p>
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mt-4">
+            <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin shrink-0" />
+            <span>読み込み中...</span>
+          </div>
         )}
         {!isLoading && videos.length === 0 && (
           <div className="flex flex-col items-center justify-center h-48 text-gray-400 dark:text-gray-600">

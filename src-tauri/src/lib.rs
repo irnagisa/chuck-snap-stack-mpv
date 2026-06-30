@@ -1,9 +1,11 @@
+pub mod ai;
 pub mod commands;
 pub mod db;
 
 use std::sync::Mutex;
 
 use tauri::Manager;
+use ai::AiTaggerState;
 use commands::download::DownloadState;
 use commands::window::MiniPlayerWindowState;
 use commands::mpv::MpvState;
@@ -47,6 +49,7 @@ pub fn run() {
         .manage(commands::ytdlp::YtdlpState::new())
         .manage(MiniPlayerWindowState::new())
         .manage(commands::webserver::WebServerState::new())
+        .manage(AiTaggerState::new())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
@@ -175,6 +178,10 @@ pub fn run() {
             commands::db_videos::db_graduate_from_inbox,
             commands::library::cleanup_jpg_thumbnails,
             commands::library::migrate_root_files_to_inbox,
+            // ai
+            commands::ai::check_ai_model_status,
+            commands::ai::download_ai_model,
+            commands::ai::analyze_thumbnail_for_tags,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
