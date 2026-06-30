@@ -25,7 +25,15 @@
         "enable": true,
         "scope": {
           "requireLiteralLeadingDot": false,
-          "allow": ["$APPCACHE/thumbnails/**", "$APPDATA/thumbnails/**", "$HOME/**", "/Volumes/**"]
+          "allow": [
+            "$APPCACHE/thumbnails/**",
+            "$APPDATA/thumbnails/**",
+            "$HOME/**",
+            "/Volumes/**",
+            "C:\\Users\\**",
+            "D:\\**",
+            "E:\\**"
+          ]
         }
       }
     }

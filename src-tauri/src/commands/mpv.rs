@@ -2,7 +2,6 @@
 
 use std::{
     io::{BufRead, BufReader, Write},
-    os::unix::net::UnixStream,
     process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -11,14 +10,26 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+
+/// プラットフォーム別の IPC ストリーム型。
+/// Unix: UnixStream (UNIX ドメインソケット)
+/// Windows: File (Named Pipe を File として開く)
+#[cfg(unix)]
+type IpcStream = UnixStream;
+#[cfg(windows)]
+type IpcStream = std::fs::File;
+
 use serde_json::{json, Value};
 use tauri::Emitter;
 
 use super::settings::SharedAppSettings;
 
-/// プロセス固有の IPC ソケットパスを返す。
+/// プロセス固有の IPC ソケットパスを返す (Unix)。
 /// オーナーのみアクセス可能な専用ディレクトリ (0700) を作成し、
 /// その中にソケットを配置することで他プロセスからの盗聴・改ざんを防ぐ。
+#[cfg(unix)]
 fn mpv_socket_path() -> String {
     use std::sync::OnceLock;
     static SOCKET_PATH: OnceLock<String> = OnceLock::new();
@@ -36,7 +47,6 @@ fn mpv_socket_path() -> String {
                 std::process::id()
             );
             // オーナー専用ディレクトリ (0700) を作成して他ユーザーからアクセス不可にする
-            #[cfg(unix)]
             {
                 let _ = std::fs::create_dir_all(&sock_dir);
                 use std::os::unix::fs::PermissionsExt;
@@ -45,13 +55,59 @@ fn mpv_socket_path() -> String {
                     std::fs::Permissions::from_mode(0o700),
                 );
             }
-            #[cfg(not(unix))]
-            {
-                let _ = std::fs::create_dir_all(&sock_dir);
-            }
             format!("{sock_dir}/mpv.sock")
         })
         .clone()
+}
+
+/// プロセス固有の Named Pipe パスを返す (Windows)。
+/// Named Pipe は接続を閉じると自動消滅するためファイル削除不要。
+#[cfg(windows)]
+fn mpv_socket_path() -> String {
+    use std::sync::OnceLock;
+    static PIPE_PATH: OnceLock<String> = OnceLock::new();
+    PIPE_PATH
+        .get_or_init(|| {
+            let token = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
+                .unwrap_or(std::process::id());
+            format!(r"\\.\pipe\mpv-chuck-{}-{:08x}", std::process::id(), token)
+        })
+        .clone()
+}
+
+/// IPC エンドポイントが利用可能かどうかを確認する。
+/// Unix: ソケットファイルの存在確認。
+/// Windows: Named Pipe への接続試行で確認。
+fn ipc_ready() -> bool {
+    #[cfg(unix)]
+    {
+        std::path::Path::new(&mpv_socket_path()).exists()
+    }
+    #[cfg(windows)]
+    {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(mpv_socket_path())
+            .is_ok()
+    }
+}
+
+/// IPC エンドポイントに接続し IpcStream を返す。
+#[cfg(unix)]
+fn connect_ipc() -> Result<IpcStream, String> {
+    UnixStream::connect(mpv_socket_path()).map_err(|e| format!("IPC 接続失敗: {e}"))
+}
+
+#[cfg(windows)]
+fn connect_ipc() -> Result<IpcStream, String> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(mpv_socket_path())
+        .map_err(|e| format!("IPC 接続失敗: {e}"))
 }
 
 // ----- 共有状態 -----
@@ -62,7 +118,7 @@ pub struct MpvState {
     /// Arc<AtomicU32> にすることでリーダースレッドがロックなしに世代チェックできる。
     generation: Arc<AtomicU32>,
     /// 送信専用の永続 IPC ライタ。
-    writer: Option<Arc<Mutex<UnixStream>>>,
+    writer: Option<Arc<Mutex<IpcStream>>>,
 }
 
 pub type SharedMpvState = Arc<Mutex<MpvState>>;
@@ -80,7 +136,7 @@ impl MpvState {
 // ----- IPC ヘルパー -----
 
 /// 永続ライタへコマンドを送信する（レスポンス不要）。
-fn send_cmd(writer: &Arc<Mutex<UnixStream>>, cmd: Value) -> Result<(), String> {
+fn send_cmd(writer: &Arc<Mutex<IpcStream>>, cmd: Value) -> Result<(), String> {
     let mut w = writer.lock().map_err(|e| e.to_string())?;
     let msg = cmd.to_string() + "\n";
     w.write_all(msg.as_bytes()).map_err(|e| e.to_string())
@@ -88,16 +144,16 @@ fn send_cmd(writer: &Arc<Mutex<UnixStream>>, cmd: Value) -> Result<(), String> {
 
 /// 一時接続でコマンドを送信しレスポンスを読む（一回限りの問い合わせ用）。
 fn send_ipc(cmd: Value) -> Result<Value, String> {
-    let stream =
-        UnixStream::connect(mpv_socket_path()).map_err(|e| format!("IPC 接続失敗: {e}"))?;
+    let stream = connect_ipc()?;
+    #[cfg(unix)]
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|e| e.to_string())?;
     send_ipc_on(stream, cmd)
 }
 
-/// 既存の UnixStream にコマンドを送信しレスポンスを読む。
-fn send_ipc_on(mut stream: UnixStream, cmd: Value) -> Result<Value, String> {
+/// 既存の IpcStream にコマンドを送信しレスポンスを読む。
+fn send_ipc_on(mut stream: IpcStream, cmd: Value) -> Result<Value, String> {
     let msg = cmd.to_string() + "\n";
     stream.write_all(msg.as_bytes()).map_err(|e| e.to_string())?;
 
@@ -126,9 +182,8 @@ fn connect_and_start_reader(
     gen_counter: Arc<AtomicU32>,
     current_gen: u32,
     app: tauri::AppHandle,
-) -> Result<Arc<Mutex<UnixStream>>, String> {
-    let stream =
-        UnixStream::connect(mpv_socket_path()).map_err(|e| format!("IPC 接続失敗: {e}"))?;
+) -> Result<Arc<Mutex<IpcStream>>, String> {
+    let stream = connect_ipc()?;
     let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
     let writer = Arc::new(Mutex::new(stream));
 
@@ -174,6 +229,7 @@ fn connect_and_start_reader(
                             gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
                             log::debug!("[reader gen={current_gen}] mpv//closed 送信");
+                            #[cfg(unix)]
                             let _ = std::fs::remove_file(mpv_socket_path());
                             let _ = app.emit("mpv://closed", ());
                         } else {
@@ -203,6 +259,7 @@ fn connect_and_start_reader(
                         let still_current = gen_counter.load(Ordering::Acquire) == current_gen;
                         if still_current {
                             log::debug!("[reader gen={current_gen}] error → mpv//closed 送信");
+                            #[cfg(unix)]
                             let _ = std::fs::remove_file(mpv_socket_path());
                             let _ = app.emit("mpv://closed", ());
                         }
@@ -348,7 +405,7 @@ pub async fn play(
     // ソケットが切断済みなら EPIPE/ECONNRESET を返し再起動フローに進む。
     let writer_opt = state.lock().map_err(|e| e.to_string())?.writer.clone();
     if let Some(ref writer) = writer_opt {
-        if std::path::Path::new(&mpv_socket_path()).exists() {
+        if ipc_ready() {
             log::debug!("[play] mpv 起動中 → loadfile replace (send_cmd): {path}");
             match send_cmd(writer, json!({"command": ["loadfile", path, "replace"]})) {
                 Ok(()) => {
@@ -368,6 +425,7 @@ pub async fn play(
 
     // ソケットファイルと古いプロセスを片付ける
     // generation を先にインクリメントして EOF ハンドラの誤発火を防ぐ
+    #[cfg(unix)]
     let _ = std::fs::remove_file(mpv_socket_path());
     let (old_child, gen_counter) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
@@ -424,11 +482,11 @@ pub async fn play(
     // ソケットが ready になるまで待つ（最大 3 秒）
     for _ in 0..30 {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        if std::path::Path::new(&mpv_socket_path()).exists() {
+        if ipc_ready() {
             break;
         }
     }
-    if !std::path::Path::new(&mpv_socket_path()).exists() {
+    if !ipc_ready() {
         log::error!("[play] ソケット待機タイムアウト (3秒): mpv が起動しましたがソケットが生成されません");
         return Err(
             "mpv が起動しましたが IPC ソケットの準備がタイムアウトしました。\
@@ -659,6 +717,7 @@ pub async fn quit_mpv(state: tauri::State<'_, SharedMpvState>) -> Result<(), Str
         let _ = send_cmd(&writer, json!({"command": ["quit"]}));
     }
 
+    #[cfg(unix)]
     let _ = std::fs::remove_file(mpv_socket_path());
 
     if let Some(mut child) = child_opt {
@@ -702,6 +761,7 @@ pub fn kill_on_exit(state: &SharedMpvState) {
     if let Some(writer) = writer_opt {
         let _ = send_cmd(&writer, json!({"command": ["quit"]}));
     }
+    #[cfg(unix)]
     let _ = std::fs::remove_file(mpv_socket_path());
 
     if let Some(mut child) = child_opt {

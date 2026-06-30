@@ -22,20 +22,31 @@ impl AppSettings {
     }
 }
 
-/// macOS の一般的なインストール場所を順に試し、最初に見つかったパスを返す。
-/// 見つからない場合は "mpv"（PATH 依存）を返す。
+/// macOS/Linux/Windows の一般的なインストール場所を順に試し、最初に見つかったパスを返す。
+/// 見つからない場合は "mpv" / "mpv.exe"（PATH 依存）を返す。
 fn detect_mpv_path() -> String {
+    #[cfg(unix)]
     const CANDIDATES: &[&str] = &[
         "/opt/homebrew/bin/mpv",  // Apple Silicon Homebrew
         "/usr/local/bin/mpv",     // Intel Homebrew
         "/usr/bin/mpv",
+    ];
+    #[cfg(windows)]
+    const CANDIDATES: &[&str] = &[
+        r"C:\Program Files\mpv\mpv.exe",
+        r"C:\Program Files (x86)\mpv\mpv.exe",
+        r"C:\tools\mpv\mpv.exe",  // Chocolatey
+        // Scoop は PATH に入るため "mpv.exe" にフォールスルー
     ];
     for path in CANDIDATES {
         if std::path::Path::new(path).exists() {
             return path.to_string();
         }
     }
-    "mpv".to_string()
+    #[cfg(windows)]
+    return "mpv.exe".to_string();
+    #[cfg(not(windows))]
+    return "mpv".to_string();
 }
 
 /// 自動検出した mpv パスをフロントエンドに返す。
@@ -68,7 +79,7 @@ fn validate_executable_path(path: &str, name: &str) -> Result<(), String> {
         }
     }
     // 絶対パスの場合のみ存在・実行可能チェック
-    if path.starts_with('/') {
+    if std::path::Path::new(path).is_absolute() {
         let meta = std::fs::metadata(path)
             .map_err(|_| format!("{name} が見つかりません。パスが正しいか確認してください"))?;
         if !meta.is_file() {
