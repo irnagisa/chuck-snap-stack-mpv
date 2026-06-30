@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { useInboxStore } from '../../store/useInboxStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { TagBadge } from '../Library/TagBadge';
 import { IconPicker, MediaIcon } from '../../lib/mediaIcons';
@@ -30,6 +31,7 @@ export function VideoOrganizerPanel({ video }: Props) {
   const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
     useTagStore();
   const { fetchVideos, updateVideo, watchDirs, moveVideoFile } = useLibraryStore();
+  const { fetchInbox } = useInboxStore();
   const { categoryMode } = useSettingsStore();
 
   const [localRating, setLocalRating] = useState(video.rating ?? 0);
@@ -90,11 +92,14 @@ export function VideoOrganizerPanel({ video }: Props) {
     const next = star === localRating ? 0 : star;
     setLocalRating(next);
     await updateVideo(video.id, { rating: next });
+    // 自動卒業が発生した場合に InboxView を更新する (非ブロッキング)
+    fetchInbox().catch(() => {});
   };
 
   const handleAddTag = async (tag: Tag) => {
     await addTagToVideo(video.id, tag.id);
     setTagInput('');
+    fetchInbox().catch(() => {});
   };
 
   const handleCreateAndAdd = async () => {
@@ -102,6 +107,7 @@ export function VideoOrganizerPanel({ video }: Props) {
     const tag = await createTag(tagInput.trim(), newTagColor, newTagIcon);
     await addTagToVideo(video.id, tag.id);
     setTagInput('');
+    fetchInbox().catch(() => {});
   };
 
   const handleRemoveTag = async (tagId: number) => {
@@ -126,6 +132,7 @@ export function VideoOrganizerPanel({ video }: Props) {
     }
 
     await fetchVideos();
+    fetchInbox().catch(() => {});
   };
 
   return (
