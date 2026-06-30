@@ -136,7 +136,10 @@
     "categoryModeVirtualDesc": "カテゴリは DB にのみ記録し、ファイルは移動しません。読み取り専用・ネットワークドライブでも使用可能。",
     "categoryModeSync": "Sync モード",
     "categoryModeSyncDesc": "カテゴリを変更するとファイルを対応ディレクトリへ移動します。ディレクトリ構成でカテゴリが見えます。",
-    "categoryModeActive": "現在のモード"
+    "categoryModeActive": "現在のモード",
+    "sectionAi": "AI 機能",
+    "aiEnabled": "AI タグ提案を有効にする",
+    "aiEnabledDesc": "WD Tagger を使ってサムネイルからタグを自動提案します（初回使用時にモデル約 200 MB をダウンロード）"
   },
   "keybindings": {
     "pause": "一時停止/再開",

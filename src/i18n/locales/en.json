@@ -136,7 +136,10 @@
     "categoryModeVirtualDesc": "Categories are stored in DB only. Files are not moved. Works with read-only and network drives.",
     "categoryModeSync": "Sync Mode",
     "categoryModeSyncDesc": "Changing a category moves the file to the corresponding directory. Directory structure reflects categories.",
-    "categoryModeActive": "Current mode"
+    "categoryModeActive": "Current mode",
+    "sectionAi": "AI Features",
+    "aiEnabled": "Enable AI Tag Suggestions",
+    "aiEnabledDesc": "Use WD Tagger to automatically suggest tags from thumbnails (requires ~200 MB model download on first use)"
   },
   "keybindings": {
     "pause": "Play/Pause",

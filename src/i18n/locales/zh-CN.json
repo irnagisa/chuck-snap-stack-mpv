@@ -136,7 +136,10 @@
     "categoryModeVirtualDesc": "分类仅记录在数据库中，不移动文件。支持只读和网络驱动器。",
     "categoryModeSync": "Sync 模式",
     "categoryModeSyncDesc": "更改分类时自动将文件移动到对应目录，目录结构反映分类层级。",
-    "categoryModeActive": "当前模式"
+    "categoryModeActive": "当前模式",
+    "sectionAi": "AI 功能",
+    "aiEnabled": "启用 AI 标签建议",
+    "aiEnabledDesc": "使用 WD Tagger 从缩略图自动建议标签（首次使用需下载约 200 MB 的模型）"
   },
   "keybindings": {
     "pause": "播放/暂停",

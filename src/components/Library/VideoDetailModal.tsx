@@ -7,6 +7,7 @@ import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useTagStore } from '../../store/useTagStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { TranscodeModal } from './TranscodeModal';
 import { Select } from '../common/Select';
 import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
@@ -37,6 +38,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const { t } = useTranslation();
   const { fetchVideos, updateVideo, rescanVideo } = useLibraryStore();
   const { play } = usePlayerStore();
+  const { aiEnabled } = useSettingsStore();
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
@@ -512,7 +514,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             </div>
 
             {/* AI タグ提案 */}
-            <div className="pt-4 pb-4 flex flex-col gap-2">
+            {aiEnabled && <div className="pt-4 pb-4 flex flex-col gap-2">
               <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
                 AI タグ提案
               </label>
@@ -626,6 +628,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 </>
               )}
             </div>
+
+            }
 
             {/* 字幕ファイル管理 */}
             <div className="pt-4 pb-4 flex flex-col gap-2">
