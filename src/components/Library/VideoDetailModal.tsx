@@ -12,6 +12,7 @@ import { TranscodeModal } from './TranscodeModal';
 import { Select } from '../common/Select';
 import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
 import { listen } from '@tauri-apps/api/event';
+import { toast } from '../../store/useToastStore';
 
 interface Props {
   video: Video;
@@ -173,7 +174,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
         await invoke<void>('rename_video_file', { oldPath, newName: newFilename });
       } catch (e) {
         await updateVideo(video.id, { title: video.title ?? '', path: oldPath });
-        alert(`ファイルのリネームに失敗しました: ${e}`);
+        toast.error(`ファイルのリネームに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
       }
     } else {
       await updateVideo(video.id, { title: trimmed });
@@ -206,7 +207,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       setThumbCacheBust(Date.now());
       await fetchVideos();
     } catch (e) {
-      console.error('Capture failed:', e);
+      toast.error(`サムネイルの取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsCapturingThumb(false);
     }
@@ -229,7 +230,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       await invoke('load_subtitle', { path });
       setLoadedSubtitle(path);
     } catch (e) {
-      console.error('Subtitle load failed:', e);
+      toast.error(`字幕の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -382,7 +383,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   <button
                     type="button"
                     className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
-                    onClick={() => revealItemInDir(video.path).catch(() => {})}
+                    onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(`Finder での表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`))}
                     title={t('detail.openFinder')}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -409,7 +410,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   <button
                     type="button"
                     className="text-xs text-blue-500 hover:underline mt-0.5 block truncate max-w-full text-left"
-                    onClick={() => openUrl(localSourceUrl).catch(() => {})}
+                    onClick={() => openUrl(localSourceUrl).catch((e: unknown) => toast.error(`URL を開けませんでした: ${e instanceof Error ? e.message : String(e)}`))}
                     title={localSourceUrl}
                   >
                     {localSourceUrl}

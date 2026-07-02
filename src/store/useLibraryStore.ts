@@ -171,6 +171,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       }
       get().generateThumbnails().catch((e: unknown) => {
         console.error('[initDb] サムネイル生成エラー:', e);
+        toast.error(`サムネイル生成でエラーが発生しました: ${String(e)}`);
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -365,6 +366,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await useTagStore.getState().fetchCategories();
       get().generateThumbnails().catch((e: unknown) => {
         console.error('[scanAndImport] サムネイル生成エラー:', e);
+        toast.error(`サムネイル生成でエラーが発生しました: ${String(e)}`);
       });
     } finally {
       set({ isScanning: false });
@@ -410,6 +412,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       await get().fetchVideos();
       get().generateThumbnails().catch((e: unknown) => {
         console.error('[rescanAllDirs] サムネイル生成エラー:', e);
+        toast.error(`サムネイル生成でエラーが発生しました: ${String(e)}`);
       });
     } catch (e) {
       console.error('rescanAllDirs failed:', e);
@@ -423,6 +426,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await invoke('db_remove_watch_dir', { path });
     await invoke('stop_watching', { path }).catch((e: unknown) => {
       console.error(`[removeWatchDir] ウォッチャー停止に失敗しました (${path}):`, e);
+      toast.error(`フォルダ監視の停止に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     });
     set((state) => ({
       watchDirs: state.watchDirs.filter((d) => d !== path),
@@ -878,6 +882,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       // 移動後はサムネイル再生成をトリガーする (移動中に生成が失敗した場合に備えて)
       get().generateThumbnails().catch((e: unknown) => {
         console.error('[moveVideoFile] サムネイル再生成トリガー失敗:', e);
+        toast.error(`サムネイル生成でエラーが発生しました: ${String(e)}`);
       });
       return newPath;
     } catch (e) {

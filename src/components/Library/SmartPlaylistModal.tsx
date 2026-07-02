@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 
 interface Props {
   onClose: () => void;
@@ -32,7 +33,7 @@ export function SmartPlaylistModal({ onClose }: Props) {
       });
       setSaved(true);
     } catch (e) {
-      console.error('Smart playlist save failed:', e);
+      toast.error(`スマートプレイリストの保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsSaving(false);
     }

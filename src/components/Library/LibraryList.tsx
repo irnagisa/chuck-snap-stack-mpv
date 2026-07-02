@@ -92,9 +92,9 @@ const VideoRow = memo(function VideoRow({
     return onRegisterObserver(el, () => {
       if (checkedRef.current) return;
       checkedRef.current = true;
-      invoke<boolean>('path_exists', { path: v.path }).then((exists) => {
-        if (!exists) setFileMissing(true);
-      });
+      invoke<boolean>('path_exists', { path: v.path })
+        .then((exists) => { if (!exists) setFileMissing(true); })
+        .catch(() => setFileMissing(true));
     });
   }, [v.path, onRegisterObserver]);
 
@@ -268,6 +268,8 @@ export function LibraryList({
   selectedIds,
   onSelectionChange,
 }: Props) {
+  // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
+  // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
   const categories = useTagStore(useShallow((s) => s.categories));
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);

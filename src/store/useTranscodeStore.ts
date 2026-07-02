@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { toast } from './useToastStore';
 
 export interface TranscodeProgressPayload {
   percent: number;
@@ -56,6 +57,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => ({
       });
     } catch (e) {
       console.error('[transcode] progress リスナー登録失敗 (プログレス表示なしで続行):', e);
+      toast.error('トランスコードのプログレス表示に失敗しました。処理は続行されます。');
     }
 
     set({ isRunning: true, isDone: false, error: null, progress: null, videoName, outputPath: null, inputSizeBytes, outputSizeBytes: null });
@@ -90,6 +92,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => ({
   async cancel() {
     await invoke('cancel_transcode').catch((e: unknown) => {
       console.error('[transcode] キャンセル命令の送信に失敗しました:', e);
+      toast.error(`トランスコードのキャンセルに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     });
   },
 

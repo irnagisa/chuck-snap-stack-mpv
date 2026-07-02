@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { create } from 'zustand';
 import type { Video, Tag, Category } from '../types';
+import { toast } from './useToastStore';
 
 export interface InboxStats {
   total: number;
@@ -240,6 +241,7 @@ export const useInboxStore = create<InboxState & InboxActions>((set, get) => ({
       set({ videos, stats, isLoading: false });
     } catch (e) {
       console.error('[useInboxStore] fetchInbox error:', e);
+      toast.error(`Inbox の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
       set({ isLoading: false });
     }
   },

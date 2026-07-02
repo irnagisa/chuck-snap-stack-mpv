@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { Playlist, SmartPlaylist } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { useLibraryStore, type SortBy, type SortOrder, type WatchedStatus } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 
 interface Props {
   onOpenPlaylist: (playlist: Playlist) => void;
@@ -23,7 +24,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   useEffect(() => {
     invoke<SmartPlaylist[]>('db_get_smart_playlists')
       .then(setSmartPlaylists)
-      .catch(() => {});
+      .catch((e: unknown) => toast.error(`スマートプレイリストの読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`));
   }, []);
 
   const handleCreate = async () => {
