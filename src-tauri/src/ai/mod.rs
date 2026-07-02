@@ -1,13 +1,13 @@
 pub mod suggest;
 pub mod wd_tagger;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use crate::ai::wd_tagger::WdTagger;
 
 pub struct AiTaggerState(pub Mutex<AiTaggerInner>);
 
 pub struct AiTaggerInner {
-    pub tagger: Option<WdTagger>,
+    pub tagger: Option<Arc<WdTagger>>,
     pub downloading: bool,
     pub download_progress: f32,
 }

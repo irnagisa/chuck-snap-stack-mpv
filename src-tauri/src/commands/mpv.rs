@@ -35,14 +35,11 @@ fn mpv_socket_path() -> String {
     static SOCKET_PATH: OnceLock<String> = OnceLock::new();
     SOCKET_PATH
         .get_or_init(|| {
-            let token = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
-                .unwrap_or(std::process::id());
+            let token: u64 = rand::random();
             let tmpdir = std::env::var("TMPDIR")
                 .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
             let sock_dir = format!(
-                "{}/mpv-chuck-{}-{token:08x}",
+                "{}/mpv-chuck-{}-{token:016x}",
                 tmpdir.trim_end_matches('/'),
                 std::process::id()
             );
@@ -68,13 +65,28 @@ fn mpv_socket_path() -> String {
     static PIPE_PATH: OnceLock<String> = OnceLock::new();
     PIPE_PATH
         .get_or_init(|| {
-            let token = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
-                .unwrap_or(std::process::id());
-            format!(r"\\.\pipe\mpv-chuck-{}-{:08x}", std::process::id(), token)
+            let token: u64 = rand::random();
+            format!(r"\\.\pipe\mpv-chuck-{}-{:016x}", std::process::id(), token)
         })
         .clone()
+}
+
+/// mpv の --input-ipc-server に渡す文字列を返す。
+/// Unix: ソケットファイルの絶対パスをそのまま渡す。
+/// Windows: mpv は内部で \\.\pipe\ プレフィックスを自動付加するため、
+///          名前部分のみ渡してプレフィックスの二重付与を防ぐ。
+fn mpv_ipc_arg() -> String {
+    #[cfg(unix)]
+    {
+        mpv_socket_path()
+    }
+    #[cfg(windows)]
+    {
+        let path = mpv_socket_path();
+        path.strip_prefix(r"\\.\pipe\")
+            .unwrap_or(&path)
+            .to_string()
+    }
 }
 
 /// IPC エンドポイントが利用可能かどうかを確認する。
@@ -143,13 +155,29 @@ fn send_cmd(writer: &Arc<Mutex<IpcStream>>, cmd: Value) -> Result<(), String> {
 }
 
 /// 一時接続でコマンドを送信しレスポンスを読む（一回限りの問い合わせ用）。
+/// Unix: UnixStream の set_read_timeout で 2 秒タイムアウト。
+/// Windows: std::fs::File (Named Pipe) は set_read_timeout 非対応のため
+///          別スレッドで実行し std::sync::mpsc::Receiver::recv_timeout で 2 秒を保証する。
 fn send_ipc(cmd: Value) -> Result<Value, String> {
-    let stream = connect_ipc()?;
     #[cfg(unix)]
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .map_err(|e| e.to_string())?;
-    send_ipc_on(stream, cmd)
+    {
+        let stream = connect_ipc()?;
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .map_err(|e| e.to_string())?;
+        send_ipc_on(stream, cmd)
+    }
+    #[cfg(windows)]
+    {
+        let stream = connect_ipc()?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            tx.send(send_ipc_on(stream, cmd)).ok();
+        });
+        rx.recv_timeout(Duration::from_secs(2))
+            .map_err(|_| "mpv IPC タイムアウト (2秒)".to_string())
+            .and_then(|r| r)
+    }
 }
 
 /// 既存の IpcStream にコマンドを送信しレスポンスを読む。
@@ -444,8 +472,7 @@ pub async fn play(
 
     // mpv 起動
     log::debug!("[play] mpv 起動");
-    let socket_path = mpv_socket_path();
-    let ipc_server_arg = format!("--input-ipc-server={socket_path}");
+    let ipc_server_arg = format!("--input-ipc-server={}", mpv_ipc_arg());
     let mut child = Command::new(&mpv_path)
         .args([
             "--idle",
@@ -542,14 +569,20 @@ pub async fn seek(state: tauri::State<'_, SharedMpvState>, seconds: f64) -> Resu
 }
 
 /// 現在の再生位置（秒）を返す（デバッグ・フォールバック用）。
+/// send_ipc はブロッキング I/O のため spawn_blocking でラップする。
 #[tauri::command]
 pub async fn get_playback_time(
     _state: tauri::State<'_, SharedMpvState>,
 ) -> Result<f64, String> {
-    let val = send_ipc(json!({"command": ["get_property", "playback-time"]}))?;
-    val["data"]
-        .as_f64()
-        .ok_or_else(|| "再生位置の取得失敗".to_string())
+    tokio::task::spawn_blocking(|| {
+        let val = send_ipc(json!({"command": ["get_property", "playback-time"]}))?;
+        val["data"]
+            .as_f64()
+            .ok_or_else(|| "再生位置の取得失敗".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r)
 }
 
 /// 現在位置から相対的にシークする。

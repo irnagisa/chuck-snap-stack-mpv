@@ -4,6 +4,7 @@ import { appCacheDir, join } from '@tauri-apps/api/path';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 import { Select } from './Select';
 import type { Video, SubtitleFile } from '../../types';
 
@@ -82,7 +83,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
         await invoke<void>('rename_video_file', { oldPath, newName: newFilename });
       } catch (e) {
         await updateVideo(video.id, { title: video.title ?? '', path: oldPath });
-        alert(`ファイルのリネームに失敗しました: ${e}`);
+        toast.error(`ファイルのリネームに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
       }
     } else {
       await updateVideo(video.id, { title: trimmed });
@@ -135,7 +136,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
       await invoke('db_update_video_thumbnail', { videoId: video.id, thumbnail: outputPath });
       onThumbnailChange?.();
     } catch (e) {
-      console.error('Capture failed:', e);
+      toast.error(`サムネイルの取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsCapturingThumb(false);
     }
@@ -158,7 +159,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
       await invoke('load_subtitle', { path });
       setLoadedSubtitle(path);
     } catch (e) {
-      console.error('Subtitle load failed:', e);
+      toast.error(`字幕の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -199,7 +200,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           <button
             type="button"
             className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
-            onClick={() => revealItemInDir(video.path).catch(() => {})}
+            onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(`Finder での表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`))}
           >
             <svg
               className="w-3.5 h-3.5"
@@ -241,7 +242,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           <button
             type="button"
             className="text-xs text-blue-500 hover:underline mt-0.5 block truncate max-w-full text-left"
-            onClick={() => openUrl(localSourceUrl).catch(() => {})}
+            onClick={() => openUrl(localSourceUrl).catch((e: unknown) => toast.error(`URL を開けませんでした: ${e instanceof Error ? e.message : String(e)}`))}
             title={localSourceUrl}
           >
             {localSourceUrl}

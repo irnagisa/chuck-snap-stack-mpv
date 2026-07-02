@@ -109,6 +109,14 @@ pub fn resolve_unique_path(path: &Path) -> PathBuf {
             return candidate;
         }
         i += 1;
+        if i > 1000 {
+            // 1000 件を超えても空きが見つからない場合はタイムスタンプで一意化する
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            return dir.join(format!("{stem}_{ts}{ext}"));
+        }
     }
 }
 
@@ -205,4 +213,241 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- validate_path ---
+
+    #[test]
+    fn validate_path_ok_absolute() {
+        assert!(validate_path("/tmp/foo.mp4").is_ok());
+    }
+
+    #[test]
+    fn validate_path_err_relative() {
+        assert!(validate_path("foo/bar.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_path_err_traversal() {
+        assert!(validate_path("/tmp/../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn validate_path_err_null_byte() {
+        assert!(validate_path("/tmp/foo\0bar").is_err());
+    }
+
+    #[test]
+    fn validate_path_err_newline() {
+        assert!(validate_path("/tmp/foo\nbar").is_err());
+    }
+
+    // --- validate_video_path ---
+
+    #[test]
+    fn validate_video_path_ok_mp4() {
+        assert!(validate_video_path("/tmp/video.mp4").is_ok());
+    }
+
+    #[test]
+    fn validate_video_path_ok_mkv() {
+        assert!(validate_video_path("/tmp/video.mkv").is_ok());
+    }
+
+    #[test]
+    fn validate_video_path_ok_webm() {
+        assert!(validate_video_path("/tmp/video.webm").is_ok());
+    }
+
+    #[test]
+    fn validate_video_path_err_txt() {
+        assert!(validate_video_path("/tmp/file.txt").is_err());
+    }
+
+    #[test]
+    fn validate_video_path_err_jpg() {
+        assert!(validate_video_path("/tmp/photo.jpg").is_err());
+    }
+
+    #[test]
+    fn validate_video_path_err_no_extension() {
+        assert!(validate_video_path("/tmp/noext").is_err());
+    }
+
+    // --- validate_media_path ---
+
+    #[test]
+    fn validate_media_path_ok_video() {
+        assert!(validate_media_path("/tmp/video.mp4").is_ok());
+    }
+
+    #[test]
+    fn validate_media_path_ok_audio() {
+        assert!(validate_media_path("/tmp/music.mp3").is_ok());
+    }
+
+    #[test]
+    fn validate_media_path_ok_image() {
+        assert!(validate_media_path("/tmp/photo.jpg").is_ok());
+    }
+
+    #[test]
+    fn validate_media_path_err_txt() {
+        assert!(validate_media_path("/tmp/file.txt").is_err());
+    }
+
+    // --- validate_text_path ---
+
+    #[test]
+    fn validate_text_path_ok_json() {
+        assert!(validate_text_path("/tmp/data.json").is_ok());
+    }
+
+    #[test]
+    fn validate_text_path_ok_txt() {
+        assert!(validate_text_path("/tmp/notes.txt").is_ok());
+    }
+
+    #[test]
+    fn validate_text_path_ok_csv() {
+        assert!(validate_text_path("/tmp/data.csv").is_ok());
+    }
+
+    #[test]
+    fn validate_text_path_err_mp4() {
+        assert!(validate_text_path("/tmp/video.mp4").is_err());
+    }
+
+    // --- validate_image_output_path ---
+
+    #[test]
+    fn validate_image_output_path_ok_jpg() {
+        assert!(validate_image_output_path("/tmp/out.jpg").is_ok());
+    }
+
+    #[test]
+    fn validate_image_output_path_ok_png() {
+        assert!(validate_image_output_path("/tmp/out.png").is_ok());
+    }
+
+    #[test]
+    fn validate_image_output_path_ok_webp() {
+        assert!(validate_image_output_path("/tmp/out.webp").is_ok());
+    }
+
+    #[test]
+    fn validate_image_output_path_err_mp4() {
+        assert!(validate_image_output_path("/tmp/video.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_image_output_path_err_txt() {
+        assert!(validate_image_output_path("/tmp/notes.txt").is_err());
+    }
+
+    // --- validate_download_url ---
+
+    #[test]
+    fn validate_download_url_ok_https() {
+        assert!(validate_download_url("https://example.com/file.mp4").is_ok());
+    }
+
+    #[test]
+    fn validate_download_url_ok_http() {
+        assert!(validate_download_url("http://example.com/file.mp4").is_ok());
+    }
+
+    #[test]
+    fn validate_download_url_ok_port_443() {
+        assert!(validate_download_url("https://example.com:443/file.mp4").is_ok());
+    }
+
+    #[test]
+    fn validate_download_url_ok_port_8080() {
+        assert!(validate_download_url("http://example.com:8080/file.mp4").is_ok());
+    }
+
+    #[test]
+    fn validate_download_url_err_ftp() {
+        assert!(validate_download_url("ftp://example.com/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_localhost() {
+        assert!(validate_download_url("http://localhost/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_loopback_ipv4() {
+        assert!(validate_download_url("http://127.0.0.1/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_unspecified_ipv4() {
+        assert!(validate_download_url("http://0.0.0.0/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_private_10x() {
+        assert!(validate_download_url("http://10.1.2.3/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_private_172_16x() {
+        assert!(validate_download_url("http://172.16.0.1/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_private_192_168() {
+        assert!(validate_download_url("http://192.168.1.1/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_link_local_169_254() {
+        assert!(validate_download_url("http://169.254.169.254/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_ipv6_loopback() {
+        assert!(validate_download_url("http://[::1]/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_ipv6_ula() {
+        assert!(validate_download_url("http://[fc00::1]/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_ipv6_link_local() {
+        assert!(validate_download_url("http://[fe80::1]/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_ipv6_multicast() {
+        assert!(validate_download_url("http://[ff00::1]/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_user_info() {
+        assert!(validate_download_url("http://user:pass@example.com/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_mdns_local() {
+        assert!(validate_download_url("http://myhost.local/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_disallowed_port() {
+        assert!(validate_download_url("http://example.com:8888/file.mp4").is_err());
+    }
+
+    #[test]
+    fn validate_download_url_err_invalid_port_str() {
+        assert!(validate_download_url("http://example.com:abc/file.mp4").is_err());
+    }
 }

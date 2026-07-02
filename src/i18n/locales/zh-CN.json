@@ -207,7 +207,17 @@
     "searchingSubtitle": "搜索中...",
     "subtitleHelp": "「搜索」在同一文件夹中查找字幕文件",
     "subtitleLoaded": "已加载",
-    "subtitleLoad": "加载"
+    "subtitleLoad": "加载",
+    "similarVideos": "相似视频",
+    "similarComputing": "正在计算指纹... {{done}}/{{total}}",
+    "similarEmpty": "未找到相似视频",
+    "similarFind": "查找相似",
+    "similarSensitivity": "灵敏度",
+    "similarSensHigh": "严格",
+    "similarSensNormal": "标准",
+    "similarSensLow": "宽松",
+    "similarPct": "相似度 {{pct}}%",
+    "similarRedetect": "重新搜索"
   },
   "download": {
     "title": "从 URL 下载",
@@ -399,7 +409,18 @@
     "removeOthersFromLibrary": "从媒体库移除其他",
     "deleteOthers": "删除其他文件",
     "processing": "处理中...",
-    "close": "关闭"
+    "close": "关闭",
+    "modeExact": "完全匹配",
+    "modeSimilar": "相似检测",
+    "sensitivity": "灵敏度",
+    "sensHigh": "严格",
+    "sensNormal": "标准",
+    "sensLow": "宽松",
+    "computing": "正在计算指纹... {{done}}/{{total}}",
+    "similarFound": "在 {{groups}} 个组中找到 {{count}} 个相似视频",
+    "similarEmpty": "未找到相似视频",
+    "similarity": "相似度 {{pct}}%",
+    "redetect": "重新检测"
   },
   "missingFiles": {
     "title": "检测缺失/损坏文件",

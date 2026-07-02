@@ -79,3 +79,84 @@ pub fn build_suggestions(
 fn normalise(s: &str) -> String {
     s.to_lowercase().replace('_', " ").replace('-', " ")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ai(name: &str, score: f32) -> (String, f32, i32) {
+        (name.to_string(), score, 0)
+    }
+
+    fn user(id: i64, name: &str) -> (i64, String) {
+        (id, name.to_string())
+    }
+
+    #[test]
+    fn matched_when_name_equal() {
+        let result = build_suggestions(&[ai("cat", 0.9)], &[user(1, "cat")], 10);
+        assert_eq!(result.matched_tags.len(), 1);
+        assert_eq!(result.matched_tags[0].tag_id, 1);
+        assert_eq!(result.new_suggestions.len(), 0);
+    }
+
+    #[test]
+    fn new_suggestion_when_no_match() {
+        let result = build_suggestions(&[ai("dragon", 0.8)], &[user(1, "cat")], 10);
+        assert_eq!(result.new_suggestions.len(), 1);
+        assert_eq!(result.new_suggestions[0].name, "dragon");
+        assert_eq!(result.matched_tags.len(), 0);
+    }
+
+    #[test]
+    fn no_duplicate_matched_tag_ids() {
+        // Two AI tags with same normalised name → second becomes new suggestion
+        let result = build_suggestions(
+            &[ai("cat", 0.9), ai("cat", 0.8)],
+            &[user(1, "cat")],
+            10,
+        );
+        assert_eq!(result.matched_tags.len(), 1);
+        assert_eq!(result.new_suggestions.len(), 1);
+    }
+
+    #[test]
+    fn matched_tags_sorted_by_score_descending() {
+        let result = build_suggestions(
+            &[ai("cat", 0.5), ai("dog", 0.9), ai("bird", 0.7)],
+            &[user(1, "cat"), user(2, "dog"), user(3, "bird")],
+            10,
+        );
+        assert_eq!(result.matched_tags.len(), 3);
+        assert!(result.matched_tags[0].score >= result.matched_tags[1].score);
+        assert!(result.matched_tags[1].score >= result.matched_tags[2].score);
+    }
+
+    #[test]
+    fn max_new_truncates_new_suggestions() {
+        let result = build_suggestions(
+            &[ai("alpha", 0.9), ai("beta", 0.8), ai("gamma", 0.7)],
+            &[],
+            2,
+        );
+        assert_eq!(result.new_suggestions.len(), 2);
+    }
+
+    #[test]
+    fn normalise_underscore_matches_space() {
+        let result = build_suggestions(&[ai("blue_sky", 0.9)], &[user(1, "blue sky")], 10);
+        assert_eq!(result.matched_tags.len(), 1);
+    }
+
+    #[test]
+    fn normalise_hyphen_matches_space() {
+        let result = build_suggestions(&[ai("well-known", 0.9)], &[user(1, "well known")], 10);
+        assert_eq!(result.matched_tags.len(), 1);
+    }
+
+    #[test]
+    fn normalise_case_insensitive() {
+        let result = build_suggestions(&[ai("Dragon", 0.9)], &[user(1, "DRAGON")], 10);
+        assert_eq!(result.matched_tags.len(), 1);
+    }
+}

@@ -207,7 +207,17 @@
     "searchingSubtitle": "検索中...",
     "subtitleHelp": "「検索」で同フォルダの字幕ファイルを探します",
     "subtitleLoaded": "ロード済",
-    "subtitleLoad": "ロード"
+    "subtitleLoad": "ロード",
+    "similarVideos": "類似動画",
+    "similarComputing": "フィンガープリントを計算中... {{done}}/{{total}}",
+    "similarEmpty": "類似動画なし",
+    "similarFind": "類似を検索",
+    "similarSensitivity": "感度",
+    "similarSensHigh": "厳密",
+    "similarSensNormal": "標準",
+    "similarSensLow": "緩め",
+    "similarPct": "類似度 {{pct}}%",
+    "similarRedetect": "再検索"
   },
   "download": {
     "title": "URL からダウンロード",
@@ -399,7 +409,18 @@
     "removeOthersFromLibrary": "他をライブラリから除外",
     "deleteOthers": "他のファイルを削除",
     "processing": "処理中...",
-    "close": "閉じる"
+    "close": "閉じる",
+    "modeExact": "完全一致",
+    "modeSimilar": "類似検出",
+    "sensitivity": "感度",
+    "sensHigh": "厳密",
+    "sensNormal": "標準",
+    "sensLow": "緩め",
+    "computing": "フィンガープリントを計算中... {{done}}/{{total}}",
+    "similarFound": "{{groups}} グループ、計 {{count}} 件の類似動画が見つかりました",
+    "similarEmpty": "類似動画は見つかりませんでした",
+    "similarity": "類似度 {{pct}}%",
+    "redetect": "再検出"
   },
   "missingFiles": {
     "title": "欠損・破損ファイルの検出",

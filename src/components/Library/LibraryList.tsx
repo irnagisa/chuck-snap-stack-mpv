@@ -1,9 +1,11 @@
-import { useRef, useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
+import type { LibraryViewHandle } from './LibraryGrid';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
+import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
@@ -38,6 +40,7 @@ interface VideoRowProps {
   onDelete: (video: Video) => void;
   onCheckbox: (e: React.MouseEvent, video: Video, idx: number) => void;
   onContextMenu: (e: React.MouseEvent, video: Video) => void;
+  onRegisterObserver: (el: HTMLDivElement, callback: () => void) => () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -47,6 +50,8 @@ function formatDuration(seconds: number): string {
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
+
+const ROW_HEIGHTS = { S: 38, M: 52, L: 72, XL: 90 } as const;
 
 const VideoRow = memo(function VideoRow({
   video: v,
@@ -63,6 +68,7 @@ const VideoRow = memo(function VideoRow({
   onDelete,
   onCheckbox,
   onContextMenu,
+  onRegisterObserver,
 }: VideoRowProps) {
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
@@ -83,21 +89,15 @@ const VideoRow = memo(function VideoRow({
 
   useEffect(() => {
     const el = rowRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !checkedRef.current) {
-          checkedRef.current = true;
-          invoke<boolean>('path_exists', { path: v.path }).then((exists) => {
-            if (!exists) setFileMissing(true);
-          });
-        }
-      },
-      { threshold: 0.1 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [v.path]);
+    if (!el || checkedRef.current) return;
+    return onRegisterObserver(el, () => {
+      if (checkedRef.current) return;
+      checkedRef.current = true;
+      invoke<boolean>('path_exists', { path: v.path })
+        .then((exists) => { if (!exists) setFileMissing(true); })
+        .catch(() => setFileMissing(true));
+    });
+  }, [v.path, onRegisterObserver]);
 
   const title = v.title ?? v.path.split('/').pop() ?? '';
 
@@ -255,7 +255,7 @@ const VideoRow = memo(function VideoRow({
   );
 });
 
-export function LibraryList({
+export const LibraryList = forwardRef<LibraryViewHandle, Props>(function LibraryList({
   videos,
   currentVideoId,
   detailVideoId,
@@ -268,11 +268,46 @@ export function LibraryList({
   onSetCategory,
   selectedIds,
   onSelectionChange,
-}: Props) {
-  const videoTags = useTagStore((s) => s.videoTags);
-  const categories = useTagStore((s) => s.categories);
+}: Props, ref: React.Ref<LibraryViewHandle>) {
+  // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
+  // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
+  const videoTags = useTagStore(useShallow((s) => s.videoTags));
+  const categories = useTagStore(useShallow((s) => s.categories));
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const [contextMenu, setContextMenu] = useState<{ video: Video; x: number; y: number } | null>(null);
+
+  // 共有 IntersectionObserver: per-row IO インスタンスを一本化
+  // useLayoutEffect を使うことで子コンポーネントの useEffect (IO 登録) より
+  // 先に IO を生成し、初回マウント時の登録空振りを防ぐ
+  const ioCallbacksRef = useRef<Map<HTMLElement, () => void>>(new Map());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  useLayoutEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const cb = ioCallbacksRef.current.get(entry.target as HTMLElement);
+        if (cb) {
+          observer.unobserve(entry.target);
+          ioCallbacksRef.current.delete(entry.target as HTMLElement);
+          cb();
+        }
+      }
+    }, { threshold: 0.1 });
+    observerRef.current = observer;
+    return () => { observer.disconnect(); ioCallbacksRef.current.clear(); };
+  }, []);
+
+  const registerObserver = useCallback((el: HTMLDivElement, callback: () => void): (() => void) => {
+    const observer = observerRef.current;
+    if (!observer) return () => {};
+    ioCallbacksRef.current.set(el, callback);
+    observer.observe(el);
+    return () => {
+      ioCallbacksRef.current.delete(el);
+      observer.unobserve(el);
+    };
+  }, []);
+
   const lastSelectedIdxRef = useRef<number | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -289,9 +324,7 @@ export function LibraryList({
     }
   }, [scrollResetKey]);
 
-  const estimateHeight = useCallback(() => {
-    return { S: 38, M: 52, L: 72, XL: 90 }[listRowSize];
-  }, [listRowSize]);
+  const estimateHeight = useCallback(() => ROW_HEIGHTS[listRowSize], [listRowSize]);
 
   const virtualizer = useVirtualizer({
     count: videos.length,
@@ -299,6 +332,13 @@ export function LibraryList({
     estimateSize: estimateHeight,
     overscan: 5,
   });
+
+  useImperativeHandle(ref, () => ({
+    scrollToId: (id: number) => {
+      const idx = videos.findIndex((v) => v.id === id);
+      if (idx >= 0) virtualizer.scrollToIndex(idx, { align: 'center' });
+    },
+  }), [videos, virtualizer]);
 
   const handleCheckbox = useCallback((e: React.MouseEvent, video: Video, idx: number) => {
     e.stopPropagation();
@@ -360,6 +400,7 @@ export function LibraryList({
                     onDelete={setDeleteTarget}
                     onCheckbox={handleCheckbox}
                     onContextMenu={handleContextMenu}
+                    onRegisterObserver={registerObserver}
                   />
                 </div>
               );
@@ -392,4 +433,4 @@ export function LibraryList({
       )}
     </>
   );
-}
+});

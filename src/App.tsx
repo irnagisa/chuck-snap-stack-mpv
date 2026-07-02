@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { Video, ScanResult } from "./types";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -17,6 +17,7 @@ import { useSettingsStore } from "./store/useSettingsStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { MiniPlayer } from "./components/Player/MiniPlayer";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
+import type { LibraryViewHandle } from "./components/Library/LibraryGrid";
 import { LibraryList } from "./components/Library/LibraryList";
 import { CategorySidebar } from "./components/Library/CategorySidebar";
 import { PlaylistSidebar } from "./components/Library/PlaylistSidebar";
@@ -74,7 +75,7 @@ function App() {
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration, setMaxDuration,
     setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
-    pauseThumbnails, resumeThumbnails, fetchVideos, rescanMultiple,
+    pauseThumbnails, resumeThumbnails, fetchVideos, fetchAllForShuffle, rescanMultiple,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
     scanAndImport: s.scanAndImport,
@@ -96,6 +97,7 @@ function App() {
     pauseThumbnails: s.pauseThumbnails,
     resumeThumbnails: s.resumeThumbnails,
     fetchVideos: s.fetchVideos,
+    fetchAllForShuffle: s.fetchAllForShuffle,
     rescanMultiple: s.rescanMultiple,
   })));
   // usePlayerStore: currentVideo のみ購読 (playbackTime の毎秒更新で App が再レンダリングされるのを防ぐ)
@@ -143,6 +145,10 @@ function App() {
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
   const [viewingImage, setViewingImage] = useState<Video | null>(null);
   const [pendingImport, setPendingImport] = useState<{ path: string; fileCount: number; useDirAsCategory: boolean } | null>(null);
+
+  // Library scroll ref (shared between grid and list via the same handle type)
+  const libraryRef = useRef<LibraryViewHandle>(null);
+  const pendingScrollIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     localStorage.setItem('gridItemMinWidth', String(gridItemMinWidth));
@@ -232,6 +238,47 @@ function App() {
     setSelectedVideoIds(new Set());
     setPage(page);
   };
+
+  // ── プレイヤーのカレント動画が変わったら詳細パネルも追従する ──────────────
+  useEffect(() => {
+    if (!currentVideo) return;
+    if (useModalStore.getState().detailVideo) {
+      openDetailVideo(currentVideo);
+    }
+  // currentVideo.id の変化のみ追う (内容変化は無視)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVideo?.id]);
+
+  // ── 詳細対象が変わったらライブラリでスクロール（必要ならページ移動）────────
+  useEffect(() => {
+    const targetId = detailVideo?.id;
+    if (!targetId) return;
+    const inPage = videos.find((v) => v.id === targetId);
+    if (inPage) {
+      libraryRef.current?.scrollToId(targetId);
+      return;
+    }
+    // 現在ページにない場合 → 全件から位置を特定してページ移動
+    fetchAllForShuffle().then((all) => {
+      const pos = all.findIndex((v) => v.id === targetId);
+      if (pos < 0) return;
+      const targetPage = Math.floor(pos / pageSize) + 1;
+      pendingScrollIdRef.current = targetId;
+      handleSetPage(targetPage);
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailVideo?.id]);
+
+  // ── ページ移動後に pendingScroll を消化する ──────────────────────────────
+  useEffect(() => {
+    const pendingId = pendingScrollIdRef.current;
+    if (!pendingId) return;
+    if (videos.find((v) => v.id === pendingId)) {
+      pendingScrollIdRef.current = null;
+      // virtualizer のレンダリングを待ってからスクロール
+      setTimeout(() => libraryRef.current?.scrollToId(pendingId), 80);
+    }
+  }, [videos]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
@@ -921,6 +968,7 @@ function App() {
               <div className="flex-1 min-h-0">
                 {viewMode === 'list' ? (
                   <LibraryList
+                    ref={libraryRef}
                     videos={videos}
                     currentVideoId={currentVideo?.id ?? null}
                     detailVideoId={detailVideo?.id ?? null}
@@ -936,6 +984,7 @@ function App() {
                   />
                 ) : (
                   <LibraryGrid
+                    ref={libraryRef}
                     videos={videos}
                     currentVideoId={currentVideo?.id ?? null}
                     detailVideoId={detailVideo?.id ?? null}

@@ -224,15 +224,15 @@ pub async fn analyze_thumbnail_for_tags(
         .await
         .map_err(|e| e.to_string())??;
         let mut inner = ai.0.lock().map_err(|e| e.to_string())?;
-        inner.tagger = Some(tagger);
+        inner.tagger = Some(std::sync::Arc::new(tagger));
     }
 
-    // Run inference
-    let ai_tags = {
+    // Run inference — Arc::clone でロック解放後に推論する
+    let tagger = {
         let inner = ai.0.lock().map_err(|e| e.to_string())?;
-        let tagger = inner.tagger.as_ref().ok_or("モデルのロードに失敗")?;
-        tokio::task::block_in_place(|| tagger.run(&thumb_path))?
-    };
+        inner.tagger.clone().ok_or("モデルのロードに失敗")?
+    }; // ← ここでロック解放
+    let ai_tags = tokio::task::block_in_place(|| tagger.run(&thumb_path))?;
 
     // Build suggestions
     let result = suggest::build_suggestions(&ai_tags, &user_tags, 20);
