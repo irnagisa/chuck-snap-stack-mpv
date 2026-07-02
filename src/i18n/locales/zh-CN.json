@@ -399,7 +399,18 @@
     "removeOthersFromLibrary": "从媒体库移除其他",
     "deleteOthers": "删除其他文件",
     "processing": "处理中...",
-    "close": "关闭"
+    "close": "关闭",
+    "modeExact": "完全匹配",
+    "modeSimilar": "相似检测",
+    "sensitivity": "灵敏度",
+    "sensHigh": "严格",
+    "sensNormal": "标准",
+    "sensLow": "宽松",
+    "computing": "正在计算指纹... {{done}}/{{total}}",
+    "similarFound": "在 {{groups}} 个组中找到 {{count}} 个相似视频",
+    "similarEmpty": "未找到相似视频",
+    "similarity": "相似度 {{pct}}%",
+    "redetect": "重新检测"
   },
   "missingFiles": {
     "title": "检测缺失/损坏文件",

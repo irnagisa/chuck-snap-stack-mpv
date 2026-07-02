@@ -54,7 +54,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
           source_type TEXT,
           ai_tag_suggestions TEXT,
           ai_new_suggestions TEXT,
-          ai_analyzed_at TEXT
+          ai_analyzed_at TEXT,
+          phash TEXT
         );
 
         CREATE TABLE IF NOT EXISTS playlists (
@@ -120,6 +121,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE videos ADD COLUMN ai_tag_suggestions TEXT",
         "ALTER TABLE videos ADD COLUMN ai_new_suggestions TEXT",
         "ALTER TABLE videos ADD COLUMN ai_analyzed_at TEXT",
+        "ALTER TABLE videos ADD COLUMN phash TEXT",
     ];
     for stmt in &alter_stmts {
         let _ = conn.execute_batch(stmt); // ignore "duplicate column" errors
