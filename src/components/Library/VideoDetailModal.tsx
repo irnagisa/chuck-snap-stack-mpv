@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { VideoOrganizerPanel } from '../common/VideoOrganizerPanel';
 import { useTranslation } from 'react-i18next';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { useModalStore } from '../../store/useModalStore';
 import { useTagStore } from '../../store/useTagStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -13,12 +14,30 @@ import { Select } from '../common/Select';
 import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from '../../store/useToastStore';
+import { similarityPct } from '../../utils/phash';
 
 interface Props {
   video: Video;
   onClose: () => void;
   onViewImage?: (video: Video) => void;
 }
+
+interface SimilarVideoItem {
+  id: number;
+  path: string;
+  title: string | null;
+  thumbnail: string | null;
+  duration: number | null;
+  phash: string;
+}
+
+interface VideoForPhash {
+  id: number;
+  path: string;
+  thumbnail: string | null;
+}
+
+type SimilarThreshold = 4 | 8 | 12;
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -57,6 +76,98 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
   const [localSourceUrl, setLocalSourceUrl] = useState(video.source_url ?? '');
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // Similar videos state
+  const { openDetailVideo } = useModalStore();
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarHashProgress, setSimilarHashProgress] = useState<{ done: number; total: number } | null>(null);
+  const [similarVideos, setSimilarVideos] = useState<SimilarVideoItem[]>([]);
+  const [similarThreshold, setSimilarThreshold] = useState<SimilarThreshold>(8);
+  const [similarDetected, setSimilarDetected] = useState(false);
+  const [currentPhash, setCurrentPhash] = useState<string | null>(null);
+
+  const detectSimilar = useCallback(async (overrideThreshold?: SimilarThreshold) => {
+    const activeThreshold = overrideThreshold ?? similarThreshold;
+    setSimilarLoading(true);
+    setSimilarHashProgress(null);
+    try {
+      // Compute pHash for any video without one (including this video)
+      const pending = await invoke<VideoForPhash[]>('db_get_videos_without_phash');
+      if (pending.length > 0) {
+        setSimilarHashProgress({ done: 0, total: pending.length });
+        for (let i = 0; i < pending.length; i++) {
+          const v = pending[i];
+          try {
+            const computed = await invoke<string>('db_compute_video_phash', {
+              videoId: v.id,
+              videoPath: v.path,
+              thumbnailPath: v.thumbnail ?? null,
+            });
+            if (v.id === video.id) setCurrentPhash(computed);
+          } catch {
+            // skip unreadable files silently
+          }
+          setSimilarHashProgress({ done: i + 1, total: pending.length });
+        }
+      }
+      // Fetch stored phash for similarity % display (set if not already from computation above)
+      const storedPhash = await invoke<string | null>('db_get_video_stored_phash', { videoId: video.id })
+        .catch(() => null);
+      if (storedPhash) setCurrentPhash(storedPhash);
+
+      const result = await invoke<SimilarVideoItem[]>('db_find_similar_to_video', {
+        videoId: video.id,
+        threshold: activeThreshold,
+      });
+      setSimilarVideos(result);
+      setSimilarDetected(true);
+    } catch (e) {
+      toast.error(`類似検索に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSimilarLoading(false);
+      setSimilarHashProgress(null);
+    }
+  }, [video.id, similarThreshold]);
+
+  // Auto-run similar detection on mount
+  useEffect(() => {
+    detectSimilar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video.id]);
+
+  const handleSimilarThresholdChange = (next: SimilarThreshold) => {
+    setSimilarThreshold(next);
+    setSimilarDetected(false);
+    setSimilarVideos([]);
+    detectSimilar(next);
+  };
+
+  const handleOpenSimilar = (sim: SimilarVideoItem) => {
+    const found = useLibraryStore.getState().videos.find((v) => v.id === sim.id);
+    if (found) {
+      openDetailVideo(found);
+    } else {
+      const minimal: Video = {
+        id: sim.id,
+        path: sim.path,
+        title: sim.title,
+        duration: sim.duration,
+        thumbnail: sim.thumbnail,
+        watched_at: null,
+        progress: 0,
+        rating: 0,
+        category_id: null,
+        has_audio: null,
+        watch_count: 0,
+        created_at: new Date().toISOString(),
+        media_type: 'video',
+        source_url: null,
+        status: null,
+        source_type: null,
+      };
+      openDetailVideo(minimal);
+    }
+  };
 
   // AI tag suggestion state
   const [aiModelDownloaded, setAiModelDownloaded] = useState<boolean | null>(null);
@@ -676,6 +787,113 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* 類似動画 */}
+            <div className="pt-4 pb-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-xs font-medium text-gray-400 dark:text-gray-500 shrink-0">
+                  {t('detail.similarVideos')}
+                </label>
+                <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 ml-auto">
+                  {t('detail.similarSensitivity')}:
+                </span>
+                {([4, 8, 12] as SimilarThreshold[]).map((th) => (
+                  <button
+                    key={th}
+                    type="button"
+                    onClick={() => handleSimilarThresholdChange(th)}
+                    className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                      similarThreshold === th
+                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    {th === 4
+                      ? t('detail.similarSensHigh')
+                      : th === 8
+                      ? t('detail.similarSensNormal')
+                      : t('detail.similarSensLow')}
+                  </button>
+                ))}
+              </div>
+
+              {similarLoading ? (
+                <div className="flex flex-col items-center py-4 gap-2 text-xs text-gray-400 dark:text-gray-500">
+                  <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+                  {similarHashProgress
+                    ? t('detail.similarComputing', { done: similarHashProgress.done, total: similarHashProgress.total })
+                    : '…'}
+                  {similarHashProgress && (
+                    <div className="w-40 bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-1">
+                      <div
+                        className="bg-blue-500 h-1 rounded-full transition-all"
+                        style={{ width: `${(similarHashProgress.done / similarHashProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : similarDetected && similarVideos.length === 0 ? (
+                <div className="flex flex-col items-center py-4 gap-1">
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{t('detail.similarEmpty')}</p>
+                  <button
+                    type="button"
+                    className="mt-1 px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+                    onClick={() => detectSimilar()}
+                  >
+                    {t('detail.similarRedetect')}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {similarVideos.map((sim) => {
+                    const pct = currentPhash ? similarityPct(sim.phash, currentPhash) : null;
+                    return (
+                      <button
+                        key={sim.id}
+                        type="button"
+                        className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors text-left w-full"
+                        onClick={() => handleOpenSimilar(sim)}
+                      >
+                        {sim.thumbnail ? (
+                          <img
+                            src={convertFileSrc(sim.thumbnail)}
+                            alt=""
+                            className="w-16 h-10 object-cover rounded shrink-0 bg-gray-200 dark:bg-gray-700"
+                          />
+                        ) : (
+                          <div className="w-16 h-10 rounded bg-gray-200 dark:bg-gray-700 shrink-0 flex items-center justify-center text-gray-400 text-base">
+                            ▶
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {sim.title ?? sim.path.split('/').pop()}
+                          </p>
+                          {sim.duration != null && (
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                              {formatDuration(sim.duration)}
+                            </p>
+                          )}
+                        </div>
+                        {pct !== null && (
+                          <span
+                            className={`text-[10px] font-medium shrink-0 ${
+                              pct >= 95
+                                ? 'text-red-500 dark:text-red-400'
+                                : pct >= 88
+                                ? 'text-amber-500 dark:text-amber-400'
+                                : 'text-gray-400 dark:text-gray-500'
+                            }`}
+                          >
+                            {t('detail.similarPct', { pct })}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

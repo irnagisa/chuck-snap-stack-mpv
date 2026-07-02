@@ -1,10 +1,10 @@
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
-import { similarityPct } from '../../utils/phash';
 
 interface VideoWithSize extends Video {
   fileSize: number | null;
@@ -16,27 +16,9 @@ interface DuplicateGroup {
   fileSize: number | null;
 }
 
-interface SimilarVideo {
-  id: number;
-  path: string;
-  title: string | null;
-  thumbnail: string | null;
-  duration: number | null;
-  phash: string;
-}
-
-interface VideoForPhash {
-  id: number;
-  path: string;
-  thumbnail: string | null;
-}
-
 interface Props {
   onClose: () => void;
 }
-
-type Mode = 'exact' | 'similar';
-type Threshold = 4 | 8 | 12;
 
 function fmtDuration(sec: number) {
   const h = Math.floor(sec / 3600);
@@ -59,27 +41,12 @@ export function DuplicatesModal({ onClose }: Props) {
   const { t } = useTranslation();
   const { fetchAllForShuffle, removeMultiple } = useLibraryStore();
 
-  // ── Mode ──────────────────────────────────────────────────────────────────
-  const [mode, setMode] = useState<Mode>('exact');
-
-  // ── Exact mode state ──────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [keepIds, setKeepIds] = useState<Map<number, number>>(new Map());
   const [processing, setProcessing] = useState<Set<number>>(new Set());
   const [resolvedGroups, setResolvedGroups] = useState<Set<number>>(new Set());
 
-  // ── Similar mode state ───────────────────────────────────────────────────
-  const [similarLoading, setSimilarLoading] = useState(false);
-  const [hashProgress, setHashProgress] = useState<{ done: number; total: number } | null>(null);
-  const [similarGroups, setSimilarGroups] = useState<SimilarVideo[][]>([]);
-  const [simKeepIds, setSimKeepIds] = useState<Map<number, number>>(new Map());
-  const [simProcessing, setSimProcessing] = useState<Set<number>>(new Set());
-  const [simResolvedGroups, setSimResolvedGroups] = useState<Set<number>>(new Set());
-  const [threshold, setThreshold] = useState<Threshold>(8);
-  const [similarDetected, setSimilarDetected] = useState(false);
-
-  // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
     detectExact();
   }, []);
@@ -128,77 +95,15 @@ export function DuplicatesModal({ onClose }: Props) {
     }
   };
 
-  // ── Similar detection ─────────────────────────────────────────────────────
-  const detectSimilar = async (overrideThreshold?: Threshold) => {
-    const activeThreshold = overrideThreshold ?? threshold;
-    setSimilarLoading(true);
-    setHashProgress(null);
-    try {
-      const pending: VideoForPhash[] = await invoke('db_get_videos_without_phash');
-
-      if (pending.length > 0) {
-        setHashProgress({ done: 0, total: pending.length });
-        for (let i = 0; i < pending.length; i++) {
-          const v = pending[i];
-          try {
-            await invoke('db_compute_video_phash', {
-              videoId: v.id,
-              videoPath: v.path,
-              thumbnailPath: v.thumbnail ?? null,
-            });
-          } catch {
-            // Skip unreadable files silently
-          }
-          setHashProgress({ done: i + 1, total: pending.length });
-        }
-      }
-
-      const result: SimilarVideo[][] = await invoke('db_find_similar_videos', { threshold: activeThreshold });
-      setSimilarGroups(result);
-
-      const defaultKeep = new Map<number, number>();
-      result.forEach((g, i) => {
-        defaultKeep.set(i, g[0].id);
-      });
-      setSimKeepIds(defaultKeep);
-      setSimilarDetected(true);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`類似検出に失敗しました: ${msg}`);
-    } finally {
-      setSimilarLoading(false);
-      setHashProgress(null);
-    }
-  };
-
-  const handleModeChange = (next: Mode) => {
-    setMode(next);
-    if (next === 'similar' && !similarDetected) {
-      detectSimilar();
-    }
-  };
-
-  const handleThresholdChange = (next: Threshold) => {
-    setThreshold(next);
-    setSimilarDetected(false);
-    setSimilarGroups([]);
-    setSimResolvedGroups(new Set());
-    if (mode === 'similar') {
-      detectSimilar(next);
-    }
-  };
-
   // ── Removal helpers ───────────────────────────────────────────────────────
   const doRemove = async (
     keepId: number,
     allVideos: { id: number; path: string }[],
     groupIndex: number,
     deleteFiles: boolean,
-    setProc: React.Dispatch<React.SetStateAction<Set<number>>>,
-    setResolved: React.Dispatch<React.SetStateAction<Set<number>>>,
   ) => {
     const toRemove = allVideos.filter((v) => v.id !== keepId);
-    setProc((prev) => new Set(prev).add(groupIndex));
+    setProcessing((prev) => new Set(prev).add(groupIndex));
     try {
       if (deleteFiles) {
         const results = await invoke<[string, boolean][]>('delete_multiple_video_files', {
@@ -212,12 +117,12 @@ export function DuplicatesModal({ onClose }: Props) {
       } else {
         await removeMultiple(toRemove.map((v) => v.id));
       }
-      setResolved((prev) => new Set(prev).add(groupIndex));
+      setResolvedGroups((prev) => new Set(prev).add(groupIndex));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(`処理に失敗しました: ${msg}`);
     } finally {
-      setProc((prev) => {
+      setProcessing((prev) => {
         const next = new Set(prev);
         next.delete(groupIndex);
         return next;
@@ -228,13 +133,7 @@ export function DuplicatesModal({ onClose }: Props) {
   const handleRemoveOthers = (groupIndex: number, deleteFiles: boolean) => {
     const group = groups[groupIndex];
     const keepId = keepIds.get(groupIndex) ?? group.videos[0].id;
-    doRemove(keepId, group.videos, groupIndex, deleteFiles, setProcessing, setResolvedGroups);
-  };
-
-  const handleRemoveSimilarOthers = (groupIndex: number, deleteFiles: boolean) => {
-    const group = similarGroups[groupIndex];
-    const keepId = simKeepIds.get(groupIndex) ?? group[0].id;
-    doRemove(keepId, group, groupIndex, deleteFiles, setSimProcessing, setSimResolvedGroups);
+    doRemove(keepId, group.videos, groupIndex, deleteFiles);
   };
 
   // ── Shared action row ─────────────────────────────────────────────────────
@@ -271,7 +170,6 @@ export function DuplicatesModal({ onClose }: Props) {
   );
 
   const activeExact = groups.filter((_, i) => !resolvedGroups.has(i));
-  const activeSimilar = similarGroups.filter((_, i) => !simResolvedGroups.has(i));
 
   return (
     <div
@@ -296,281 +194,98 @@ export function DuplicatesModal({ onClose }: Props) {
           </button>
         </div>
 
-        {/* Mode tabs + threshold selector */}
-        <div className="flex items-center gap-1 px-5 pt-3 shrink-0">
-          {(['exact', 'similar'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => handleModeChange(m)}
-              className={`px-3 py-1.5 text-xs rounded font-medium transition-colors ${
-                mode === m
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              {m === 'exact' ? t('duplicates.modeExact') : t('duplicates.modeSimilar')}
-            </button>
-          ))}
-
-          {mode === 'similar' && (
-            <div className="ml-auto flex items-center gap-1.5">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {t('duplicates.sensitivity')}:
-              </span>
-              {([4, 8, 12] as Threshold[]).map((th) => (
-                <button
-                  key={th}
-                  type="button"
-                  onClick={() => handleThresholdChange(th)}
-                  className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                    threshold === th
-                      ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                >
-                  {th === 4
-                    ? t('duplicates.sensHigh')
-                    : th === 8
-                    ? t('duplicates.sensNormal')
-                    : t('duplicates.sensLow')}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 min-h-0">
-          {/* ── EXACT MODE ── */}
-          {mode === 'exact' && (
-            loading ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2 text-sm text-gray-400 dark:text-gray-500">
-                <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
-                {t('duplicates.loading')}
-              </div>
-            ) : activeExact.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2">
-                <span className="text-3xl">✓</span>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {groups.length === 0 ? t('duplicates.empty') : t('duplicates.resolved')}
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-5">
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t('duplicates.found', {
-                    groups: activeExact.length,
-                    count: activeExact.reduce((s: number, g) => s + g.videos.length, 0),
-                  })}
-                </p>
-                {groups.map((group, groupIdx) => {
-                  if (resolvedGroups.has(groupIdx)) return null;
-                  const isProcessing = processing.has(groupIdx);
-                  const keepId = keepIds.get(groupIdx) ?? group.videos[0].id;
-                  return (
-                    <div key={groupIdx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                        <span className="font-medium text-gray-700 dark:text-gray-300">
-                          {t('duplicates.group')} {groupIdx + 1}
-                        </span>
-                        <span>·</span>
-                        <span>{group.videos.length} {t('duplicates.countUnit')}</span>
-                        <span>·</span>
-                        <span>{fmtDuration(group.duration)}</span>
-                        <span>·</span>
-                        <span>{fmtSize(group.fileSize)}</span>
-                      </div>
-                      <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {group.videos.map((video) => (
-                          <label
-                            key={video.id}
-                            className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
-                              keepId === video.id
-                                ? 'bg-blue-50 dark:bg-blue-950/30'
-                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name={`keep-${groupIdx}`}
-                              checked={keepId === video.id}
-                              onChange={() =>
-                                setKeepIds((prev) => new Map(prev).set(groupIdx, video.id))
-                              }
-                              className="accent-blue-600 shrink-0"
-                            />
-                            {video.thumbnail ? (
-                              <img
-                                src={convertFileSrc(video.thumbnail)}
-                                alt=""
-                                className="w-14 h-9 object-cover rounded shrink-0 bg-gray-200 dark:bg-gray-700"
-                              />
-                            ) : (
-                              <div className="w-14 h-9 rounded bg-gray-200 dark:bg-gray-700 shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                                {video.title ?? video.path.split('/').pop()}
-                              </p>
-                              <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
-                                {video.path}
-                              </p>
-                            </div>
-                            {keepId === video.id && (
-                              <span className="text-[10px] text-blue-600 dark:text-blue-400 shrink-0 font-medium">
-                                {t('duplicates.keep')}
-                              </span>
-                            )}
-                          </label>
-                        ))}
-                      </div>
-                      <GroupActions
-                        isProcessing={isProcessing}
-                        onRemoveLib={() => handleRemoveOthers(groupIdx, false)}
-                        onDeleteFiles={() => handleRemoveOthers(groupIdx, true)}
-                      />
-                    </div>
-                  );
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-sm text-gray-400 dark:text-gray-500">
+              <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+              {t('duplicates.loading')}
+            </div>
+          ) : activeExact.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2">
+              <span className="text-3xl">✓</span>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {groups.length === 0 ? t('duplicates.empty') : t('duplicates.resolved')}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-5">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('duplicates.found', {
+                  groups: activeExact.length,
+                  count: activeExact.reduce((s: number, g) => s + g.videos.length, 0),
                 })}
-              </div>
-            )
-          )}
-
-          {/* ── SIMILAR MODE ── */}
-          {mode === 'similar' && (
-            similarLoading ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-3 text-sm text-gray-400 dark:text-gray-500">
-                <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
-                {hashProgress
-                  ? t('duplicates.computing', {
-                      done: hashProgress.done,
-                      total: hashProgress.total,
-                    })
-                  : t('duplicates.loading')}
-                {hashProgress && (
-                  <div className="w-48 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-1">
-                    <div
-                      className="bg-blue-500 h-1.5 rounded-full transition-all"
-                      style={{ width: `${(hashProgress.done / hashProgress.total) * 100}%` }}
+              </p>
+              {groups.map((group, groupIdx) => {
+                if (resolvedGroups.has(groupIdx)) return null;
+                const isProcessing = processing.has(groupIdx);
+                const keepId = keepIds.get(groupIdx) ?? group.videos[0].id;
+                return (
+                  <div key={groupIdx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                    <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">
+                        {t('duplicates.group')} {groupIdx + 1}
+                      </span>
+                      <span>·</span>
+                      <span>{group.videos.length} {t('duplicates.countUnit')}</span>
+                      <span>·</span>
+                      <span>{fmtDuration(group.duration)}</span>
+                      <span>·</span>
+                      <span>{fmtSize(group.fileSize)}</span>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {group.videos.map((video) => (
+                        <label
+                          key={video.id}
+                          className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
+                            keepId === video.id
+                              ? 'bg-blue-50 dark:bg-blue-950/30'
+                              : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`keep-${groupIdx}`}
+                            checked={keepId === video.id}
+                            onChange={() =>
+                              setKeepIds((prev) => new Map(prev).set(groupIdx, video.id))
+                            }
+                            className="accent-blue-600 shrink-0"
+                          />
+                          {video.thumbnail ? (
+                            <img
+                              src={convertFileSrc(video.thumbnail)}
+                              alt=""
+                              className="w-14 h-9 object-cover rounded shrink-0 bg-gray-200 dark:bg-gray-700"
+                            />
+                          ) : (
+                            <div className="w-14 h-9 rounded bg-gray-200 dark:bg-gray-700 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                              {video.title ?? video.path.split('/').pop()}
+                            </p>
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
+                              {video.path}
+                            </p>
+                          </div>
+                          {keepId === video.id && (
+                            <span className="text-[10px] text-blue-600 dark:text-blue-400 shrink-0 font-medium">
+                              {t('duplicates.keep')}
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                    <GroupActions
+                      isProcessing={isProcessing}
+                      onRemoveLib={() => handleRemoveOthers(groupIdx, false)}
+                      onDeleteFiles={() => handleRemoveOthers(groupIdx, true)}
                     />
                   </div>
-                )}
-              </div>
-            ) : activeSimilar.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2">
-                <span className="text-3xl">✓</span>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {similarGroups.length === 0 ? t('duplicates.similarEmpty') : t('duplicates.resolved')}
-                </p>
-                {similarDetected && (
-                  <button
-                    type="button"
-                    className="mt-2 px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                    onClick={() => detectSimilar()}
-                  >
-                    {t('duplicates.redetect')}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-5">
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t('duplicates.similarFound', {
-                    groups: activeSimilar.length,
-                    count: activeSimilar.reduce((s: number, g) => s + g.length, 0),
-                  })}
-                </p>
-                {similarGroups.map((group, groupIdx) => {
-                  if (simResolvedGroups.has(groupIdx)) return null;
-                  const isProcessing = simProcessing.has(groupIdx);
-                  const keepId = simKeepIds.get(groupIdx) ?? group[0].id;
-                  const refHash = group[0].phash;
-
-                  return (
-                    <div key={groupIdx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                        <span className="font-medium text-gray-700 dark:text-gray-300">
-                          {t('duplicates.group')} {groupIdx + 1}
-                        </span>
-                        <span>·</span>
-                        <span>{group.length} {t('duplicates.countUnit')}</span>
-                      </div>
-                      <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {group.map((video) => {
-                          const pct = similarityPct(refHash, video.phash);
-                          return (
-                            <label
-                              key={video.id}
-                              className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
-                                keepId === video.id
-                                  ? 'bg-blue-50 dark:bg-blue-950/30'
-                                  : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name={`sim-keep-${groupIdx}`}
-                                checked={keepId === video.id}
-                                onChange={() =>
-                                  setSimKeepIds((prev) => new Map(prev).set(groupIdx, video.id))
-                                }
-                                className="accent-blue-600 shrink-0"
-                              />
-                              {video.thumbnail ? (
-                                <img
-                                  src={convertFileSrc(video.thumbnail)}
-                                  alt=""
-                                  className="w-14 h-9 object-cover rounded shrink-0 bg-gray-200 dark:bg-gray-700"
-                                />
-                              ) : (
-                                <div className="w-14 h-9 rounded bg-gray-200 dark:bg-gray-700 shrink-0" />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                                  {video.title ?? video.path.split('/').pop()}
-                                </p>
-                                <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
-                                  {video.path}
-                                </p>
-                                {video.duration != null && (
-                                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                                    {fmtDuration(video.duration)}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="flex flex-col items-end gap-0.5 shrink-0">
-                                {keepId === video.id && (
-                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
-                                    {t('duplicates.keep')}
-                                  </span>
-                                )}
-                                <span
-                                  className={`text-[10px] font-medium ${
-                                    pct >= 95
-                                      ? 'text-red-500 dark:text-red-400'
-                                      : pct >= 88
-                                      ? 'text-amber-500 dark:text-amber-400'
-                                      : 'text-gray-400 dark:text-gray-500'
-                                  }`}
-                                >
-                                  {t('duplicates.similarity', { pct })}
-                                </span>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <GroupActions
-                        isProcessing={isProcessing}
-                        onRemoveLib={() => handleRemoveSimilarOthers(groupIdx, false)}
-                        onDeleteFiles={() => handleRemoveSimilarOthers(groupIdx, true)}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )
+                );
+              })}
+            </div>
           )}
         </div>
 

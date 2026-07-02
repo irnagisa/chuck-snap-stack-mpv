@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
@@ -214,6 +214,10 @@ const VideoCard = memo(function VideoCard({
   );
 });
 
+export interface LibraryViewHandle {
+  scrollToId: (id: number) => void;
+}
+
 interface Props {
   videos: Video[];
   currentVideoId: number | null;
@@ -232,7 +236,7 @@ interface Props {
 const ITEM_MIN_WIDTH = 160;
 const GAP = 16; // gap-4
 
-export function LibraryGrid({
+export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function LibraryGrid({
   videos,
   currentVideoId,
   detailVideoId,
@@ -245,7 +249,7 @@ export function LibraryGrid({
   onSetCategory,
   selectedIds,
   onSelectionChange,
-}: Props) {
+}: Props, ref: React.Ref<LibraryViewHandle>) {
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
@@ -338,6 +342,15 @@ export function LibraryGrid({
     estimateSize: useCallback(() => 180, []),
     overscan: 3,
   });
+
+  useImperativeHandle(ref, () => ({
+    scrollToId: (id: number) => {
+      const idx = videos.findIndex((v) => v.id === id);
+      if (idx < 0) return;
+      const rowIdx = Math.floor(idx / columns);
+      virtualizer.scrollToIndex(rowIdx, { align: 'center' });
+    },
+  }), [videos, columns, virtualizer]);
 
   const handleCheckbox = useCallback((e: React.MouseEvent, video: Video, idx: number) => {
     e.stopPropagation();
@@ -445,4 +458,4 @@ export function LibraryGrid({
       )}
     </>
   );
-}
+});

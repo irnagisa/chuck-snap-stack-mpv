@@ -1,4 +1,5 @@
-import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
+import type { LibraryViewHandle } from './LibraryGrid';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
@@ -254,7 +255,7 @@ const VideoRow = memo(function VideoRow({
   );
 });
 
-export function LibraryList({
+export const LibraryList = forwardRef<LibraryViewHandle, Props>(function LibraryList({
   videos,
   currentVideoId,
   detailVideoId,
@@ -267,7 +268,7 @@ export function LibraryList({
   onSetCategory,
   selectedIds,
   onSelectionChange,
-}: Props) {
+}: Props, ref: React.Ref<LibraryViewHandle>) {
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
@@ -331,6 +332,13 @@ export function LibraryList({
     estimateSize: estimateHeight,
     overscan: 5,
   });
+
+  useImperativeHandle(ref, () => ({
+    scrollToId: (id: number) => {
+      const idx = videos.findIndex((v) => v.id === id);
+      if (idx >= 0) virtualizer.scrollToIndex(idx, { align: 'center' });
+    },
+  }), [videos, virtualizer]);
 
   const handleCheckbox = useCallback((e: React.MouseEvent, video: Video, idx: number) => {
     e.stopPropagation();
@@ -425,4 +433,4 @@ export function LibraryList({
       )}
     </>
   );
-}
+});

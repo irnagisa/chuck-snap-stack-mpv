@@ -207,7 +207,17 @@
     "searchingSubtitle": "Searching...",
     "subtitleHelp": "\"Search\" looks for subtitle files in the same folder",
     "subtitleLoaded": "Loaded",
-    "subtitleLoad": "Load"
+    "subtitleLoad": "Load",
+    "similarVideos": "Similar Videos",
+    "similarComputing": "Computing fingerprints... {{done}}/{{total}}",
+    "similarEmpty": "No similar videos found",
+    "similarFind": "Find Similar",
+    "similarSensitivity": "Sensitivity",
+    "similarSensHigh": "Strict",
+    "similarSensNormal": "Normal",
+    "similarSensLow": "Loose",
+    "similarPct": "{{pct}}% similar",
+    "similarRedetect": "Re-search"
   },
   "download": {
     "title": "Download from URL",

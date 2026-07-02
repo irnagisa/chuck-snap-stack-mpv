@@ -544,7 +544,7 @@ pub struct SimilarVideo {
     pub phash: String,
 }
 
-/// Returns videos that have no pHash stored yet (video media type only).
+/// Returns files (video or image) that have no pHash stored yet.
 #[tauri::command]
 pub async fn db_get_videos_without_phash(
     db_state: tauri::State<'_, DbState>,
@@ -553,7 +553,7 @@ pub async fn db_get_videos_without_phash(
     let mut stmt = conn
         .prepare(
             "SELECT id, path, thumbnail FROM videos \
-             WHERE phash IS NULL AND media_type = 'video'",
+             WHERE phash IS NULL AND media_type IN ('video', 'image')",
         )
         .map_err(|e| e.to_string())?;
 
@@ -606,11 +606,23 @@ pub async fn db_compute_video_phash(
     let img = if let Some(img) = img_from_thumb {
         img
     } else {
-        let ffmpeg_path = {
-            let s = app_settings.lock().map_err(|e| e.to_string())?;
-            s.ffmpeg_path.clone()
-        };
-        extract_frame_with_ffmpeg(&video_path, &ffmpeg_path).await?
+        // For image files, open directly without ffmpeg.
+        let path_clone = video_path.clone();
+        let img_direct = tokio::task::spawn_blocking(move || {
+            image::open(&path_clone).ok()
+        })
+        .await
+        .unwrap_or(None);
+
+        if let Some(img) = img_direct {
+            img
+        } else {
+            let ffmpeg_path = {
+                let s = app_settings.lock().map_err(|e| e.to_string())?;
+                s.ffmpeg_path.clone()
+            };
+            extract_frame_with_ffmpeg(&video_path, &ffmpeg_path).await?
+        }
     };
 
     let hash = tokio::task::spawn_blocking(move || phash_from_image(&img))
@@ -697,4 +709,83 @@ pub async fn db_find_similar_videos(
     result.sort_by(|a, b| b.len().cmp(&a.len()));
 
     Ok(result)
+}
+
+/// Returns the stored pHash string for a video, or null if not yet computed.
+#[tauri::command]
+pub async fn db_get_video_stored_phash(
+    db_state: tauri::State<'_, DbState>,
+    video_id: i64,
+) -> Result<Option<String>, String> {
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let phash: Option<String> = conn
+        .query_row(
+            "SELECT phash FROM videos WHERE id = ?1",
+            rusqlite::params![video_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(phash.filter(|p| !p.is_empty()))
+}
+
+/// Find videos visually similar to a specific video (by its id).
+/// Returns other videos whose pHash is within `threshold` Hamming distance,
+/// sorted by ascending distance (most similar first).
+#[tauri::command]
+pub async fn db_find_similar_to_video(
+    db_state: tauri::State<'_, DbState>,
+    video_id: i64,
+    threshold: u32,
+) -> Result<Vec<SimilarVideo>, String> {
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+
+    // Fetch the pHash of the target video.
+    let target_phash: Option<String> = conn
+        .query_row(
+            "SELECT phash FROM videos WHERE id = ?1",
+            rusqlite::params![video_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let target_phash = match target_phash {
+        Some(p) if !p.is_empty() => p,
+        _ => return Ok(vec![]),
+    };
+    let target_hash: u64 = target_phash.parse().unwrap_or(0);
+
+    // Fetch all other videos that have a pHash.
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, path, title, thumbnail, duration, phash \
+             FROM videos WHERE phash IS NOT NULL AND id != ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut rows: Vec<(SimilarVideo, u32)> = stmt
+        .query_map(rusqlite::params![video_id], |row| {
+            Ok(SimilarVideo {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                title: row.get(2)?,
+                thumbnail: row.get(3)?,
+                duration: row.get(4)?,
+                phash: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter_map(|v| {
+            let h: u64 = v.phash.parse().unwrap_or(u64::MAX);
+            let dist = hamming_distance(target_hash, h);
+            if dist <= threshold { Some((v, dist)) } else { None }
+        })
+        .collect();
+
+    // Sort most-similar first.
+    rows.sort_by_key(|(_, d)| *d);
+
+    Ok(rows.into_iter().map(|(v, _)| v).collect())
 }

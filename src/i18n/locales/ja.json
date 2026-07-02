@@ -207,7 +207,17 @@
     "searchingSubtitle": "検索中...",
     "subtitleHelp": "「検索」で同フォルダの字幕ファイルを探します",
     "subtitleLoaded": "ロード済",
-    "subtitleLoad": "ロード"
+    "subtitleLoad": "ロード",
+    "similarVideos": "類似動画",
+    "similarComputing": "フィンガープリントを計算中... {{done}}/{{total}}",
+    "similarEmpty": "類似動画なし",
+    "similarFind": "類似を検索",
+    "similarSensitivity": "感度",
+    "similarSensHigh": "厳密",
+    "similarSensNormal": "標準",
+    "similarSensLow": "緩め",
+    "similarPct": "類似度 {{pct}}%",
+    "similarRedetect": "再検索"
   },
   "download": {
     "title": "URL からダウンロード",

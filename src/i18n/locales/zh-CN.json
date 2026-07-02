@@ -207,7 +207,17 @@
     "searchingSubtitle": "搜索中...",
     "subtitleHelp": "「搜索」在同一文件夹中查找字幕文件",
     "subtitleLoaded": "已加载",
-    "subtitleLoad": "加载"
+    "subtitleLoad": "加载",
+    "similarVideos": "相似视频",
+    "similarComputing": "正在计算指纹... {{done}}/{{total}}",
+    "similarEmpty": "未找到相似视频",
+    "similarFind": "查找相似",
+    "similarSensitivity": "灵敏度",
+    "similarSensHigh": "严格",
+    "similarSensNormal": "标准",
+    "similarSensLow": "宽松",
+    "similarPct": "相似度 {{pct}}%",
+    "similarRedetect": "重新搜索"
   },
   "download": {
     "title": "从 URL 下载",

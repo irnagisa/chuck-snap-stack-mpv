@@ -182,6 +182,8 @@ pub fn run() {
             commands::phash::db_get_videos_without_phash,
             commands::phash::db_compute_video_phash,
             commands::phash::db_find_similar_videos,
+            commands::phash::db_get_video_stored_phash,
+            commands::phash::db_find_similar_to_video,
             // ai
             commands::ai::check_ai_model_status,
             commands::ai::download_ai_model,
