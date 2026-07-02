@@ -131,12 +131,12 @@ describe('Detail video modal', () => {
 
 describe('Bulk modal', () => {
   it('openBulkModal sets bulkModal value', () => {
-    useModalStore.getState().openBulkModal('delete' as Parameters<typeof useModalStore.getState>['0']['openBulkModal'][0]);
+    useModalStore.getState().openBulkModal('delete');
     expect(useModalStore.getState().bulkModal).toBe('delete');
   });
 
   it('closeBulkModal sets bulkModal to null', () => {
-    useModalStore.getState().openBulkModal('tag' as Parameters<typeof useModalStore.getState>['0']['openBulkModal'][0]);
+    useModalStore.getState().openBulkModal('tag');
     useModalStore.getState().closeBulkModal();
     expect(useModalStore.getState().bulkModal).toBeNull();
   });
@@ -169,7 +169,7 @@ describe('closeAll', () => {
     useModalStore.getState().openDownload();
     useModalStore.getState().openStats();
     useModalStore.getState().openDetailVideo(makeVideo(1));
-    useModalStore.getState().openBulkModal('rating' as Parameters<typeof useModalStore.getState>['0']['openBulkModal'][0]);
+    useModalStore.getState().openBulkModal('rating');
     useModalStore.getState().openDndDestDir(['f.mp4'], () => {});
 
     useModalStore.getState().closeAll();

@@ -91,6 +91,17 @@ interface LibraryActions {
 
 const THUMBNAIL_CONCURRENCY = 3;
 
+// Tag 配列の内容が同一かどうかを比較する (fetchVideos での参照正規化用)
+function tagsEqual(a: Tag[], b: Tag[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ta = a[i], tb = b[i];
+    if (ta.id !== tb.id || ta.name !== tb.name || ta.color !== tb.color ||
+        ta.icon !== tb.icon || ta.tag_category_id !== tb.tag_category_id) return false;
+  }
+  return true;
+}
+
 function notifyScanResult(result: ScanResult): void {
   if (result.errors.length > 0) {
     const count = result.errors.length;
@@ -169,7 +180,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   fetchVideos: async () => {
-    const { currentPage, pageSize, filterSortBy, filterSortOrder } = get();
+    const {
+      currentPage, pageSize, filterSortBy, filterSortOrder,
+      filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+      filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+      filterWatchedStatus, filterWatchDir, filterMediaType,
+    } = get();
 
     const result = await invoke<{
       videos: Video[];
@@ -177,17 +193,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       videoTags: { videoId: number; id: number; name: string; color: string; icon: string | null; tagCategoryId: number | null; createdAt: string }[];
     }>('db_fetch_videos', {
       filter: {
-        filterSearch: get().filterSearch,
-        filterCategoryId: get().filterCategoryId,
-        filterTagIds: get().filterTagIds,
-        filterTagMode: get().filterTagMode,
-        filterMinRating: get().filterMinRating,
-        filterHasAudio: get().filterHasAudio,
-        filterMinDuration: get().filterMinDuration,
-        filterMaxDuration: get().filterMaxDuration > 0 ? get().filterMaxDuration : null,
-        filterWatchedStatus: get().filterWatchedStatus,
-        filterWatchDir: get().filterWatchDir,
-        filterMediaType: get().filterMediaType,
+        filterSearch,
+        filterCategoryId,
+        filterTagIds,
+        filterTagMode,
+        filterMinRating,
+        filterHasAudio,
+        filterMinDuration,
+        filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
+        filterWatchedStatus,
+        filterWatchDir,
+        filterMediaType,
         filterSortBy,
         filterSortOrder,
         currentPage,
@@ -200,6 +216,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const page = Math.min(currentPage, maxPage);
     set({ videos, totalCount, currentPage: page });
 
+    const prevVideoTags = useTagStore.getState().videoTags;
     const videoTagsMap: Record<number, Tag[]> = {};
     for (const row of videoTagRows) {
       if (!videoTagsMap[row.videoId]) videoTagsMap[row.videoId] = [];
@@ -212,7 +229,15 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         created_at: row.createdAt,
       });
     }
-    useTagStore.setState({ videoTags: videoTagsMap });
+    // 内容が変わっていない動画のタグ配列は既存の参照を維持する。
+    // これにより useShallow が差分なしと判定し、LibraryGrid の不要な再レンダリングを防ぐ。
+    const normalizedVideoTags: Record<number, Tag[]> = {};
+    for (const [key, newTags] of Object.entries(videoTagsMap)) {
+      const videoId = Number(key);
+      const prev = prevVideoTags[videoId];
+      normalizedVideoTags[videoId] = prev && tagsEqual(prev, newTags) ? prev : newTags;
+    }
+    useTagStore.setState({ videoTags: normalizedVideoTags });
   },
 
   fetchAllForShuffle: async () => {
@@ -581,13 +606,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
               .filter((r): r is VideoUpdate => r !== null)
               .map((r) => [r.id, r])
           );
-          set((state) => ({
-            videos: state.videos.map((v) => {
-              const upd = updateMap.get(v.id);
-              return upd ? { ...v, ...upd } : v;
-            }),
-            thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal },
-          }));
+          if (updateMap.size > 0) {
+            set((state) => ({
+              videos: state.videos.map((v) => {
+                const upd = updateMap.get(v.id);
+                return upd ? { ...v, ...upd } : v;
+              }),
+              thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal },
+            }));
+          } else {
+            set({ thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal } });
+          }
         }
       }
     } finally {

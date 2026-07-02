@@ -1,9 +1,10 @@
-import { useRef, useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
+import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
@@ -22,6 +23,7 @@ interface VideoCardProps {
   onDelete: (video: Video) => void;
   onCheckbox: (e: React.MouseEvent, video: Video, idx: number) => void;
   onContextMenu: (e: React.MouseEvent, video: Video) => void;
+  onRegisterObserver: (el: HTMLDivElement, callback: () => void) => () => void;
 }
 
 const VideoCard = memo(function VideoCard({
@@ -38,6 +40,7 @@ const VideoCard = memo(function VideoCard({
   onDelete,
   onCheckbox,
   onContextMenu,
+  onRegisterObserver,
 }: VideoCardProps) {
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
@@ -59,21 +62,15 @@ const VideoCard = memo(function VideoCard({
 
   useEffect(() => {
     const el = cardRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !checkedRef.current) {
-          checkedRef.current = true;
-          invoke<boolean>('path_exists', { path: v.path }).then((exists) => {
-            if (!exists) setFileMissing(true);
-          });
-        }
-      },
-      { threshold: 0.1 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [v.path]);
+    if (!el || checkedRef.current) return;
+    return onRegisterObserver(el, () => {
+      if (checkedRef.current) return;
+      checkedRef.current = true;
+      invoke<boolean>('path_exists', { path: v.path }).then((exists) => {
+        if (!exists) setFileMissing(true);
+      });
+    });
+  }, [v.path, onRegisterObserver]);
 
   return (
     <div
@@ -249,11 +246,45 @@ export function LibraryGrid({
   selectedIds,
   onSelectionChange,
 }: Props) {
-  // 個別セレクタ: tags が変わっても LibraryGrid は再レンダリングされない
-  const videoTags = useTagStore((s) => s.videoTags);
-  const categories = useTagStore((s) => s.categories);
+  // useShallow: 部分的なタグ更新では再レンダリングを抑制する
+  // (fetchVideos は毎回新規配列を生成するため fetchVideos 後の再レンダリングは発生する)
+  const videoTags = useTagStore(useShallow((s) => s.videoTags));
+  const categories = useTagStore(useShallow((s) => s.categories));
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const [contextMenu, setContextMenu] = useState<{ video: Video; x: number; y: number } | null>(null);
+
+  // 共有 IntersectionObserver: per-card IO インスタンスを一本化
+  // useLayoutEffect を使うことで子コンポーネントの useEffect (IO 登録) より
+  // 先に IO を生成し、初回マウント時の登録空振りを防ぐ
+  const ioCallbacksRef = useRef<Map<HTMLElement, () => void>>(new Map());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  useLayoutEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const cb = ioCallbacksRef.current.get(entry.target as HTMLElement);
+        if (cb) {
+          observer.unobserve(entry.target);
+          ioCallbacksRef.current.delete(entry.target as HTMLElement);
+          cb();
+        }
+      }
+    }, { threshold: 0.1 });
+    observerRef.current = observer;
+    return () => { observer.disconnect(); ioCallbacksRef.current.clear(); };
+  }, []);
+
+  const registerObserver = useCallback((el: HTMLDivElement, callback: () => void): (() => void) => {
+    const observer = observerRef.current;
+    if (!observer) return () => {};
+    ioCallbacksRef.current.set(el, callback);
+    observer.observe(el);
+    return () => {
+      ioCallbacksRef.current.delete(el);
+      observer.unobserve(el);
+    };
+  }, []);
+
   const lastSelectedIdxRef = useRef<number | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -378,6 +409,7 @@ export function LibraryGrid({
                           onDelete={setDeleteTarget}
                           onCheckbox={handleCheckbox}
                           onContextMenu={handleContextMenu}
+                          onRegisterObserver={registerObserver}
                         />
                       );
                     })}
