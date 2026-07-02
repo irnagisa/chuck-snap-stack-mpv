@@ -134,3 +134,75 @@ pub fn run_data_migrations(conn: &Connection) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use crate::db::schema::init_db;
+
+    fn setup() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn run_data_migrations_is_idempotent() {
+        let conn = setup();
+        assert!(run_data_migrations(&conn).is_ok());
+        assert!(run_data_migrations(&conn).is_ok());
+    }
+
+    #[test]
+    fn migration2_sets_image_media_type_for_jpg_path() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO videos (path, media_type) VALUES ('/tmp/photo.jpg', 'video')",
+            [],
+        )
+        .unwrap();
+        run_data_migrations(&conn).unwrap();
+        let media_type: String = conn
+            .query_row(
+                "SELECT media_type FROM videos WHERE path = '/tmp/photo.jpg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(media_type, "image");
+    }
+
+    #[test]
+    fn migration4_sets_inbox_status_for_null_status() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO videos (path, status) VALUES ('/tmp/video.mp4', NULL)",
+            [],
+        )
+        .unwrap();
+        run_data_migrations(&conn).unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM videos WHERE path = '/tmp/video.mp4'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "inbox");
+    }
+
+    #[test]
+    fn migration_flags_stored_as_one_in_settings() {
+        let conn = setup();
+        run_data_migrations(&conn).unwrap();
+        let val: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'migration_inbox_status_backfill'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(val, "1");
+    }
+}

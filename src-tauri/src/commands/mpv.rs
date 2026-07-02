@@ -35,14 +35,11 @@ fn mpv_socket_path() -> String {
     static SOCKET_PATH: OnceLock<String> = OnceLock::new();
     SOCKET_PATH
         .get_or_init(|| {
-            let token = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
-                .unwrap_or(std::process::id());
+            let token: u64 = rand::random();
             let tmpdir = std::env::var("TMPDIR")
                 .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
             let sock_dir = format!(
-                "{}/mpv-chuck-{}-{token:08x}",
+                "{}/mpv-chuck-{}-{token:016x}",
                 tmpdir.trim_end_matches('/'),
                 std::process::id()
             );
@@ -68,11 +65,8 @@ fn mpv_socket_path() -> String {
     static PIPE_PATH: OnceLock<String> = OnceLock::new();
     PIPE_PATH
         .get_or_init(|| {
-            let token = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos() ^ std::process::id().wrapping_mul(0x9e37_79b9))
-                .unwrap_or(std::process::id());
-            format!(r"\\.\pipe\mpv-chuck-{}-{:08x}", std::process::id(), token)
+            let token: u64 = rand::random();
+            format!(r"\\.\pipe\mpv-chuck-{}-{:016x}", std::process::id(), token)
         })
         .clone()
 }

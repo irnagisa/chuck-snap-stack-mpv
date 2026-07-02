@@ -69,13 +69,13 @@ function buildStacks(
     });
   }
 
-  // Date Stack — group by date
+  // Date Stack — group by date (all comparisons in UTC to match stored created_at values)
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
   const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const lastWeekStart = new Date(today);
-  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  lastWeekStart.setUTCDate(lastWeekStart.getUTCDate() - 7);
 
   const dateGroups = new Map<string, { label: string; videos: Video[] }>();
   const dateOrder = ['today', 'yesterday', 'last_week', 'older'];
@@ -86,7 +86,7 @@ function buildStacks(
 
   for (const v of videos) {
     const d = new Date(v.created_at);
-    d.setHours(0, 0, 0, 0);
+    d.setUTCHours(0, 0, 0, 0);
     if (d >= today) {
       dateGroups.get('today')!.videos.push(v);
     } else if (d >= yesterday) {

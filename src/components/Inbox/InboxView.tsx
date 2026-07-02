@@ -25,9 +25,12 @@ export default function InboxView() {
   }, []);
 
   useEffect(() => {
-    if (videos.length > 0) {
-      fetchVideoTagsForIds(videos.map((v) => v.id));
+    const newIds = videos.map((v) => v.id).filter((id) => !(id in videoTags));
+    if (newIds.length > 0) {
+      fetchVideoTagsForIds(newIds);
     }
+    // videoTags is intentionally excluded: we only re-fetch when the videos list changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videos]);
 
   const stacks = buildStacks(videos, videoTags, categories).filter(
