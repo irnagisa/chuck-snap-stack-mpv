@@ -1,0 +1,17 @@
+{
+  "app": {
+    "security": {
+      "assetProtocol": {
+        "scope": {
+          "allow": [
+            "$APPCACHE/thumbnails/**",
+            "$APPDATA/thumbnails/**",
+            "C:\\Users\\**",
+            "D:\\**",
+            "E:\\**"
+          ]
+        }
+      }
+    }
+  }
+}

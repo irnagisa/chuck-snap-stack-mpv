@@ -29,10 +29,7 @@
             "$APPCACHE/thumbnails/**",
             "$APPDATA/thumbnails/**",
             "$HOME/**",
-            "/Volumes/**",
-            "C:\\Users\\**",
-            "D:\\**",
-            "E:\\**"
+            "/Volumes/**"
           ]
         }
       }
