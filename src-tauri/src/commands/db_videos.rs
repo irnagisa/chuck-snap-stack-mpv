@@ -588,6 +588,27 @@ pub async fn db_graduate_from_inbox(
     Ok(())
 }
 #[tauri::command]
+pub async fn db_sample_inbox_videos(
+    state: State<'_, DbState>,
+    count: i64,
+) -> Result<Vec<Video>, String> {
+    let conn = state.conn()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
+                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
+                    v.created_at, v.media_type, v.source_url, v.status, v.source_type
+             FROM videos v
+             WHERE v.status = 'inbox'
+             ORDER BY RANDOM()
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([count], video_from_row).map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn db_update_video_thumbnail(
     state: State<'_, DbState>,
     video_id: i64,

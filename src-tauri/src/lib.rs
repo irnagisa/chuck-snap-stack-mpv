@@ -176,6 +176,7 @@ pub fn run() {
             commands::db_videos::db_get_inbox_videos,
             commands::db_videos::db_get_inbox_stats,
             commands::db_videos::db_graduate_from_inbox,
+            commands::db_videos::db_sample_inbox_videos,
             commands::library::cleanup_jpg_thumbnails,
             commands::library::migrate_root_files_to_inbox,
             // phash

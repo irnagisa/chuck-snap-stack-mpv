@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from "react-i18next";
 import { useShallow } from 'zustand/shallow';
 import { usePlayerStore } from '../../store/usePlayerStore';
+import { useTagStore } from '../../store/useTagStore';
+import { useLibraryStore } from '../../store/useLibraryStore';
+import { TagBadge } from '../Library/TagBadge';
 import { formatTime } from '../../utils/time';
 
 export function MiniPlayer() {
@@ -26,12 +29,30 @@ export function MiniPlayer() {
     toggleMiniPlayer: s.toggleMiniPlayer,
   })));
 
+  const { videoTags, categories, fetchVideoTags } = useTagStore(useShallow((s) => ({
+    videoTags: s.videoTags,
+    categories: s.categories,
+    fetchVideoTags: s.fetchVideoTags,
+  })));
+
+  const { updateVideo } = useLibraryStore(useShallow((s) => ({
+    updateVideo: s.updateVideo,
+  })));
+
   const isDraggingSeek = useRef(false);
   const [localSeek, setLocalSeek] = useState(0);
+  const [localRating, setLocalRating] = useState(0);
 
   useEffect(() => {
     if (!isDraggingSeek.current) setLocalSeek(playbackTime);
   }, [playbackTime]);
+
+  useEffect(() => {
+    setLocalRating(currentVideo?.rating ?? 0);
+    if (currentVideo) {
+      fetchVideoTags(currentVideo.id);
+    }
+  }, [currentVideo?.id]);
 
   if (!isMiniPlayer) return null;
 
@@ -41,6 +62,18 @@ export function MiniPlayer() {
   const title = currentVideo
     ? (currentVideo.title ?? currentVideo.path.split('/').pop() ?? '')
     : t('player.noVideo');
+
+  const currentTags = currentVideo ? (videoTags[currentVideo.id] ?? []) : [];
+  const category = currentVideo?.category_id != null
+    ? (categories.find((c) => c.id === currentVideo.category_id) ?? null)
+    : null;
+
+  const handleRatingClick = async (star: number) => {
+    if (!currentVideo) return;
+    const next = star === localRating ? 0 : star;
+    setLocalRating(next);
+    await updateVideo(currentVideo.id, { rating: next });
+  };
 
   return (
     <div className="flex flex-col h-screen w-screen bg-gray-900 text-white overflow-hidden select-none">
@@ -143,6 +176,48 @@ export function MiniPlayer() {
         >
           ✕
         </button>
+      </div>
+
+      {/* 評価・カテゴリ・タグ */}
+      <div className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-2 border-t border-gray-800">
+        {/* 評価 */}
+        <div className="flex items-center gap-0.5 pt-2">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              type="button"
+              className={`text-base leading-none transition-colors ${
+                star <= localRating
+                  ? 'text-yellow-400'
+                  : 'text-gray-600 hover:text-yellow-300'
+              }`}
+              onClick={() => handleRatingClick(star)}
+              title={`${star}★`}
+            >
+              ★
+            </button>
+          ))}
+        </div>
+
+        {/* カテゴリ */}
+        {category && (
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: category.color }}
+            />
+            <span className="text-[11px] text-gray-300 truncate">{category.name}</span>
+          </div>
+        )}
+
+        {/* タグ */}
+        {currentTags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {currentTags.map((tag) => (
+              <TagBadge key={tag.id} tag={tag} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
