@@ -217,7 +217,9 @@
     "similarSensNormal": "标准",
     "similarSensLow": "宽松",
     "similarPct": "相似度 {{pct}}%",
-    "similarRedetect": "重新搜索"
+    "similarRedetect": "重新搜索",
+    "similarNotRun": "尚未执行相似视频搜索",
+    "similarDetect": "搜索相似视频"
   },
   "download": {
     "title": "从 URL 下载",

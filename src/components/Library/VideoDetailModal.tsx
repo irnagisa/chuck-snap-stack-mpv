@@ -129,12 +129,6 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     }
   }, [video.id, similarThreshold]);
 
-  // Auto-run similar detection on mount
-  useEffect(() => {
-    detectSimilar();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video.id]);
-
   const handleSimilarThresholdChange = (next: SimilarThreshold) => {
     setSimilarThreshold(next);
     setSimilarDetected(false);
@@ -820,7 +814,18 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 ))}
               </div>
 
-              {similarLoading ? (
+              {!similarDetected && !similarLoading ? (
+                <div className="flex flex-col items-center py-4 gap-2">
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{t('detail.similarNotRun')}</p>
+                  <button
+                    type="button"
+                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg font-medium"
+                    onClick={() => detectSimilar()}
+                  >
+                    {t('detail.similarDetect')}
+                  </button>
+                </div>
+              ) : similarLoading ? (
                 <div className="flex flex-col items-center py-4 gap-2 text-xs text-gray-400 dark:text-gray-500">
                   <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
                   {similarHashProgress

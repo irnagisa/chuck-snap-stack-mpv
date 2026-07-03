@@ -217,7 +217,9 @@
     "similarSensNormal": "標準",
     "similarSensLow": "緩め",
     "similarPct": "類似度 {{pct}}%",
-    "similarRedetect": "再検索"
+    "similarRedetect": "再検索",
+    "similarNotRun": "類似動画の検索はまだ実行されていません",
+    "similarDetect": "類似動画を検索する"
   },
   "download": {
     "title": "URL からダウンロード",

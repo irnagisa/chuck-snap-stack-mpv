@@ -217,7 +217,9 @@
     "similarSensNormal": "Normal",
     "similarSensLow": "Loose",
     "similarPct": "{{pct}}% similar",
-    "similarRedetect": "Re-search"
+    "similarRedetect": "Re-search",
+    "similarNotRun": "Similar video search has not been run yet",
+    "similarDetect": "Search for similar videos"
   },
   "download": {
     "title": "Download from URL",
