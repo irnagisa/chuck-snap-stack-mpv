@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useInboxStore, buildStacks, type InboxStack, type StackType } from '../../store/useInboxStore';
+import { useInboxStore, buildStacks, getTimeBucket, type InboxStack, type StackType, type TimeBucket } from '../../store/useInboxStore';
 import { useModalStore } from '../../store/useModalStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { useTagStore } from '../../store/useTagStore';
@@ -9,7 +9,7 @@ import StackCard from './StackCard';
 import QuickSort from './QuickSort';
 
 export default function InboxView() {
-  const { videos, stats, isLoading, activeStack, fetchInbox, graduateFromInbox, setActiveStack } =
+  const { videos, stats, isLoading, activeStack, fetchInbox, graduateFromInbox, setActiveStack, batchVideos, startBatch, clearBatch } =
     useInboxStore();
   const openDetailVideo = useModalStore((s) => s.openDetailVideo);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
@@ -18,6 +18,7 @@ export default function InboxView() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // フィルター: 非表示にするスタック種別 (空 = 全表示)
   const [hiddenTypes, setHiddenTypes] = useState<Set<StackType>>(new Set());
+  const [collapsedBuckets, setCollapsedBuckets] = useState<Set<TimeBucket>>(new Set(['review', 'archive']));
 
   useEffect(() => {
     fetchInbox();
@@ -33,9 +34,25 @@ export default function InboxView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videos]);
 
-  const stacks = buildStacks(videos, videoTags, categories).filter(
-    (s) => !hiddenTypes.has(s.stackType),
-  );
+  const bucketDefs: { key: TimeBucket; label: string; description: string }[] = [
+    { key: 'active', label: 'アクティブ', description: '7日以内' },
+    { key: 'review', label: '整理候補', description: '7〜30日' },
+    { key: 'archive', label: 'アーカイブ', description: '30日以降' },
+  ];
+
+  const bucketVideos: Record<TimeBucket, Video[]> = {
+    active: videos.filter((v) => getTimeBucket(v.created_at) === 'active'),
+    review: videos.filter((v) => getTimeBucket(v.created_at) === 'review'),
+    archive: videos.filter((v) => getTimeBucket(v.created_at) === 'archive'),
+  };
+
+  const bucketStacks: Record<TimeBucket, InboxStack[]> = {
+    active: buildStacks(bucketVideos.active, videoTags, categories).filter((s) => !hiddenTypes.has(s.stackType)),
+    review: buildStacks(bucketVideos.review, videoTags, categories).filter((s) => !hiddenTypes.has(s.stackType)),
+    archive: buildStacks(bucketVideos.archive, videoTags, categories).filter((s) => !hiddenTypes.has(s.stackType)),
+  };
+
+  const hasAnyStacks = Object.values(bucketStacks).some((ss) => ss.length > 0);
 
   const handlePlay = (v: Video) => {
     playWithQueue([v], 0);
@@ -57,8 +74,20 @@ export default function InboxView() {
     });
   };
 
+  const toggleBucket = (bucket: TimeBucket) => {
+    setCollapsedBuckets((prev) => {
+      const next = new Set(prev);
+      if (next.has(bucket)) next.delete(bucket);
+      else next.add(bucket);
+      return next;
+    });
+  };
+
   if (activeStack) {
-    const stackVideos = videos.filter((v) => matchesStack(v, activeStack, videoTags));
+    const stackVideos =
+      activeStack.stackType === 'batch'
+        ? (batchVideos ?? [])
+        : videos.filter((v) => matchesStack(v, activeStack, videoTags));
     return (
       <QuickSort
         stack={activeStack}
@@ -95,9 +124,25 @@ export default function InboxView() {
               {stats.inboxCount} 件の未整理ファイル
             </span>
           )}
+          {stats && stats.inboxCount > 0 && (
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-[11px] text-gray-400 dark:text-gray-500">バッチ:</span>
+              {([10, 20, 30] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => startBatch(n)}
+                  disabled={isLoading}
+                  className="text-[11px] px-2 py-0.5 rounded border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  {n}件
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
-            className="ml-auto text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
             onClick={fetchInbox}
             disabled={isLoading}
           >
@@ -172,23 +217,81 @@ export default function InboxView() {
             <p className="text-sm">Inbox は空です</p>
           </div>
         )}
-        {stacks.length > 0 && (
-          <div className="flex flex-col gap-4">
-            {stacks.map((stack) => (
-              <StackCard
-                key={`${stack.stackType}-${stack.groupKey}`}
-                stack={stack}
-                onOpen={() => setActiveStack(stack)}
-                onGraduate={() => handleStackGraduate(stack)}
-                onPlay={handlePlay}
-                onShowDetail={openDetailVideo}
-                selectedIds={selectedIds}
-                onSelectionChange={setSelectedIds}
-              />
-            ))}
+        {(batchVideos !== null || hasAnyStacks) && (
+          <div className="flex flex-col gap-6">
+            {/* Batch card */}
+            {batchVideos !== null && (() => {
+              const batchStack: InboxStack = {
+                stackType: 'batch',
+                groupKey: 'batch',
+                label: 'ランダムバッチ',
+                count: batchVideos.length,
+                videos: batchVideos,
+              };
+              return (
+                <StackCard
+                  key="batch"
+                  stack={batchStack}
+                  onOpen={() => setActiveStack(batchStack)}
+                  onGraduate={async () => {
+                    await graduateFromInbox(batchVideos.map((v) => v.id));
+                    clearBatch();
+                  }}
+                  onPlay={handlePlay}
+                  onShowDetail={openDetailVideo}
+                  selectedIds={selectedIds}
+                  onSelectionChange={setSelectedIds}
+                />
+              );
+            })()}
+
+            {/* Time bucket sections */}
+            {bucketDefs.map(({ key, label, description }) => {
+              const stacks = bucketStacks[key];
+              if (stacks.length === 0) return null;
+              const isCollapsed = collapsedBuckets.has(key);
+              const vCount = bucketVideos[key].length;
+              return (
+                <div key={key} className="flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleBucket(key)}
+                    className="flex items-center gap-2 w-full text-left"
+                  >
+                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                      {label}
+                    </span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                      {description} · {vCount}件
+                    </span>
+                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0 w-3 text-center">
+                      {isCollapsed ? '▶' : '▼'}
+                    </span>
+                  </button>
+                  {!isCollapsed && (
+                    <div className="flex flex-col gap-3">
+                      {stacks.map((stack) => (
+                        <StackCard
+                          key={`${stack.stackType}-${stack.groupKey}`}
+                          stack={stack}
+                          onOpen={() => setActiveStack(stack)}
+                          onGraduate={() => handleStackGraduate(stack)}
+                          onPlay={handlePlay}
+                          onShowDetail={openDetailVideo}
+                          selectedIds={selectedIds}
+                          onSelectionChange={setSelectedIds}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
-        {!isLoading && videos.length > 0 && stacks.length === 0 && (
+        {!isLoading && videos.length > 0 && !hasAnyStacks && (
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
             表示するスタックがありません（フィルターをご確認ください）
           </p>

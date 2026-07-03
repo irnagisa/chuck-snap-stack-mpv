@@ -29,6 +29,7 @@ export default function StackCard({
     directory: 'フォルダ',
     category: 'カテゴリ',
     tag: 'タグ',
+    batch: 'バッチ',
   };
 
   const toggleSelect = (id: number) => {

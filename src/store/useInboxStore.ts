@@ -13,7 +13,7 @@ export interface InboxStats {
 }
 
 // Inbox videos grouped into a stack (display unit)
-export type StackType = 'source' | 'date' | 'missing_metadata' | 'almost_done' | 'directory' | 'tag' | 'category';
+export type StackType = 'source' | 'date' | 'missing_metadata' | 'almost_done' | 'directory' | 'tag' | 'category' | 'batch';
 
 export interface InboxStack {
   stackType: StackType;
@@ -30,6 +30,8 @@ interface InboxState {
   // Quick Sort state
   activeStack: InboxStack | null;
   quickSortIndex: number;
+  // Batch session state
+  batchVideos: Video[] | null;
 }
 
 interface InboxActions {
@@ -37,6 +39,17 @@ interface InboxActions {
   graduateFromInbox: (videoIds: number[]) => Promise<void>;
   setActiveStack: (stack: InboxStack | null) => void;
   setQuickSortIndex: (index: number) => void;
+  startBatch: (count: number) => Promise<void>;
+  clearBatch: () => void;
+}
+
+export type TimeBucket = 'active' | 'review' | 'archive';
+
+export function getTimeBucket(createdAt: string): TimeBucket {
+  const diffDays = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= 7) return 'active';
+  if (diffDays <= 30) return 'review';
+  return 'archive';
 }
 
 function buildStacks(
@@ -230,6 +243,7 @@ export const useInboxStore = create<InboxState & InboxActions>((set, get) => ({
   isLoading: false,
   activeStack: null,
   quickSortIndex: 0,
+  batchVideos: null,
 
   fetchInbox: async () => {
     set({ isLoading: true });
@@ -255,6 +269,18 @@ export const useInboxStore = create<InboxState & InboxActions>((set, get) => ({
   setActiveStack: (stack) => set({ activeStack: stack, quickSortIndex: 0 }),
 
   setQuickSortIndex: (index) => set({ quickSortIndex: index }),
+
+  startBatch: async (count: number) => {
+    try {
+      const videos = await invoke<Video[]>('db_sample_inbox_videos', { count });
+      set({ batchVideos: videos, quickSortIndex: 0 });
+    } catch (e) {
+      console.error('[useInboxStore] startBatch error:', e);
+      toast.error(`バッチの取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+
+  clearBatch: () => set({ batchVideos: null, quickSortIndex: 0 }),
 }));
 
 export { buildStacks };
