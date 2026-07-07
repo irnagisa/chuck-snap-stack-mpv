@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { appCacheDir, join } from '@tauri-apps/api/path';
 import type { Video, Tag } from '../types';
+import {
+  generateThumbnailsWorker,
+  rescanVideoWorker,
+  rescanMultipleWorker,
+} from './thumbnailUtils';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
@@ -88,8 +92,6 @@ interface LibraryActions {
   renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
   updateVideoPath: (oldPath: string, newPath: string) => Promise<void>;
 }
-
-const THUMBNAIL_CONCURRENCY = 3;
 
 // Tag 配列の内容が同一かどうかを比較する (fetchVideos での参照正規化用)
 function tagsEqual(a: Tag[], b: Tag[]): boolean {
@@ -444,328 +446,30 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   },
 
   generateThumbnails: async () => {
-    if (get().isThumbnailGenerating) return;
-
-    const cacheDir = await appCacheDir();
-    const thumbDir = await join(cacheDir, 'thumbnails');
-
-    set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: null });
-
-    type VideoUpdate = { id: number; thumbnail?: string | null; duration?: number | null; hasAudio: number };
-
-    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
-    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
-
-    const processVideoData = async (video: { id: number; path: string; thumbnail: string | null }): Promise<VideoUpdate | null> => {
-      try {
-        const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
-        const isImage = imageExts.includes(ext);
-        const isAudio = audioExts.includes(ext);
-
-        if (isImage) {
-          if (video.thumbnail) {
-            return { id: video.id, hasAudio: 0 };
-          }
-          const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
-          const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
-          try {
-            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-              'generate_thumbnail',
-              { videoPath: video.path, outputPath }
-            );
-            return { id: video.id, thumbnail: result.thumbnail_path, duration: null, hasAudio: 0 };
-          } catch {
-            return { id: video.id, thumbnail: '', duration: null, hasAudio: 0 };
-          }
-        }
-
-        if (!video.thumbnail) {
-          const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
-          const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-          const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
-
-          if (isAudio) {
-            try {
-              const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-                'generate_thumbnail', { videoPath: video.path, outputPath }
-              );
-              return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: 1 };
-            } catch {
-              return { id: video.id, thumbnail: '', duration: null, hasAudio: 1 };
-            }
-          }
-
-          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-            'generate_thumbnail', { videoPath: video.path, outputPath }
-          );
-          return { id: video.id, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: result.has_audio ? 1 : 0 };
-        } else {
-          if (isAudio) return { id: video.id, hasAudio: 1 };
-          const hasAudioRaw = await invoke<boolean>('check_has_audio', { videoPath: video.path });
-          return { id: video.id, hasAudio: hasAudioRaw ? 1 : 0 };
-        }
-      } catch (e) {
-        console.warn(`Audio/thumbnail processing failed for ${video.path}:`, e);
-        return null;
-      }
-    };
-
-    const processedIds = new Set<number>();
-    const PENDING_BATCH_SIZE = 500;
-    let cumulativeDone = 0;
-    let cumulativeTotal = 0;
-
-    try {
-      while (true) {
-        const pending = await invoke<{ id: number; path: string; thumbnail: string | null }[]>(
-          'db_get_pending_thumbnails', { limit: PENDING_BATCH_SIZE }
-        );
-        const toProcess = pending.filter((v) => !processedIds.has(v.id));
-        if (toProcess.length === 0) break;
-
-        cumulativeTotal += toProcess.length;
-        set({ thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal } });
-
-        for (let i = 0; i < toProcess.length; i += THUMBNAIL_CONCURRENCY) {
-          while (get().isThumbnailPaused || get().isScanning) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 200));
-          }
-          const batch = toProcess.slice(i, i + THUMBNAIL_CONCURRENCY);
-          const results = await Promise.all(batch.map(processVideoData));
-          cumulativeDone += batch.length;
-          for (const v of batch) processedIds.add(v.id);
-
-          while (get().isThumbnailPaused || get().isScanning) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 200));
-          }
-
-          const withThumb = results.filter((r): r is VideoUpdate => r !== null && r.thumbnail !== undefined);
-          const withoutThumb = results.filter((r): r is VideoUpdate => r !== null && r.thumbnail === undefined);
-
-          if (withThumb.length > 0) {
-            try {
-              await invoke('db_update_thumbnails_batch', {
-                updates: withThumb.map((r) => ({
-                  id: r.id,
-                  thumbnail: r.thumbnail ?? null,
-                  duration: r.duration ?? null,
-                  hasAudio: r.hasAudio,
-                })),
-              });
-            } catch (e) {
-              console.error('[generateThumbnails] サムネイルバッチDB更新失敗:', e);
-            }
-          }
-
-          if (withoutThumb.length > 0) {
-            try {
-              await invoke('db_update_audio_only_batch', {
-                updates: withoutThumb.map((r) => ({ id: r.id, hasAudio: r.hasAudio })),
-              });
-            } catch (e) {
-              console.error('[generateThumbnails] 音声情報バッチDB更新失敗:', e);
-            }
-          }
-
-          // processVideoData が null を返したアイテムを「処理試行済み」としてDBに記録し、
-          // 次回 generateThumbnails 呼び出し時に無限リトライされるのを防ぐ
-          const failedBatch = batch.filter((_, idx) => results[idx] === null);
-          if (failedBatch.length > 0) {
-            // リネーム/移動中にパスが変わった動画は永続失敗扱いにしない:
-            // thumbnail='' をセットすると再試行されなくなるため、
-            // ストアの現在パスとバッチ取得時のパスが異なる場合はスキップする
-            const currentVideos = get().videos;
-            const failedNoThumb = failedBatch.filter((v) => {
-              if (!v.thumbnail) {
-                const current = currentVideos.find((cv) => cv.id === v.id);
-                if (current && current.path !== v.path) return false;
-                return true;
-              }
-              return false;
-            });
-            const failedHasThumb = failedBatch.filter((v) => !!v.thumbnail);
-            if (failedNoThumb.length > 0) {
-              try {
-                await invoke('db_update_thumbnails_batch', {
-                  updates: failedNoThumb.map((v) => ({ id: v.id, thumbnail: '', duration: null, hasAudio: 0 })),
-                });
-              } catch (e) {
-                console.error('[generateThumbnails] 失敗レコードのDB記録に失敗:', e);
-              }
-            }
-            if (failedHasThumb.length > 0) {
-              try {
-                await invoke('db_update_audio_only_batch', {
-                  updates: failedHasThumb.map((v) => ({ id: v.id, hasAudio: 0 })),
-                });
-              } catch (e) {
-                console.error('[generateThumbnails] 失敗レコードの音声情報DB記録に失敗:', e);
-              }
-            }
-          }
-
-          const updateMap = new Map(
-            results
-              .filter((r): r is VideoUpdate => r !== null)
-              .map((r) => [r.id, r])
-          );
-          if (updateMap.size > 0) {
-            set((state) => ({
-              videos: state.videos.map((v) => {
-                const upd = updateMap.get(v.id);
-                return upd ? { ...v, ...upd } : v;
-              }),
-              thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal },
-            }));
-          } else {
-            set({ thumbnailProgress: { done: cumulativeDone, total: cumulativeTotal } });
-          }
-        }
-      }
-    } finally {
-      set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
-      await get().fetchVideos();
-    }
+    await generateThumbnailsWorker(get, set, async () => { await get().fetchVideos(); });
   },
 
   rescanVideo: async (videoId: number) => {
     const video = get().videos.find((v) => v.id === videoId);
     if (!video) return;
-
-    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
-    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
-    const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
-    const isImage = imageExts.includes(ext);
-    const isAudio = audioExts.includes(ext);
-    const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
-
-    const cacheDir = await appCacheDir();
-    const thumbDir = await join(cacheDir, 'thumbnails');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
-    const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-    const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
-
-    try {
-      let thumbnail: string | null = null;
-      let duration: number | null = null;
-      let hasAudio = 0;
-
-      if (isImage) {
-        try {
-          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-            'generate_thumbnail', { videoPath: video.path, outputPath }
-          );
-          thumbnail = result.thumbnail_path;
-        } catch { /* leave null */ }
-      } else if (isAudio) {
-        try {
-          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-            'generate_thumbnail', { videoPath: video.path, outputPath }
-          );
-          thumbnail = result.thumbnail_path;
-          duration = result.duration;
-          hasAudio = 1;
-        } catch {
-          hasAudio = 1;
-        }
-      } else {
-        const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-          'generate_thumbnail', { videoPath: video.path, outputPath }
-        );
-        thumbnail = result.thumbnail_path;
-        duration = result.duration;
-        hasAudio = result.has_audio ? 1 : 0;
-      }
-
-      await invoke('db_update_video', { videoId, mediaType });
-      await invoke('db_update_thumbnails_batch', {
-        updates: [{ id: videoId, thumbnail, duration, hasAudio }],
-      });
-    } catch (e) {
-      console.warn('rescanVideo failed:', e);
-    }
-
-    await get().fetchVideos();
+    await rescanVideoWorker(video, async () => { await get().fetchVideos(); });
   },
 
   rescanMultiple: async (videoIds: number[]) => {
     if (videoIds.length === 0) return;
-
-    const audioExts = ['mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma'];
-    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif'];
-
     const rows = get().videos.filter((v) => videoIds.includes(v.id));
-
-    const cacheDir = await appCacheDir();
-    const thumbDir = await join(cacheDir, 'thumbnails');
-
     set({ isThumbnailGenerating: true, isThumbnailPaused: false, thumbnailProgress: { done: 0, total: rows.length } });
-
-    type RescanUpdate = { id: number; mediaType: string; thumbnail: string | null; duration: number | null; hasAudio: number };
-
-    const processOne = async (video: Video): Promise<RescanUpdate | null> => {
-      const ext = video.path.split('.').pop()?.toLowerCase() ?? '';
-      const isImage = imageExts.includes(ext);
-      const isAudio = audioExts.includes(ext);
-      const mediaType = isImage ? 'image' : isAudio ? 'audio' : 'video';
-      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(video.path));
-      const hash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-      const outputPath = await join(thumbDir, hash.slice(0, 2), `${hash}.webp`);
-      try {
-        if (isImage) {
-          try {
-            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-              'generate_thumbnail', { videoPath: video.path, outputPath }
-            );
-            return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: null, hasAudio: 0 };
-          } catch {
-            return { id: video.id, mediaType, thumbnail: null, duration: null, hasAudio: 0 };
-          }
-        } else if (isAudio) {
-          try {
-            const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-              'generate_thumbnail', { videoPath: video.path, outputPath }
-            );
-            return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: 1 };
-          } catch {
-            return { id: video.id, mediaType, thumbnail: null, duration: null, hasAudio: 1 };
-          }
-        } else {
-          const result = await invoke<{ thumbnail_path: string; duration: number | null; has_audio: boolean }>(
-            'generate_thumbnail', { videoPath: video.path, outputPath }
-          );
-          return { id: video.id, mediaType, thumbnail: result.thumbnail_path, duration: result.duration, hasAudio: result.has_audio ? 1 : 0 };
-        }
-      } catch (e) {
-        console.warn('rescanMultiple failed for:', video.path, e);
-        return null;
-      }
-    };
-
-    let done = 0;
     try {
-      for (let i = 0; i < rows.length; i += THUMBNAIL_CONCURRENCY) {
-        const batch = rows.slice(i, i + THUMBNAIL_CONCURRENCY);
-        const results = await Promise.all(batch.map(processOne));
-        done += batch.length;
-        const valid = results.filter((r): r is RescanUpdate => r !== null);
-        if (valid.length > 0) {
-          // Update media_type for each
-          for (const r of valid) {
-            await invoke('db_update_video', { videoId: r.id, mediaType: r.mediaType });
-          }
-          await invoke('db_update_thumbnails_batch', {
-            updates: valid.map((r) => ({ id: r.id, thumbnail: r.thumbnail, duration: r.duration, hasAudio: r.hasAudio })),
-          });
-        }
-        set({ thumbnailProgress: { done, total: rows.length } });
-      }
+      await rescanMultipleWorker(
+        rows,
+        (done, total) => set({ thumbnailProgress: { done, total } }),
+        async () => { await get().fetchVideos(); }
+      );
     } finally {
       set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
-      await get().fetchVideos();
     }
   },
+
 
   updateProgress: async (videoId: number, progress: number) => {
     await invoke('db_update_progress', { videoId, progress });

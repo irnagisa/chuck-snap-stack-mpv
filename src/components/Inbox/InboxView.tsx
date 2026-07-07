@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useInboxStore, buildStacks, getTimeBucket, type InboxStack, type StackType, type TimeBucket } from '../../store/useInboxStore';
 import { useModalStore } from '../../store/useModalStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
@@ -14,6 +14,19 @@ export default function InboxView() {
   const openDetailVideo = useModalStore((s) => s.openDetailVideo);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
   const { videoTags, categories, fetchVideoTagsForIds, fetchCategories } = useTagStore();
+
+  // Stabilize the video list passed to QuickSort so that tag-loading mid-session
+  // does NOT change `current` and cause VideoOrganizerPanel to cycle through videos,
+  // triggering "Maximum update depth exceeded".
+  // videoTags is intentionally excluded from deps: the snapshot is refreshed only
+  // when the actual video list or active stack changes, not when tags are loaded.
+  const stackVideos = useMemo(() => {
+    if (!activeStack) return [];
+    if (activeStack.stackType === 'batch') return batchVideos ?? [];
+    return videos.filter((v) => matchesStack(v, activeStack, videoTags));
+  // videoTags intentionally omitted: prevents current video from changing as tags load mid-session
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videos, activeStack, batchVideos]);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // フィルター: 非表示にするスタック種別 (空 = 全表示)
@@ -84,10 +97,6 @@ export default function InboxView() {
   };
 
   if (activeStack) {
-    const stackVideos =
-      activeStack.stackType === 'batch'
-        ? (batchVideos ?? [])
-        : videos.filter((v) => matchesStack(v, activeStack, videoTags));
     return (
       <QuickSort
         stack={activeStack}

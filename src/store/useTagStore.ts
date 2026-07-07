@@ -118,18 +118,17 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
 
   fetchVideoTagsForIds: async (videoIds) => {
     const safeIds = videoIds.filter((id) => Number.isFinite(id));
-    if (safeIds.length === 0) {
-      set({ videoTags: {} });
-      return;
-    }
+    if (safeIds.length === 0) return;
     const rows = await invoke<{ video_id: number; id: number; name: string; color: string; icon: string | null; tag_category_id: number | null; created_at: string }[]>(
       'db_fetch_video_tags_for_ids',
       { videoIds: safeIds }
     );
-    const videoTags: Record<number, Tag[]> = {};
+    // Initialize all requested IDs with [] so `id in videoTags` is true even for tagless videos.
+    // This prevents InboxView's useEffect([videos]) from re-fetching them on every render.
+    const fetched: Record<number, Tag[]> = {};
+    for (const id of safeIds) fetched[id] = [];
     for (const row of rows) {
-      if (!videoTags[row.video_id]) videoTags[row.video_id] = [];
-      videoTags[row.video_id].push({
+      fetched[row.video_id].push({
         id: row.id,
         name: row.name,
         color: row.color,
@@ -138,7 +137,8 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
         created_at: row.created_at,
       });
     }
-    set({ videoTags });
+    // Merge into existing state instead of replacing — preserves tags loaded by fetchVideoTags.
+    set((state) => ({ videoTags: { ...state.videoTags, ...fetched } }));
   },
 
   fetchVideoTags: async (videoId) => {
