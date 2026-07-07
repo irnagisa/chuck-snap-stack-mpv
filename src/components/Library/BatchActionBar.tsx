@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useModalStore } from "../../store/useModalStore";
 
@@ -16,7 +17,7 @@ export function BatchActionBar({
   const { t } = useTranslation();
   const { openBulkModal } = useModalStore();
   const { assignCategoryFromPath, rescanMultiple } = useLibraryStore(
-    (s) => ({ assignCategoryFromPath: s.assignCategoryFromPath, rescanMultiple: s.rescanMultiple })
+    useShallow((s) => ({ assignCategoryFromPath: s.assignCategoryFromPath, rescanMultiple: s.rescanMultiple }))
   );
 
   if (selectedVideoIds.size === 0) return null;
