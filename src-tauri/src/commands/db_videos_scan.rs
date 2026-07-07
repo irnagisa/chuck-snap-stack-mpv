@@ -2,6 +2,7 @@
 
 use rusqlite::OptionalExtension;
 use tauri::State;
+use tauri_plugin_notification::NotificationExt;
 
 use crate::commands::db_tags::build_category_hierarchy;
 use crate::commands::db_videos::{
@@ -176,6 +177,7 @@ fn assign_categories_for_ids(
 
 #[tauri::command]
 pub async fn db_scan_and_import(
+    app: tauri::AppHandle,
     state: State<'_, DbState>,
     path: String,
     use_dir_as_category: bool,
@@ -284,6 +286,17 @@ pub async fn db_scan_and_import(
             log::error!("[db_scan_and_import] ROLLBACK 失敗: {rb_err}");
         }
         return Err(result.unwrap_err());
+    }
+
+    if new_count > 0 {
+        if let Err(e) = app.notification()
+            .builder()
+            .title("インポート完了")
+            .body(&format!("{new_count}件のビデオをライブラリに追加しました"))
+            .show()
+        {
+            log::warn!("[notification] インポート通知の送信に失敗しました: {e}");
+        }
     }
 
     Ok(ScanImportResult { new_count, scanned_count, errors, truncated, skipped_count })

@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tauri::{Emitter, Manager};
 use serde::Serialize;
+use tauri_plugin_notification::NotificationExt;
 
 use super::settings::SharedAppSettings;
 
@@ -237,6 +238,19 @@ pub async fn download_with_ytdlp(
             "yt-dlp が保存先ディレクトリ外にファイルを出力しました: {}",
             canon_output.display()
         ));
+    }
+
+    let file_name = canon_output
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "ファイル".to_string());
+    if let Err(e) = app.notification()
+        .builder()
+        .title("ダウンロード完了")
+        .body(&format!("{file_name} をダウンロードしました"))
+        .show()
+    {
+        log::warn!("[notification] yt-dlp ダウンロード通知の送信に失敗しました: {e}");
     }
 
     Ok(canon_output.to_string_lossy().into_owned())

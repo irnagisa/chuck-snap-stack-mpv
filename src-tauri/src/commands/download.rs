@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use futures_util::StreamExt;
 use serde::Serialize;
 use tauri::Emitter;
+use tauri_plugin_notification::NotificationExt;
 use tokio::io::AsyncWriteExt;
 
 #[derive(Clone, Serialize)]
@@ -147,6 +148,19 @@ pub async fn download_video(
         "download://progress",
         DownloadProgress { downloaded, total, percent: 100 },
     );
+
+    let file_name = std::path::Path::new(&actual_path_str)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "ファイル".to_string());
+    if let Err(e) = app.notification()
+        .builder()
+        .title("ダウンロード完了")
+        .body(&format!("{file_name} をダウンロードしました"))
+        .show()
+    {
+        log::warn!("[notification] ダウンロード通知の送信に失敗しました: {e}");
+    }
 
     Ok(actual_path_str)
 }

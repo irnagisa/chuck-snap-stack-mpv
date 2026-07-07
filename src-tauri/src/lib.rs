@@ -19,6 +19,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let db_path = app.path().app_data_dir()?.join("videos.db");
             let conn = rusqlite::Connection::open(&db_path)?;

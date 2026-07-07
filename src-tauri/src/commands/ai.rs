@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tauri::Emitter;
+use tauri_plugin_notification::NotificationExt;
 use serde::Serialize;
 use crate::ai::{AiTaggerState, suggest};
 use crate::ai::suggest::AiSuggestionResult;
@@ -79,6 +80,17 @@ pub async fn download_ai_model(
         let mut inner = state.0.lock().map_err(|e| e.to_string())?;
         inner.downloading = false;
         inner.download_progress = if result.is_ok() { 1.0 } else { 0.0 };
+    }
+
+    if result.is_ok() {
+        if let Err(e) = app.notification()
+            .builder()
+            .title("AIモデルのダウンロード完了")
+            .body("AIタグ解析モデルがダウンロードされました")
+            .show()
+        {
+            log::warn!("[notification] AIモデル通知の送信に失敗しました: {e}");
+        }
     }
 
     result

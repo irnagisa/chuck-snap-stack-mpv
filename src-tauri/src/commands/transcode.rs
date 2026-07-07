@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::Emitter;
+use tauri_plugin_notification::NotificationExt;
 
 use super::settings::SharedAppSettings;
 use super::utils::{resolve_unique_path, validate_video_path};
@@ -240,6 +241,20 @@ pub async fn transcode_video(
     }
 
     result?;
+
+    let file_name = std::path::Path::new(&output_str)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "ファイル".to_string());
+    if let Err(e) = app.notification()
+        .builder()
+        .title("トランスコード完了")
+        .body(&format!("{file_name} のトランスコードが完了しました"))
+        .show()
+    {
+        log::warn!("[notification] トランスコード通知の送信に失敗しました: {e}");
+    }
+
     Ok(output_str)
 }
 
