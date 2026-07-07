@@ -6,6 +6,13 @@ vi.mock('@tauri-apps/api/path', () => ({
   appCacheDir: vi.fn(() => Promise.resolve('/tmp')),
   join: vi.fn((...parts: string[]) => Promise.resolve(parts.join('/'))),
 }));
+vi.mock('./useLibraryStore', () => ({
+  useLibraryStore: {
+    getState: vi.fn(() => ({
+      fetchAllForShuffle: vi.fn(() => Promise.resolve([])),
+    })),
+  },
+}));
 
 import { usePlayerStore } from './usePlayerStore';
 import type { Video } from '../types';
@@ -53,10 +60,15 @@ beforeEach(() => {
 });
 
 describe('toggleShuffle ON', () => {
-  it('puts current video first, shuffles rest, saves originalQueue, sets queueIndex to 0', () => {
+  it('puts current video first, shuffles rest, saves originalQueue, sets queueIndex to 0', async () => {
     const v1 = makeVideo(1);
     const v2 = makeVideo(2);
     const v3 = makeVideo(3);
+    // fetchAllForShuffle が失敗した場合のフォールバック: 現在のキューでシャッフル
+    const { useLibraryStore } = await import('./useLibraryStore');
+    vi.mocked(useLibraryStore.getState).mockReturnValue({
+      fetchAllForShuffle: vi.fn(() => Promise.resolve([v1, v2, v3])),
+    } as never);
     usePlayerStore.setState({
       isShuffle: false,
       queue: [v1, v2, v3],
@@ -65,7 +77,7 @@ describe('toggleShuffle ON', () => {
       originalQueue: [],
     });
 
-    usePlayerStore.getState().toggleShuffle();
+    await usePlayerStore.getState().toggleShuffle();
 
     const state = usePlayerStore.getState();
     expect(state.isShuffle).toBe(true);
@@ -75,6 +87,17 @@ describe('toggleShuffle ON', () => {
     expect(state.queue).toHaveLength(3);
     // All original videos present
     expect(state.queue.map((v) => v.id).sort()).toEqual([1, 2, 3]);
+  });
+});
+
+describe('toggleShuffle ON — empty queue', () => {
+  it('sets isShuffle to true even when queue is empty', async () => {
+    usePlayerStore.setState({ queue: [], currentVideo: null, isShuffle: false });
+
+    await usePlayerStore.getState().toggleShuffle();
+
+    expect(usePlayerStore.getState().isShuffle).toBe(true);
+    expect(usePlayerStore.getState().queue).toEqual([]);
   });
 });
 
@@ -147,6 +170,18 @@ describe('removeFromQueue', () => {
     });
 
     usePlayerStore.getState().removeFromQueue(v3.id);
+
+    const state = usePlayerStore.getState();
+    expect(state.queue).toEqual([v1, v2]);
+    expect(state.queueIndex).toBe(0);
+  });
+
+  it('does nothing when removing a non-existent id', () => {
+    const v1 = makeVideo(1);
+    const v2 = makeVideo(2);
+    usePlayerStore.setState({ queue: [v1, v2], queueIndex: 0, currentVideo: v1 });
+
+    usePlayerStore.getState().removeFromQueue(999);
 
     const state = usePlayerStore.getState();
     expect(state.queue).toEqual([v1, v2]);
