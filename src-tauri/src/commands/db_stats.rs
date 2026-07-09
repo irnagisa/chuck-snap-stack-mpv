@@ -42,6 +42,8 @@ pub struct TopTag {
 #[serde(rename_all = "camelCase")]
 pub struct LibraryStats {
     pub total_videos: i64,
+    pub image_count: i64,
+    pub video_count: i64,
     pub watched_count: i64,
     pub total_duration_sec: f64,
     pub avg_rating: f64,
@@ -58,6 +60,22 @@ pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibrarySt
 
     let total_videos: i64 = conn
         .query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+
+    let image_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos WHERE media_type = 'image'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let video_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos WHERE media_type IS NULL OR media_type != 'image'",
+            [],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
     let watched_count: i64 = conn
@@ -168,6 +186,8 @@ pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibrarySt
 
     Ok(LibraryStats {
         total_videos,
+        image_count,
+        video_count,
         watched_count,
         total_duration_sec,
         avg_rating,

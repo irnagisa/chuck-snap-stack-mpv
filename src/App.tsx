@@ -31,11 +31,12 @@ import { LibrarySidebar } from "./components/Library/LibrarySidebar";
 import { LibraryFilterBar } from "./components/Library/LibraryFilterBar";
 import { BatchActionBar } from "./components/Library/BatchActionBar";
 import InboxView from "./components/Inbox/InboxView";
+import { HomeView } from "./components/Home/HomeView";
 import { useInboxStore } from "./store/useInboxStore";
 import type { Playlist } from "./types";
 
 type SidebarTab = "category" | "playlist" | "folder";
-type MainView = "library" | "inbox";
+type MainView = "home" | "library" | "inbox";
 
 function App() {
   const { t } = useTranslation();
@@ -107,7 +108,7 @@ function App() {
   useWatcher();
   const { isDragging } = useDragDrop();
 
-  const [mainView, setMainView] = useState<MainView>("library");
+  const [mainView, setMainView] = useState<MainView>("home");
   const [searchInput, setSearchInput] = useState(filterSearch);
   const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
     const presets = [120, 180, 240, 320];
@@ -291,7 +292,11 @@ function App() {
 
           {/* ボディ */}
           <div className="flex flex-1 min-h-0">
-            {mainView === "inbox" ? (
+            {mainView === "home" ? (
+              <ErrorBoundary>
+                <HomeView onNavigate={setMainView} />
+              </ErrorBoundary>
+            ) : mainView === "inbox" ? (
               <div className="flex flex-1 min-h-0 min-w-0">
                 <ErrorBoundary>
                   <InboxView />

@@ -521,6 +521,23 @@ pub async fn db_get_inbox_videos(state: State<'_, DbState>) -> Result<Vec<Video>
 }
 
 #[tauri::command]
+pub async fn db_get_recent_videos(state: State<'_, DbState>, limit: i64) -> Result<Vec<Video>, String> {
+    let conn = state.conn()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
+                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
+                    v.created_at, v.media_type, v.source_url, v.status, v.source_type
+             FROM videos v
+             ORDER BY v.created_at DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([limit], video_from_row).map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn db_get_inbox_stats(state: State<'_, DbState>) -> Result<InboxStats, String> {
     let conn = state.conn()?;
     let total: i64 = conn

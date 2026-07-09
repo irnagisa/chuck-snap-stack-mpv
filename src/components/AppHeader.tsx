@@ -3,7 +3,7 @@ import { useModalStore } from "../store/useModalStore";
 import { useLibraryStore } from "../store/useLibraryStore";
 import { useShallow } from "zustand/shallow";
 
-type MainView = "library" | "inbox";
+type MainView = "home" | "library" | "inbox";
 
 interface Props {
   mainView: MainView;
@@ -54,6 +54,17 @@ export function AppHeader({
         <button
           type="button"
           className={`px-2.5 py-1.5 rounded-l font-medium transition-colors ${
+            mainView === "home"
+              ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+          }`}
+          onClick={() => onMainViewChange("home")}
+        >
+          ホーム
+        </button>
+        <button
+          type="button"
+          className={`px-2.5 py-1.5 font-medium transition-colors ${
             mainView === "library"
               ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"

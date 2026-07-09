@@ -175,6 +175,7 @@ pub fn run() {
             commands::db_videos::db_update_audio_only_batch,
             commands::db_videos::db_reset_jpg_thumbnails,
             commands::db_videos::db_get_inbox_videos,
+            commands::db_videos::db_get_recent_videos,
             commands::db_videos::db_get_inbox_stats,
             commands::db_videos::db_graduate_from_inbox,
             commands::db_videos::db_sample_inbox_videos,
