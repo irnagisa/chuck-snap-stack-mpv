@@ -10,9 +10,24 @@ export interface HomeLibraryStats {
   videoCount: number;
 }
 
+export interface LastViewedItem {
+  video: Video;
+  lastViewedAt: string;
+}
+
+export interface RecentFolderEntry {
+  path: string;
+  openedAt: string;
+}
+
+export const RECENT_FOLDERS_SETTING_KEY = 'recent_folders';
+const RECENT_FOLDERS_MAX = 8;
+
 interface HomeState {
   recentVideos: Video[];
   libraryStats: HomeLibraryStats | null;
+  lastViewed: LastViewedItem | null;
+  recentFolders: RecentFolderEntry[];
   isLoading: boolean;
 }
 
@@ -23,17 +38,29 @@ interface HomeActions {
 export const useHomeStore = create<HomeState & HomeActions>((set) => ({
   recentVideos: [],
   libraryStats: null,
+  lastViewed: null,
+  recentFolders: [],
   isLoading: false,
 
   fetchHomeData: async () => {
     set({ isLoading: true });
     try {
-      const [recentVideos, libraryStats] = await Promise.all([
+      const [recentVideos, libraryStats, lastViewed, recentFoldersRaw] = await Promise.all([
         invoke<Video[]>('db_get_recent_videos', { limit: 20 }),
         invoke<HomeLibraryStats>('db_get_library_stats'),
+        invoke<LastViewedItem | null>('db_get_last_viewed_video'),
+        invoke<string | null>('db_get_setting', { key: RECENT_FOLDERS_SETTING_KEY }),
         useInboxStore.getState().fetchInbox(),
       ]);
-      set({ recentVideos, libraryStats, isLoading: false });
+      let recentFolders: RecentFolderEntry[] = [];
+      if (recentFoldersRaw) {
+        try {
+          recentFolders = JSON.parse(recentFoldersRaw);
+        } catch {
+          recentFolders = [];
+        }
+      }
+      set({ recentVideos, libraryStats, lastViewed, recentFolders: recentFolders.slice(0, RECENT_FOLDERS_MAX), isLoading: false });
     } catch (e) {
       console.error('[useHomeStore] fetchHomeData error:', e);
       toast.error(`ホーム画面の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);

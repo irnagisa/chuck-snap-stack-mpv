@@ -1,11 +1,14 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useHomeStore } from "../../store/useHomeStore";
-import { useModalStore } from "../../store/useModalStore";
 import { formatTime } from "../../utils/time";
+import type { Video } from "../../types";
 
-export function RecentlyAddedCard() {
+interface Props {
+  onOpen: (video: Video) => void;
+}
+
+export function RecentlyAddedCard({ onOpen }: Props) {
   const recentVideos = useHomeStore((s) => s.recentVideos);
-  const openDetailVideo = useModalStore((s) => s.openDetailVideo);
 
   if (recentVideos.length === 0) return null;
 
@@ -18,7 +21,7 @@ export function RecentlyAddedCard() {
             type="button"
             key={v.id}
             className="relative shrink-0 w-32 aspect-video bg-gray-200 dark:bg-gray-700 rounded overflow-hidden"
-            onClick={() => openDetailVideo(v)}
+            onClick={() => onOpen(v)}
           >
             {v.thumbnail ? (
               <img

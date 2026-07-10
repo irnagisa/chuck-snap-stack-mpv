@@ -537,6 +537,47 @@ pub async fn db_get_recent_videos(state: State<'_, DbState>, limit: i64) -> Resu
     rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastViewedItem {
+    pub video: Video,
+    pub last_viewed_at: String,
+}
+
+#[tauri::command]
+pub async fn db_get_last_viewed_video(state: State<'_, DbState>) -> Result<Option<LastViewedItem>, String> {
+    let conn = state.conn()?;
+    conn.query_row(
+        "SELECT id, path, title, duration, thumbnail, watched_at, progress, rating,
+                category_id, has_audio, watch_count, created_at, media_type, source_url,
+                status, source_type, last_viewed_at
+         FROM videos
+         WHERE last_viewed_at IS NOT NULL
+         ORDER BY last_viewed_at DESC
+         LIMIT 1",
+        [],
+        |r| {
+            Ok(LastViewedItem {
+                video: video_from_row(r)?,
+                last_viewed_at: r.get(16)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn db_update_last_viewed(state: State<'_, DbState>, video_id: i64) -> Result<(), String> {
+    let conn = state.conn()?;
+    conn.execute(
+        "UPDATE videos SET last_viewed_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        [video_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn db_get_inbox_stats(state: State<'_, DbState>) -> Result<InboxStats, String> {
     let conn = state.conn()?;

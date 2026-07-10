@@ -268,6 +268,23 @@ function App() {
 
   const imageList = useMemo(() => videos.filter((v) => v.media_type === "image"), [videos]);
 
+  const handleHomeOpenVideo = useCallback(
+    (v: Video) => {
+      setMainView("library");
+      openDetailVideo(v);
+    },
+    [openDetailVideo]
+  );
+
+  const handleHomeOpenFolder = useCallback(
+    (dir: string) => {
+      setMainView("library");
+      setSidebarTab("folder");
+      setWatchDirFilter(dir);
+    },
+    [setWatchDirFilter]
+  );
+
   return (
     <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       {isMiniPlayer ? (
@@ -294,7 +311,11 @@ function App() {
           <div className="flex flex-1 min-h-0">
             {mainView === "home" ? (
               <ErrorBoundary>
-                <HomeView onNavigate={setMainView} />
+                <HomeView
+                  onNavigate={setMainView}
+                  onOpenVideo={handleHomeOpenVideo}
+                  onOpenFolder={handleHomeOpenFolder}
+                />
               </ErrorBoundary>
             ) : mainView === "inbox" ? (
               <div className="flex flex-1 min-h-0 min-w-0">
