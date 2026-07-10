@@ -108,7 +108,14 @@ function App() {
   useWatcher();
   const { isDragging } = useDragDrop();
 
-  const [mainView, setMainView] = useState<MainView>("home");
+  const [mainView, setMainView] = useState<MainView>(() => {
+    const hasLaunched = localStorage.getItem("hasLaunched");
+    if (!hasLaunched) {
+      localStorage.setItem("hasLaunched", "true");
+      return "home";
+    }
+    return "library";
+  });
   const [searchInput, setSearchInput] = useState(filterSearch);
   const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
     const presets = [120, 180, 240, 320];
