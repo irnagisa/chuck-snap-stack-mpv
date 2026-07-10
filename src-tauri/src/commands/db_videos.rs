@@ -1168,3 +1168,20 @@ pub async fn db_update_audio_only_batch(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn db_get_random_video(state: State<'_, DbState>) -> Result<Option<Video>, String> {
+    use rusqlite::OptionalExtension;
+    let conn = state.conn()?;
+    conn.query_row(
+        "SELECT id, path, title, duration, thumbnail, watched_at, progress, rating,
+                category_id, has_audio, watch_count, created_at, media_type, source_url, status, source_type
+         FROM videos
+         WHERE (media_type IS NULL OR media_type != 'image') AND (status IS NULL OR status = 'inbox')
+         ORDER BY RANDOM() LIMIT 1",
+        [],
+        video_from_row,
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
