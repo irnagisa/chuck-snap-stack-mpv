@@ -73,7 +73,7 @@ function App() {
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration, setMaxDuration,
     setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
-    fetchVideos, fetchAllForShuffle,
+    fetchVideos,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
     scanAndImport: s.scanAndImport,
@@ -92,7 +92,6 @@ function App() {
     setSort: s.setSort,
     setPage: s.setPage,
     fetchVideos: s.fetchVideos,
-    fetchAllForShuffle: s.fetchAllForShuffle,
   })));
 
   const currentVideo = usePlayerStore((s) => s.currentVideo);
@@ -195,11 +194,26 @@ function App() {
     if (!targetId) return;
     const inPage = videos.find((v) => v.id === targetId);
     if (inPage) { libraryRef.current?.scrollToId(targetId); return; }
-    fetchAllForShuffle().then((all) => {
-      const pos = all.findIndex((v) => v.id === targetId);
-      if (pos < 0) return;
+    // 全件 IPC 転送を避けるため専用コマンドでページ番号を直接取得
+    const {
+      filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+      filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+      filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
+    } = useLibraryStore.getState();
+    invoke<number | null>('db_find_video_page', {
+      videoId: targetId,
+      filter: {
+        filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+        filterMinRating, filterHasAudio, filterMinDuration,
+        filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
+        filterWatchedStatus, filterWatchDir, filterMediaType,
+        filterSortBy, filterSortOrder,
+        currentPage: 1, pageSize,
+      },
+    }).then((page) => {
+      if (page == null) return;
       pendingScrollIdRef.current = targetId;
-      handleSetPage(Math.floor(pos / pageSize) + 1);
+      handleSetPage(page);
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailVideo?.id]);

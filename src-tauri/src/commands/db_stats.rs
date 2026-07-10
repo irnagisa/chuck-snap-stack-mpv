@@ -58,67 +58,35 @@ pub struct LibraryStats {
 
 #[tauri::command]
 pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibraryStats, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
 
-    let total_videos: i64 = conn
-        .query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-
-    let image_count: i64 = conn
+    // 8本の独立クエリを1本の集計クエリに統合。
+    // today_added/today_watched は datetime(..., 'utc') による範囲比較で
+    // idx_videos_created_at / idx_videos_watched_at を活用できる。
+    let (total_videos, image_count, video_count, watched_count,
+         total_duration_sec, avg_rating, today_added, today_watched): (i64, i64, i64, i64, f64, f64, i64, i64) = conn
         .query_row(
-            "SELECT COUNT(*) FROM videos WHERE media_type = 'image'",
+            "SELECT
+               COUNT(*),
+               SUM(CASE WHEN media_type = 'image' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN media_type IS NULL OR media_type != 'image' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN watched_at IS NOT NULL THEN 1 ELSE 0 END),
+               COALESCE(SUM(duration), 0),
+               COALESCE(AVG(NULLIF(rating, 0)), 0),
+               SUM(CASE WHEN created_at >= datetime(date('now', 'localtime'), 'utc')
+                         AND created_at <  datetime(date('now', '+1 day', 'localtime'), 'utc')
+                    THEN 1 ELSE 0 END),
+               SUM(CASE WHEN watched_at IS NOT NULL
+                         AND watched_at >= datetime(date('now', 'localtime'), 'utc')
+                         AND watched_at <  datetime(date('now', '+1 day', 'localtime'), 'utc')
+                    THEN 1 ELSE 0 END)
+             FROM videos",
             [],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
+                    r.get(4)?, r.get(5)?, r.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                    r.get::<_, Option<i64>>(7)?.unwrap_or(0))),
         )
         .map_err(|e| e.to_string())?;
-
-    let video_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM videos WHERE media_type IS NULL OR media_type != 'image'",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    let watched_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM videos WHERE watched_at IS NOT NULL",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    let total_duration_sec: f64 = conn
-        .query_row(
-            "SELECT COALESCE(SUM(duration), 0) FROM videos",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    let avg_rating: f64 = conn
-        .query_row(
-            "SELECT COALESCE(AVG(NULLIF(rating, 0)), 0) FROM videos",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    let today_added: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM videos WHERE date(created_at, 'localtime') = date('now', 'localtime')",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
-
-    let today_watched: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM videos WHERE date(watched_at, 'localtime') = date('now', 'localtime')",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
 
     let category_stats = {
         let mut stmt = conn

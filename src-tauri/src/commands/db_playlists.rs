@@ -25,7 +25,7 @@ use crate::commands::db_videos::Video;
 
 #[tauri::command]
 pub async fn db_fetch_playlists(state: State<'_, DbState>) -> Result<Vec<Playlist>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare("SELECT id, name, created_at FROM playlists ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
@@ -64,7 +64,7 @@ pub async fn db_fetch_playlist_videos(
     state: State<'_, DbState>,
     playlist_id: i64,
 ) -> Result<Vec<Video>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
@@ -136,7 +136,7 @@ pub async fn db_reorder_playlist_items(
 pub async fn db_get_smart_playlists(
     state: State<'_, DbState>,
 ) -> Result<Vec<SmartPlaylist>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT id, name, filter_json, created_at FROM smart_playlists ORDER BY created_at DESC",

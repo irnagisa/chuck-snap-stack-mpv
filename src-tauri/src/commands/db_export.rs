@@ -82,7 +82,7 @@ fn base64_encode(data: &[u8]) -> String {
 
 #[tauri::command]
 pub async fn db_export_backup(state: State<'_, DbState>) -> Result<BackupData, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let now = chrono_or_fallback();
     Ok(BackupData {
         version: 1,

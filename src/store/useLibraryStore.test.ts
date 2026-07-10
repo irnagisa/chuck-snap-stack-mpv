@@ -318,7 +318,7 @@ describe('updateProgress', () => {
   it('calls db_update_progress and updates local state', async () => {
     const video = { id: 1, path: '/a.mp4', title: 'A', duration: 60, thumbnail: null,
       watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
-      watch_count: 0, created_at: '2024-01-01', media_type: 'video', source_url: null,
+      watch_count: 0, created_at: '2024-01-01', media_type: 'video' as const, source_url: null,
       status: null, source_type: null };
     useLibraryStore.setState({ videos: [video] });
     mockInvoke.mockResolvedValueOnce(undefined); // db_update_progress
@@ -334,7 +334,7 @@ describe('incrementWatchCount', () => {
   it('calls db_increment_watch_count and increments local watch_count', async () => {
     const video = { id: 1, path: '/a.mp4', title: 'A', duration: 60, thumbnail: null,
       watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
-      watch_count: 2, created_at: '2024-01-01', media_type: 'video', source_url: null,
+      watch_count: 2, created_at: '2024-01-01', media_type: 'video' as const, source_url: null,
       status: null, source_type: null };
     useLibraryStore.setState({ videos: [video] });
     mockInvoke.mockResolvedValueOnce(undefined);
@@ -350,7 +350,7 @@ describe('updateVideo', () => {
   it('calls db_update_video and updates local state', async () => {
     const video = { id: 1, path: '/a.mp4', title: 'Old', duration: 60, thumbnail: null,
       watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
-      watch_count: 0, created_at: '2024-01-01', media_type: 'video', source_url: null,
+      watch_count: 0, created_at: '2024-01-01', media_type: 'video' as const, source_url: null,
       status: null, source_type: null };
     useLibraryStore.setState({ videos: [video] });
     mockInvoke.mockResolvedValueOnce(undefined);

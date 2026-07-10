@@ -50,7 +50,7 @@ pub struct VideoTagRow {
 
 #[tauri::command]
 pub async fn db_fetch_tags(state: State<'_, DbState>) -> Result<Vec<Tag>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare("SELECT id, name, color, icon, tag_category_id, created_at FROM tags ORDER BY name")
         .map_err(|e| e.to_string())?;
@@ -71,7 +71,7 @@ pub async fn db_fetch_tags(state: State<'_, DbState>) -> Result<Vec<Tag>, String
 
 #[tauri::command]
 pub async fn db_fetch_categories(state: State<'_, DbState>) -> Result<Vec<Category>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT id, name, color, icon, parent_id, created_at FROM categories ORDER BY name",
@@ -96,7 +96,7 @@ pub async fn db_fetch_categories(state: State<'_, DbState>) -> Result<Vec<Catego
 pub async fn db_fetch_tag_categories(
     state: State<'_, DbState>,
 ) -> Result<Vec<TagCategory>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare("SELECT id, name, created_at FROM tag_categories ORDER BY name")
         .map_err(|e| e.to_string())?;
@@ -120,7 +120,7 @@ pub async fn db_fetch_video_tags_for_ids(
     if video_ids.is_empty() {
         return Ok(vec![]);
     }
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     // Build IN (...) placeholder (up to 499 params)
     let ph = video_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
     let sql = format!(
@@ -154,7 +154,7 @@ pub async fn db_fetch_video_tags(
     state: State<'_, DbState>,
     video_id: i64,
 ) -> Result<Vec<Tag>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.name, t.color, t.icon, t.tag_category_id, t.created_at

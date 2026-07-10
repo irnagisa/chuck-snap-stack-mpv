@@ -665,7 +665,7 @@ pub async fn db_get_videos_for_paths(
     if paths.is_empty() {
         return Ok(vec![]);
     }
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     const BATCH: usize = 499;
     let mut results = Vec::new();
     for chunk in paths.chunks(BATCH) {

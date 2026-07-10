@@ -22,11 +22,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let db_path = app.path().app_data_dir()?.join("videos.db");
-            let conn = rusqlite::Connection::open(&db_path)?;
-            db::schema::init_db(&conn)?;
-            db::migrations::run_data_migrations(&conn)?;
+            // 書き込み用接続: スキーマ初期化・マイグレーションはここで実施
+            let writer = rusqlite::Connection::open(&db_path)?;
+            db::schema::init_db(&writer)?;
+            db::migrations::run_data_migrations(&writer)?;
             // watchDir/Inbox → watchDir/Unsorted への一回限りのディレクトリ名変更
-            if let Ok(mut stmt) = conn.prepare("SELECT path FROM watch_dirs") {
+            if let Ok(mut stmt) = writer.prepare("SELECT path FROM watch_dirs") {
                 let paths: Vec<String> = stmt
                     .query_map([], |r| r.get(0))
                     .map(|rows| rows.filter_map(|r| r.ok()).collect())
@@ -39,7 +40,10 @@ pub fn run() {
                     }
                 }
             }
-            app.manage(DbState(Mutex::new(conn)));
+            // 読み取り専用接続: WAL モードで writer と並行読み取りが可能
+            let reader = rusqlite::Connection::open(&db_path)?;
+            reader.execute_batch("PRAGMA journal_mode=WAL; PRAGMA query_only=ON;")?;
+            app.manage(DbState { writer: Mutex::new(writer), reader: Mutex::new(reader) });
             Ok(())
         })
         .manage(MpvState::new())
@@ -195,6 +199,7 @@ pub fn run() {
             commands::ai::analyze_thumbnail_for_tags,
             commands::system::get_disk_info,
             commands::db_videos::db_get_random_video,
+            commands::db_videos::db_find_video_page,
             commands::watcher::get_watching_paths,
         ])
         .build(tauri::generate_context!())

@@ -131,7 +131,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
 
     // Index on columns added via ALTER TABLE above; must run after they exist.
     conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS idx_videos_last_viewed_at ON videos(last_viewed_at);",
+        "CREATE INDEX IF NOT EXISTS idx_videos_last_viewed_at ON videos(last_viewed_at);
+         CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
+         CREATE INDEX IF NOT EXISTS idx_videos_media_type ON videos(media_type);",
     )?;
 
     Ok(())
