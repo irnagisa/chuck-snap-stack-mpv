@@ -193,6 +193,9 @@ pub fn run() {
             commands::ai::check_ai_model_status,
             commands::ai::download_ai_model,
             commands::ai::analyze_thumbnail_for_tags,
+            commands::system::get_disk_info,
+            commands::db_videos::db_get_random_video,
+            commands::watcher::get_watching_paths,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

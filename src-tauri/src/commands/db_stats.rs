@@ -45,6 +45,8 @@ pub struct LibraryStats {
     pub image_count: i64,
     pub video_count: i64,
     pub watched_count: i64,
+    pub today_added: i64,
+    pub today_watched: i64,
     pub total_duration_sec: f64,
     pub avg_rating: f64,
     pub category_stats: Vec<CategoryStat>,
@@ -101,6 +103,22 @@ pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibrarySt
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
+
+    let today_added: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos WHERE date(created_at, 'localtime') = date('now', 'localtime')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    let today_watched: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM videos WHERE date(watched_at, 'localtime') = date('now', 'localtime')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
 
     let category_stats = {
         let mut stmt = conn
@@ -189,6 +207,8 @@ pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibrarySt
         image_count,
         video_count,
         watched_count,
+        today_added,
+        today_watched,
         total_duration_sec,
         avg_rating,
         category_stats,
