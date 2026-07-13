@@ -11,6 +11,8 @@ interface Props {
   onTabChange: (tab: SidebarTab) => void;
   selectedCategoryId: number | null;
   onSelectCategory: (id: number | null) => void;
+  selectedTagIds: number[];
+  onToggleTag: (id: number) => void;
   selectedDir: string | null;
   onSelectDir: (dir: string | null) => void;
   onOpenPlaylist: (playlist: Playlist) => void;
@@ -21,6 +23,8 @@ export function LibrarySidebar({
   onTabChange,
   selectedCategoryId,
   onSelectCategory,
+  selectedTagIds,
+  onToggleTag,
   selectedDir,
   onSelectDir,
   onOpenPlaylist,
@@ -57,6 +61,8 @@ export function LibrarySidebar({
           <CategorySidebar
             selectedCategoryId={selectedCategoryId}
             onSelectCategory={onSelectCategory}
+            selectedTagIds={selectedTagIds}
+            onToggleTag={onToggleTag}
           />
         ) : sidebarTab === "folder" ? (
           <WatchDirSidebar

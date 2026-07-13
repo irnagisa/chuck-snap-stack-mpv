@@ -352,6 +352,8 @@ function App() {
                     onTabChange={setSidebarTab}
                     selectedCategoryId={filterCategoryId}
                     onSelectCategory={setCategoryFilter}
+                    selectedTagIds={filterTagIds}
+                    onToggleTag={toggleTagFilter}
                     selectedDir={filterWatchDir}
                     onSelectDir={setWatchDirFilter}
                     onOpenPlaylist={(pl: Playlist) => openPlaylist(pl)}

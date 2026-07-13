@@ -14,9 +14,11 @@ const COLORS = [
 interface Props {
   selectedCategoryId: number | null;
   onSelectCategory: (id: number | null) => void;
+  selectedTagIds: number[];
+  onToggleTag: (id: number) => void;
 }
 
-export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props) {
+export function CategorySidebar({ selectedCategoryId, onSelectCategory, selectedTagIds, onToggleTag }: Props) {
   const { t } = useTranslation();
   const {
     categories, tags, tagCategories,
@@ -241,12 +243,20 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         </div>
       ) : (
         <div className="group flex items-center gap-0.5">
-          <span className="flex-1 px-2 py-1 text-xs flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
+          <button
+            type="button"
+            className={`flex-1 text-left px-2 py-1 text-xs flex items-center gap-1.5 rounded transition-colors min-w-0 ${
+              selectedTagIds.includes(tag.id)
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+            onClick={() => onToggleTag(tag.id)}
+          >
             <span className="shrink-0" style={{ color: tag.color }}>
               <MediaIcon icon={tag.icon ?? 'tag'} className="w-3 h-3" />
             </span>
             <span className="truncate">{tag.name}</span>
-          </span>
+          </button>
           <button
             type="button"
             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
@@ -470,8 +480,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
   };
 
   return (
-    <aside className="flex flex-col gap-0.5 w-full min-w-0">
-      <div className="relative mb-2">
+    <aside className="flex flex-col h-full min-h-0 w-full min-w-0">
+      <div className="relative mb-2 shrink-0">
         <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
         </svg>
@@ -495,7 +505,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
         )}
       </div>
 
-      <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100/80 dark:bg-gray-800/70">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1">
+      <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
         <span className="text-gray-400 dark:text-gray-500 shrink-0">
           <MediaIcon icon="folder" className="w-3.5 h-3.5" />
         </span>
@@ -594,12 +605,11 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
           + {t('category.add')}
         </button>
       ) : null}
+      </div>
 
-      {/* タグ管理 */}
       {(tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0) ? (
-        <>
-          <div className="mt-3 mb-2 border-t border-gray-200 dark:border-gray-700" />
-          <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100/80 dark:bg-gray-800/70">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 border-t border-gray-200 dark:border-gray-700 pt-1">
+          <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
             <span className="text-gray-400 dark:text-gray-500 shrink-0">
               <MediaIcon icon="tag" className="w-3.5 h-3.5" />
             </span>
@@ -736,7 +746,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory }: Props)
               </div>
             </div>
           )}
-        </>
+        </div>
       ) : null}
     </aside>
   );
