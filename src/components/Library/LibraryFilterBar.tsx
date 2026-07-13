@@ -79,26 +79,25 @@ export function LibraryFilterBar({
 
   return (
     <div className="flex flex-col gap-1.5 mb-3 shrink-0">
-      {/* Row 1: タグ + ソート */}
-      <div className="flex items-start gap-2">
+      {/* Row 1: 選択中タグ + ソート */}
+      <div className="flex items-center gap-2">
         <div className="flex flex-wrap gap-1 flex-1 min-w-0">
-          {tags.length > 0 && (
+          {filterTagIds.length > 0 && (
             <>
-              {tags.map((tag) => (
-                <button
-                  key={tag.id}
-                  type="button"
-                  className={`px-1.5 py-px rounded-full text-[10px] font-medium text-white transition-opacity ${
-                    filterTagIds.includes(tag.id)
-                      ? "opacity-100 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950"
-                      : "opacity-40 hover:opacity-70"
-                  }`}
-                  style={{ backgroundColor: tag.color }}
-                  onClick={() => onToggleTag(tag.id)}
-                >
-                  {tag.name}
-                </button>
-              ))}
+              {tags
+                .filter((tag) => filterTagIds.includes(tag.id))
+                .map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    className="px-1.5 py-px rounded-full text-[10px] font-medium text-white ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950 hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: tag.color }}
+                    onClick={() => onToggleTag(tag.id)}
+                    title={t("filters.tagClear")}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
               {filterTagIds.length >= 2 && (
                 <button
                   type="button"
@@ -115,15 +114,13 @@ export function LibraryFilterBar({
                   {filterTagMode === "and" ? "AND" : "OR"}
                 </button>
               )}
-              {filterTagIds.length > 0 && (
-                <button
-                  type="button"
-                  className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
-                  onClick={onClearTags}
-                >
-                  {t("filters.tagClear")}
-                </button>
-              )}
+              <button
+                type="button"
+                className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
+                onClick={onClearTags}
+              >
+                {t("filters.tagClear")}
+              </button>
             </>
           )}
         </div>
