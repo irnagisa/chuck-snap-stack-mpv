@@ -7,6 +7,7 @@ import { useTagStore } from '../../store/useTagStore';
 import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
 import { useAudioPreview } from '../../hooks/useAudioPreview';
+import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
 
@@ -25,6 +26,7 @@ interface VideoCardProps {
   onCheckbox: (e: React.MouseEvent, video: Video, idx: number) => void;
   onContextMenu: (e: React.MouseEvent, video: Video) => void;
   onRegisterObserver: (el: HTMLDivElement, callback: () => void) => () => void;
+  previewEnabled: boolean;
 }
 
 const VideoCard = memo(function VideoCard({
@@ -42,11 +44,16 @@ const VideoCard = memo(function VideoCard({
   onCheckbox,
   onContextMenu,
   onRegisterObserver,
+  previewEnabled,
 }: VideoCardProps) {
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
-  const { isPreviewPlaying, onMouseEnter, onMouseLeave } = useAudioPreview(v.path, isAudio);
+  const isVideo = !isImage && !isAudio;
+  const { isPreviewPlaying: isAudioPreviewPlaying, onMouseEnter: audioMouseEnter, onMouseLeave: audioMouseLeave } = useAudioPreview(v.path, isAudio);
+  const { videoRef, isPreviewPlaying: isVideoPreviewPlaying, onMouseEnter: videoMouseEnter, onMouseLeave: videoMouseLeave } = useVideoPreview(v.path, isVideo && previewEnabled);
+  const onMouseEnter = useCallback(() => { audioMouseEnter(); videoMouseEnter(); }, [audioMouseEnter, videoMouseEnter]);
+  const onMouseLeave = useCallback(() => { audioMouseLeave(); videoMouseLeave(); }, [audioMouseLeave, videoMouseLeave]);
   const handlePrimaryClick = () => onShowDetail(v);
   const progressPercent =
     v.duration && v.duration > 0
@@ -159,7 +166,17 @@ const VideoCard = memo(function VideoCard({
             {t('library.playing')}
           </div>
         )}
-        {isAudio && isPreviewPlaying && (
+        {isVideo && (
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 pointer-events-none ${
+              isVideoPreviewPlaying ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+        )}
+        {isAudio && isAudioPreviewPlaying && (
           <div className="absolute inset-0 bg-black/20 flex items-end justify-center gap-0.5 pb-1.5 pointer-events-none">
             {[0, 1, 2, 3, 4].map((i) => (
               <div
@@ -438,6 +455,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
                           onCheckbox={handleCheckbox}
                           onContextMenu={handleContextMenu}
                           onRegisterObserver={registerObserver}
+                          previewEnabled={itemMinWidth >= 180}
                         />
                       );
                     })}

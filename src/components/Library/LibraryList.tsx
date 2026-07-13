@@ -8,6 +8,7 @@ import { useTagStore } from '../../store/useTagStore';
 import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
 import { useAudioPreview } from '../../hooks/useAudioPreview';
+import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
 
@@ -74,7 +75,11 @@ const VideoRow = memo(function VideoRow({
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
-  const { isPreviewPlaying, onMouseEnter, onMouseLeave } = useAudioPreview(v.path, isAudio);
+  const isVideo = !isImage && !isAudio;
+  const { isPreviewPlaying: isAudioPreviewPlaying, onMouseEnter: audioMouseEnter, onMouseLeave: audioMouseLeave } = useAudioPreview(v.path, isAudio);
+  const { videoRef, isPreviewPlaying: isVideoPreviewPlaying, onMouseEnter: videoMouseEnter, onMouseLeave: videoMouseLeave } = useVideoPreview(v.path, isVideo && listRowSize !== 'S');
+  const onMouseEnter = useCallback(() => { audioMouseEnter(); videoMouseEnter(); }, [audioMouseEnter, videoMouseEnter]);
+  const onMouseLeave = useCallback(() => { audioMouseLeave(); videoMouseLeave(); }, [audioMouseLeave, videoMouseLeave]);
   const progressPercent =
     v.duration && v.duration > 0
       ? Math.min((v.progress / v.duration) * 100, 100)
@@ -183,7 +188,17 @@ const VideoRow = memo(function VideoRow({
             </span>
           </div>
         )}
-        {isAudio && isPreviewPlaying && (
+        {isVideo && (
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 pointer-events-none ${
+              isVideoPreviewPlaying ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+        )}
+        {isAudio && isAudioPreviewPlaying && (
           <div className="absolute inset-0 bg-black/20 flex items-end justify-center gap-px pb-0.5 pointer-events-none">
             {[0, 1, 2, 3, 4].map((i) => (
               <div
