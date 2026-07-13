@@ -34,7 +34,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
   const [localSourceUrl, setLocalSourceUrl] = useState(video.source_url ?? '');
   const [localMediaType, setLocalMediaType] = useState<'video' | 'audio' | 'image'>(
-    video.media_type ?? 'video'
+    (video.media_type === 'link' ? 'video' : video.media_type) ?? 'video'
   );
   const [renameFile, setRenameFile] = useState(true);
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
@@ -50,7 +50,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
   useEffect(() => {
     setLocalTitle(video.title ?? video.path.split('/').pop() ?? '');
     setLocalSourceUrl(video.source_url ?? '');
-    setLocalMediaType(video.media_type ?? 'video');
+    setLocalMediaType((video.media_type === 'link' ? 'video' : video.media_type) ?? 'video');
     setFileSizeBytes(null);
     setDimensions(null);
     setSubtitles([]);

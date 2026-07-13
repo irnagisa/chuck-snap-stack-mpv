@@ -156,8 +156,10 @@
     "noFile": "File missing",
     "imageType": "Image",
     "audioType": "Audio",
+    "linkType": "Link",
     "addToPlaylist": "Add to playlist",
     "play": "Play",
+    "openUrl": "Open URL",
     "deleteVideo": "Delete video",
     "playing": "Playing"
   },
@@ -165,6 +167,7 @@
     "title": "Details",
     "viewImage": "🔍 Expand",
     "play": "▶ Play",
+    "openInBrowser": "Open in Browser",
     "viewer": "Viewer",
     "rescan": "Rescan",
     "rescanTitle": "Re-fetch media type, thumbnail, and duration",
@@ -234,7 +237,11 @@
     "filename": "Filename",
     "filenameAuto": "Filename will be determined from the video title automatically",
     "cancel": "Cancel",
-    "start": "Start Download"
+    "start": "Start Download",
+    "linkTitle": "Add as Link",
+    "linkFetch": "Fetch",
+    "linkTitleLabel": "Title",
+    "linkAdd": "Add"
   },
   "watchDir": {
     "title": "Folders",

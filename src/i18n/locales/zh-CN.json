@@ -156,8 +156,10 @@
     "noFile": "文件缺失",
     "imageType": "图片",
     "audioType": "音频",
+    "linkType": "链接",
     "addToPlaylist": "添加到播放列表",
     "play": "播放",
+    "openUrl": "打开链接",
     "deleteVideo": "删除视频",
     "playing": "播放中"
   },
@@ -165,6 +167,7 @@
     "title": "详情",
     "viewImage": "🔍 放大查看",
     "play": "▶ 播放",
+    "openInBrowser": "在浏览器中打开",
     "viewer": "查看器",
     "rescan": "重新扫描",
     "rescanTitle": "重新获取媒体类型、缩略图和时长",
@@ -234,7 +237,11 @@
     "filename": "文件名",
     "filenameAuto": "文件名将根据视频标题自动确定",
     "cancel": "取消",
-    "start": "开始下载"
+    "start": "开始下载",
+    "linkTitle": "添加为链接",
+    "linkFetch": "获取",
+    "linkTitleLabel": "标题",
+    "linkAdd": "添加"
   },
   "watchDir": {
     "title": "文件夹",

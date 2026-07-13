@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
@@ -47,14 +48,22 @@ const VideoCard = memo(function VideoCard({
   previewEnabled,
 }: VideoCardProps) {
   const { t } = useTranslation();
+  const isLink = v.media_type === 'link';
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
-  const isVideo = !isImage && !isAudio;
+  const isVideo = !isImage && !isAudio && !isLink;
   const { isPreviewPlaying: isAudioPreviewPlaying, onMouseEnter: audioMouseEnter, onMouseLeave: audioMouseLeave } = useAudioPreview(v.path, isAudio);
   const { videoRef, isPreviewPlaying: isVideoPreviewPlaying, onMouseEnter: videoMouseEnter, onMouseLeave: videoMouseLeave } = useVideoPreview(v.path, isVideo && previewEnabled);
   const onMouseEnter = useCallback(() => { audioMouseEnter(); videoMouseEnter(); }, [audioMouseEnter, videoMouseEnter]);
   const onMouseLeave = useCallback(() => { audioMouseLeave(); videoMouseLeave(); }, [audioMouseLeave, videoMouseLeave]);
   const handlePrimaryClick = () => onShowDetail(v);
+  const handlePlay = useCallback(() => {
+    if (isLink) {
+      openUrl(v.path).catch(() => {});
+    } else {
+      onPlay(v);
+    }
+  }, [isLink, v, onPlay]);
   const progressPercent =
     v.duration && v.duration > 0
       ? Math.min((v.progress / v.duration) * 100, 100)
@@ -70,6 +79,7 @@ const VideoCard = memo(function VideoCard({
   }, [v.path]);
 
   useEffect(() => {
+    if (isLink) return; // URL はファイルパスではないので存在チェックをスキップ
     const el = cardRef.current;
     if (!el || checkedRef.current) return;
     return onRegisterObserver(el, () => {
@@ -79,7 +89,7 @@ const VideoCard = memo(function VideoCard({
         .then((exists) => { if (!exists) setFileMissing(true); })
         .catch(() => setFileMissing(true));
     });
-  }, [v.path, onRegisterObserver]);
+  }, [v.path, onRegisterObserver, isLink]);
 
   return (
     <div
@@ -113,7 +123,7 @@ const VideoCard = memo(function VideoCard({
       <div
         className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
         onClick={handlePrimaryClick}
-        onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}
+        onDoubleClick={(e) => { e.stopPropagation(); handlePlay(); }}
       >
         {v.thumbnail ? (
           <img
@@ -124,13 +134,13 @@ const VideoCard = memo(function VideoCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-2xl">
-            {isImage ? '🖼' : isAudio ? '♪' : '▶'}
+            {isLink ? '🔗' : isImage ? '🖼' : isAudio ? '♪' : '▶'}
           </div>
         )}
         {/* メディアタイプバッジ */}
-        {(isImage || isAudio) && (
+        {(isImage || isAudio || isLink) && (
           <div className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded pointer-events-none">
-            {isImage ? t('library.imageType') : t('library.audioType')}
+            {isImage ? t('library.imageType') : isAudio ? t('library.audioType') : t('library.linkType')}
           </div>
         )}
 
@@ -201,10 +211,10 @@ const VideoCard = memo(function VideoCard({
           <button
             type="button"
             className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
-            onClick={(e) => { e.stopPropagation(); onPlay(v); }}
-            title={t('library.play')}
+            onClick={(e) => { e.stopPropagation(); handlePlay(); }}
+            title={isLink ? t('library.openUrl') : t('library.play')}
           >
-            ▶
+            {isLink ? '↗' : '▶'}
           </button>
           <button
             type="button"
@@ -225,9 +235,9 @@ const VideoCard = memo(function VideoCard({
         <div className="h-1 bg-blue-500" />
       ) : null}
 
-      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={handlePrimaryClick} onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}>
+      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={handlePrimaryClick} onDoubleClick={(e) => { e.stopPropagation(); handlePlay(); }}>
         <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
-          {v.title ?? v.path.split('/').pop()}
+          {v.title ?? (isLink ? (() => { try { return new URL(v.path).hostname; } catch { return v.path; } })() : v.path.split('/').pop())}
         </p>
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-0.5">

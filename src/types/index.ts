@@ -11,10 +11,10 @@ export interface Video {
   has_audio: number | null;
   watch_count: number;
   created_at: string;
-  media_type: 'video' | 'audio' | 'image' | null;
+  media_type: 'video' | 'audio' | 'image' | 'link' | null;
   source_url: string | null;
   status: 'inbox' | null;
-  source_type: 'import' | 'download' | 'dragdrop' | 'watcher' | null;
+  source_type: 'import' | 'download' | 'dragdrop' | 'watcher' | 'link' | null;
 }
 
 export interface Chapter {

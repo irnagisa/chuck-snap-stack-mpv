@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod link;
 pub mod db_export;
 pub mod db_playlists;
 pub mod db_settings;

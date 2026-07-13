@@ -156,8 +156,10 @@
     "noFile": "ファイルなし",
     "imageType": "画像",
     "audioType": "音声",
+    "linkType": "リンク",
     "addToPlaylist": "プレイリストに追加",
     "play": "再生",
+    "openUrl": "URLを開く",
     "deleteVideo": "動画を削除",
     "playing": "再生中"
   },
@@ -165,6 +167,7 @@
     "title": "詳細",
     "viewImage": "🔍 拡大表示",
     "play": "▶ 再生",
+    "openInBrowser": "ブラウザで開く",
     "viewer": "ビューア",
     "rescan": "再スキャン",
     "rescanTitle": "メディアタイプ・サムネイル・再生時間を再取得",
@@ -234,7 +237,11 @@
     "filename": "ファイル名",
     "filenameAuto": "ファイル名は動画タイトルから自動決定されます",
     "cancel": "キャンセル",
-    "start": "ダウンロード開始"
+    "start": "ダウンロード開始",
+    "linkTitle": "リンクとして追加",
+    "linkFetch": "取得",
+    "linkTitleLabel": "タイトル",
+    "linkAdd": "追加"
   },
   "watchDir": {
     "title": "フォルダ",

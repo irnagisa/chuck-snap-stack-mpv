@@ -70,7 +70,10 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [localThumbnail, setLocalThumbnail] = useState(video.thumbnail ?? null);
   const [thumbCacheBust, setThumbCacheBust] = useState(0);
   const [isRescanning, setIsRescanning] = useState(false);
-  const [localMediaType, setLocalMediaType] = useState<'video' | 'audio' | 'image'>(video.media_type ?? 'video');
+  const isLink = video.media_type === 'link';
+  const [localMediaType, setLocalMediaType] = useState<'video' | 'audio' | 'image'>(
+    (video.media_type === 'link' ? 'video' : video.media_type) ?? 'video'
+  );
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
   const [isScanningSubs, setIsScanningSubs] = useState(false);
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
@@ -173,13 +176,14 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const { tags, addTagToVideo, createTag, fetchTags } = useTagStore();
 
   useEffect(() => {
+    if (isLink) return;
     invoke<number>('get_file_size', { path: video.path })
       .then(setFileSizeBytes)
       .catch(() => {});
     invoke<{ width: number; height: number }>('get_video_dimensions', { path: video.path })
       .then(setDimensions)
       .catch(() => {});
-  }, [video.path]);
+  }, [video.path, isLink]);
 
   useEffect(() => {
     invoke<{ downloaded: boolean; downloading: boolean; progress: number }>(
@@ -414,7 +418,15 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
               </div>
             )}
             <div className="flex gap-2">
-              {video.media_type === 'image' ? (
+              {isLink ? (
+                <button
+                  type="button"
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                  onClick={() => openUrl(video.path).catch(() => {})}
+                >
+                  {t('detail.openInBrowser')}
+                </button>
+              ) : video.media_type === 'image' ? (
                 onViewImage && (
                   <button
                     type="button"
@@ -433,16 +445,18 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   {t('detail.play')}
                 </button>
               )}
-              <button
-                type="button"
-                className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium disabled:opacity-50"
-                onClick={handleRescan}
-                disabled={isRescanning}
-                title={t('detail.rescanTitle')}
-              >
-                {isRescanning ? t('detail.rescanning') : t('detail.rescan')}
-              </button>
-              {video.media_type !== 'image' && (
+              {!isLink && (
+                <button
+                  type="button"
+                  className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium disabled:opacity-50"
+                  onClick={handleRescan}
+                  disabled={isRescanning}
+                  title={t('detail.rescanTitle')}
+                >
+                  {isRescanning ? t('detail.rescanning') : t('detail.rescan')}
+                </button>
+              )}
+              {!isLink && video.media_type !== 'image' && (
                 <button
                   type="button"
                   className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
@@ -451,7 +465,6 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   AV1
                 </button>
               )}
-
             </div>
           </div>
 
@@ -480,25 +493,27 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.renameFile')}</span>
                 </label>
               </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-                    {t('detail.path')}
-                  </label>
-                  <button
-                    type="button"
-                    className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
-                    onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(`Finder での表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`))}
-                    title={t('detail.openFinder')}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                    {t('detail.openFinder')}
-                  </button>
+              {!isLink && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
+                      {t('detail.path')}
+                    </label>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
+                      onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(`Finder での表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`))}
+                      title={t('detail.openFinder')}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                      </svg>
+                      {t('detail.openFinder')}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">{video.path}</p>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">{video.path}</p>
-              </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
                   {t('detail.url')}
@@ -530,7 +545,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             </div>
 
             {/* メタデータ */}
-            <div className="py-4 flex flex-col gap-3">
+            {!isLink && <div className="py-4 flex flex-col gap-3">
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
@@ -596,10 +611,10 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   </p>
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* カスタムサムネイル */}
-            <div className="pt-4 pb-4 flex flex-col gap-2">
+            {!isLink && <div className="pt-4 pb-4 flex flex-col gap-2">
               <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
                 {t('detail.thumbnail')}
               </label>
@@ -622,7 +637,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
                 </button>
               </div>
-            </div>
+            </div>}
 
             {/* AI タグ提案 */}
             {aiEnabled && <div className="pt-4 pb-4 flex flex-col gap-2">
@@ -743,7 +758,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             }
 
             {/* 字幕ファイル管理 */}
-            <div className="pt-4 pb-4 flex flex-col gap-2">
+            {!isLink && <div className="pt-4 pb-4 flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
                   {t('detail.subtitle')}
@@ -783,10 +798,10 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* 類似動画 */}
-            <div className="pt-4 pb-4 flex flex-col gap-2">
+            {!isLink && <div className="pt-4 pb-4 flex flex-col gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="text-xs font-medium text-gray-400 dark:text-gray-500 shrink-0">
                   {t('detail.similarVideos')}
@@ -901,7 +916,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   })}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         </div>
       </div>

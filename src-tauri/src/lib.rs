@@ -201,6 +201,9 @@ pub fn run() {
             commands::db_videos::db_get_random_video,
             commands::db_videos::db_find_video_page,
             commands::watcher::get_watching_paths,
+            // link assets
+            commands::link::fetch_url_metadata,
+            commands::link::db_add_link_asset,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
