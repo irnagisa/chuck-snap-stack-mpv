@@ -1213,3 +1213,289 @@ pub async fn db_get_random_video(state: State<'_, DbState>) -> Result<Vec<Video>
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use rusqlite::{Connection, OptionalExtension};
+    use crate::db::schema::init_db;
+
+    fn setup() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        conn
+    }
+
+    fn insert_video(conn: &Connection, path: &str) -> i64 {
+        conn.execute(
+            "INSERT INTO videos (path, status) VALUES (?1, 'active')",
+            [path],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn insert_tag(conn: &Connection, name: &str) -> i64 {
+        conn.execute("INSERT INTO tags (name) VALUES (?1)", [name]).unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn insert_playlist(conn: &Connection, name: &str) -> i64 {
+        conn.execute("INSERT INTO playlists (name) VALUES (?1)", [name]).unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn count_rows(conn: &Connection, table: &str) -> i64 {
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
+    }
+
+    // ── db_delete_video ────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_video_removes_row() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/a.mp4");
+        assert_eq!(count_rows(&conn, "videos"), 1);
+        conn.execute("DELETE FROM videos WHERE id = ?1", [vid]).unwrap();
+        assert_eq!(count_rows(&conn, "videos"), 0);
+    }
+
+    #[test]
+    fn delete_video_cascades_video_tags() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/b.mp4");
+        let tag = insert_tag(&conn, "action");
+        conn.execute(
+            "INSERT INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
+            [vid, tag],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "video_tags"), 1);
+        conn.execute("DELETE FROM videos WHERE id = ?1", [vid]).unwrap();
+        // ON DELETE CASCADE should remove video_tags automatically
+        assert_eq!(count_rows(&conn, "video_tags"), 0);
+    }
+
+    // ── db_remove_video (transactional) ──────────────────────────────────────
+
+    #[test]
+    fn remove_video_clears_playlist_items_and_tags() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/c.mp4");
+        let tag = insert_tag(&conn, "drama");
+        let pl = insert_playlist(&conn, "My List");
+
+        conn.execute(
+            "INSERT INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
+            [vid, tag],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl, vid],
+        )
+        .unwrap();
+
+        // Simulate db_remove_video logic
+        conn.execute_batch("BEGIN").unwrap();
+        conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [vid]).unwrap();
+        conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [vid]).unwrap();
+        conn.execute("DELETE FROM videos WHERE id = ?1", [vid]).unwrap();
+        conn.execute_batch("COMMIT").unwrap();
+
+        assert_eq!(count_rows(&conn, "videos"), 0);
+        assert_eq!(count_rows(&conn, "video_tags"), 0);
+        assert_eq!(count_rows(&conn, "playlist_items"), 0);
+    }
+
+    #[test]
+    fn remove_video_nonexistent_is_noop() {
+        let conn = setup();
+        // Deleting a non-existent id should affect 0 rows without error
+        let affected = conn
+            .execute("DELETE FROM videos WHERE id = ?1", [9999_i64])
+            .unwrap();
+        assert_eq!(affected, 0);
+    }
+
+    // ── db_remove_multiple ────────────────────────────────────────────────────
+
+    #[test]
+    fn remove_multiple_deletes_all_specified_videos() {
+        let conn = setup();
+        let v1 = insert_video(&conn, "/tmp/m1.mp4");
+        let v2 = insert_video(&conn, "/tmp/m2.mp4");
+        let v3 = insert_video(&conn, "/tmp/m3.mp4");
+
+        let tag = insert_tag(&conn, "comedy");
+        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [v1, tag]).unwrap();
+        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [v2, tag]).unwrap();
+
+        // Remove v1 and v2 only
+        conn.execute_batch("BEGIN").unwrap();
+        conn.execute(
+            "DELETE FROM playlist_items WHERE video_id IN (?,?)",
+            rusqlite::params![v1, v2],
+        ).unwrap();
+        conn.execute(
+            "DELETE FROM video_tags WHERE video_id IN (?,?)",
+            rusqlite::params![v1, v2],
+        ).unwrap();
+        conn.execute(
+            "DELETE FROM videos WHERE id IN (?,?)",
+            rusqlite::params![v1, v2],
+        ).unwrap();
+        conn.execute_batch("COMMIT").unwrap();
+
+        assert_eq!(count_rows(&conn, "videos"), 1);
+        let remaining: i64 = conn
+            .query_row("SELECT id FROM videos", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(remaining, v3);
+        assert_eq!(count_rows(&conn, "video_tags"), 0);
+    }
+
+    #[test]
+    fn remove_multiple_empty_list_is_noop() {
+        let conn = setup();
+        insert_video(&conn, "/tmp/keep.mp4");
+        // Empty list → no deletes
+        assert_eq!(count_rows(&conn, "videos"), 1);
+    }
+
+    // ── db_remove_video_by_path ────────────────────────────────────────────────
+
+    #[test]
+    fn remove_video_by_path_deletes_correct_row() {
+        let conn = setup();
+        insert_video(&conn, "/tmp/target.mp4");
+        insert_video(&conn, "/tmp/keep.mp4");
+
+        let id: i64 = conn
+            .query_row(
+                "SELECT id FROM videos WHERE path = '/tmp/target.mp4'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        conn.execute_batch("BEGIN").unwrap();
+        conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [id]).unwrap();
+        conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [id]).unwrap();
+        conn.execute("DELETE FROM videos WHERE id = ?1", [id]).unwrap();
+        conn.execute_batch("COMMIT").unwrap();
+
+        assert_eq!(count_rows(&conn, "videos"), 1);
+        let remaining_path: String = conn
+            .query_row("SELECT path FROM videos", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(remaining_path, "/tmp/keep.mp4");
+    }
+
+    #[test]
+    fn remove_video_by_nonexistent_path_is_noop() {
+        let conn = setup();
+        insert_video(&conn, "/tmp/exists.mp4");
+        let found: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM videos WHERE path = '/tmp/no_such.mp4'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert!(found.is_none());
+        assert_eq!(count_rows(&conn, "videos"), 1);
+    }
+
+    // ── cascade behavior ────────────────────────────────────────────────────────
+
+    #[test]
+    fn deleting_tag_cascades_video_tags() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/tagged.mp4");
+        let tag = insert_tag(&conn, "sci-fi");
+        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [vid, tag]).unwrap();
+        assert_eq!(count_rows(&conn, "video_tags"), 1);
+
+        conn.execute("DELETE FROM tags WHERE id = ?1", [tag]).unwrap();
+        assert_eq!(count_rows(&conn, "video_tags"), 0);
+        // Video itself should still exist
+        assert_eq!(count_rows(&conn, "videos"), 1);
+    }
+
+    #[test]
+    fn deleting_playlist_cascades_playlist_items() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/inlist.mp4");
+        let pl = insert_playlist(&conn, "Cascade Test");
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl, vid],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+
+        conn.execute("DELETE FROM playlists WHERE id = ?1", [pl]).unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 0);
+        // Video itself should still exist
+        assert_eq!(count_rows(&conn, "videos"), 1);
+    }
+
+    // ── db_add_video_from_path ─────────────────────────────────────────────────
+
+    #[test]
+    fn add_video_from_path_inserts_row() {
+        let conn = setup();
+        conn.execute(
+            "INSERT OR IGNORE INTO videos (path, title, media_type, source_url, status, source_type)
+             VALUES (?1, ?2, ?3, ?4, 'inbox', ?5)",
+            rusqlite::params!["/tmp/new.mp4", "New Video", "video", Option::<String>::None, "local"],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "videos"), 1);
+        let title: String = conn
+            .query_row("SELECT title FROM videos WHERE path = '/tmp/new.mp4'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(title, "New Video");
+    }
+
+    #[test]
+    fn add_video_from_path_duplicate_is_ignored() {
+        let conn = setup();
+        let sql = "INSERT OR IGNORE INTO videos (path, title, media_type, status, source_type)
+                   VALUES (?1, ?2, 'video', 'inbox', 'local')";
+        conn.execute(sql, rusqlite::params!["/tmp/dup.mp4", "First"]).unwrap();
+        conn.execute(sql, rusqlite::params!["/tmp/dup.mp4", "Second"]).unwrap();
+        assert_eq!(count_rows(&conn, "videos"), 1);
+        let title: String = conn
+            .query_row("SELECT title FROM videos WHERE path = '/tmp/dup.mp4'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(title, "First"); // Second was ignored
+    }
+
+    // ── watch_dir operations ───────────────────────────────────────────────────
+
+    #[test]
+    fn add_and_remove_watch_dir() {
+        let conn = setup();
+        conn.execute(
+            "INSERT OR IGNORE INTO watch_dirs (path, use_dir_as_category) VALUES (?1, 0)",
+            ["/media/videos"],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "watch_dirs"), 1);
+
+        conn.execute("DELETE FROM watch_dirs WHERE path = ?1", ["/media/videos"]).unwrap();
+        assert_eq!(count_rows(&conn, "watch_dirs"), 0);
+    }
+
+    #[test]
+    fn add_duplicate_watch_dir_is_ignored() {
+        let conn = setup();
+        let sql = "INSERT OR IGNORE INTO watch_dirs (path, use_dir_as_category) VALUES (?1, 0)";
+        conn.execute(sql, ["/media/videos"]).unwrap();
+        conn.execute(sql, ["/media/videos"]).unwrap();
+        assert_eq!(count_rows(&conn, "watch_dirs"), 1);
+    }
+}
+

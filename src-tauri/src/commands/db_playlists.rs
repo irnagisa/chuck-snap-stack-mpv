@@ -211,3 +211,225 @@ fn video_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Video> {
         source_type: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+    use crate::db::schema::init_db;
+
+    fn setup() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        conn
+    }
+
+    fn count_rows(conn: &Connection, table: &str) -> i64 {
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
+    }
+
+    fn insert_video(conn: &Connection, path: &str) -> i64 {
+        conn.execute(
+            "INSERT INTO videos (path, status) VALUES (?1, 'active')",
+            [path],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn insert_playlist(conn: &Connection, name: &str) -> i64 {
+        conn.execute("INSERT INTO playlists (name) VALUES (?1)", [name]).unwrap();
+        conn.last_insert_rowid()
+    }
+
+    // ── playlist CRUD ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn create_playlist() {
+        let conn = setup();
+        insert_playlist(&conn, "Favorites");
+        assert_eq!(count_rows(&conn, "playlists"), 1);
+    }
+
+    #[test]
+    fn delete_playlist_explicit_removes_items_first() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/v.mp4");
+        let pl = insert_playlist(&conn, "To Watch");
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl, vid],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+
+        // Simulate db_delete_playlist: delete items, then playlist
+        conn.execute("DELETE FROM playlist_items WHERE playlist_id = ?1", [pl]).unwrap();
+        conn.execute("DELETE FROM playlists WHERE id = ?1", [pl]).unwrap();
+
+        assert_eq!(count_rows(&conn, "playlists"), 0);
+        assert_eq!(count_rows(&conn, "playlist_items"), 0);
+        assert_eq!(count_rows(&conn, "videos"), 1); // video survives
+    }
+
+    #[test]
+    fn delete_playlist_cascade_removes_items() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/v2.mp4");
+        let pl = insert_playlist(&conn, "Cascade Test");
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl, vid],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+
+        // With foreign_keys=ON, deleting the playlist cascades to items
+        conn.execute("DELETE FROM playlists WHERE id = ?1", [pl]).unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 0);
+        assert_eq!(count_rows(&conn, "videos"), 1);
+    }
+
+    #[test]
+    fn add_video_to_playlist() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/add.mp4");
+        let pl = insert_playlist(&conn, "Queue");
+        conn.execute(
+            "INSERT OR IGNORE INTO playlist_items (playlist_id, video_id, position)
+             SELECT ?1, ?2, COALESCE(MAX(position), 0) + 1 FROM playlist_items WHERE playlist_id = ?1",
+            [pl, vid],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+    }
+
+    #[test]
+    fn add_duplicate_video_to_playlist_is_ignored() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/dup.mp4");
+        let pl = insert_playlist(&conn, "Queue");
+        let sql = "INSERT OR IGNORE INTO playlist_items (playlist_id, video_id, position)
+                   SELECT ?1, ?2, COALESCE(MAX(position), 0) + 1 FROM playlist_items WHERE playlist_id = ?1";
+        conn.execute(sql, [pl, vid]).unwrap();
+        conn.execute(sql, [pl, vid]).unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+    }
+
+    #[test]
+    fn remove_video_from_playlist() {
+        let conn = setup();
+        let v1 = insert_video(&conn, "/tmp/v1.mp4");
+        let v2 = insert_video(&conn, "/tmp/v2.mp4");
+        let pl = insert_playlist(&conn, "Mix");
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl, v1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 2)",
+            [pl, v2],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 2);
+
+        conn.execute(
+            "DELETE FROM playlist_items WHERE playlist_id = ?1 AND video_id = ?2",
+            [pl, v1],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+        let remaining: i64 = conn
+            .query_row(
+                "SELECT video_id FROM playlist_items WHERE playlist_id = ?1",
+                [pl],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, v2);
+    }
+
+    #[test]
+    fn delete_video_cascades_out_of_playlists() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/gone.mp4");
+        let pl = insert_playlist(&conn, "Watch Later");
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl, vid],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+
+        conn.execute("DELETE FROM videos WHERE id = ?1", [vid]).unwrap();
+        assert_eq!(count_rows(&conn, "playlist_items"), 0);
+        assert_eq!(count_rows(&conn, "playlists"), 1); // playlist itself survives
+    }
+
+    // ── smart_playlist CRUD ───────────────────────────────────────────────────
+
+    #[test]
+    fn create_and_delete_smart_playlist() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO smart_playlists (name, filter_json) VALUES ('Top Rated', '{\"rating\":{\"gte\":4}}')",
+            [],
+        )
+        .unwrap();
+        let id: i64 = conn.last_insert_rowid();
+        assert_eq!(count_rows(&conn, "smart_playlists"), 1);
+
+        conn.execute("DELETE FROM smart_playlists WHERE id = ?1", [id]).unwrap();
+        assert_eq!(count_rows(&conn, "smart_playlists"), 0);
+    }
+
+    // ── reorder ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn reorder_playlist_items() {
+        let conn = setup();
+        let v1 = insert_video(&conn, "/tmp/r1.mp4");
+        let v2 = insert_video(&conn, "/tmp/r2.mp4");
+        let pl = insert_playlist(&conn, "Reorder");
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl, v1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 2)",
+            [pl, v2],
+        )
+        .unwrap();
+
+        // Simulate reorder: swap positions
+        conn.execute(
+            "UPDATE playlist_items SET position = 2 WHERE playlist_id = ?1 AND video_id = ?2",
+            [pl, v1],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE playlist_items SET position = 1 WHERE playlist_id = ?1 AND video_id = ?2",
+            [pl, v2],
+        )
+        .unwrap();
+
+        let pos1: i64 = conn
+            .query_row(
+                "SELECT position FROM playlist_items WHERE playlist_id = ?1 AND video_id = ?2",
+                [pl, v1],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let pos2: i64 = conn
+            .query_row(
+                "SELECT position FROM playlist_items WHERE playlist_id = ?1 AND video_id = ?2",
+                [pl, v2],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(pos1, 2);
+        assert_eq!(pos2, 1);
+    }
+}

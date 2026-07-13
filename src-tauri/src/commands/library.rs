@@ -473,6 +473,14 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
     validate_path(&dest_dir)?;
 
     let source = std::path::Path::new(&source_path);
+
+    // シンボリックリンクはセキュリティリスクのため拒否する
+    let src_meta = source
+        .symlink_metadata()
+        .map_err(|e| format!("元ファイルのメタデータ取得失敗: {e}"))?;
+    if src_meta.file_type().is_symlink() {
+        return Err("シンボリックリンクは操作できません".to_string());
+    }
     let filename = source.file_name()
         .ok_or_else(|| "invalid filename".to_string())?;
 
@@ -589,6 +597,15 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
     validate_path(&dest_dir)?;
 
     let source = std::path::Path::new(&source_path);
+
+    // シンボリックリンクはセキュリティリスクのため拒否する
+    let src_meta = source
+        .symlink_metadata()
+        .map_err(|e| format!("元ファイルのメタデータ取得失敗: {e}"))?;
+    if src_meta.file_type().is_symlink() {
+        return Err("シンボリックリンクは操作できません".to_string());
+    }
+
     let filename = source
         .file_name()
         .ok_or_else(|| "invalid filename".to_string())?;

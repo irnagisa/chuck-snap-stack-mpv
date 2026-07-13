@@ -206,15 +206,25 @@ async fn download_thumbnail(app: &tauri::AppHandle, url: &str) -> Result<String,
 
     let output_path = thumbnails_dir.join(&filename);
 
-    // WebP に変換して保存
+    // すでに同一URLのサムネイルが存在すればそのまま返す (二重ダウンロード防止)
+    if output_path.exists() {
+        return Ok(output_path.to_string_lossy().into_owned());
+    }
+
+    // WebP に変換して保存 (一時ファイル経由でアトミックに書き込む)
     let img = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| e.to_string())?
         .decode()
         .map_err(|e| e.to_string())?;
 
-    img.save_with_format(&output_path, image::ImageFormat::WebP)
+    let tmp_path = thumbnails_dir.join(format!("link_{}.webp.tmp", &hash[..16]));
+    img.save_with_format(&tmp_path, image::ImageFormat::WebP)
         .map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp_path, &output_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        e.to_string()
+    })?;
 
     Ok(output_path.to_string_lossy().into_owned())
 }

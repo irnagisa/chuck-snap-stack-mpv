@@ -53,17 +53,31 @@ beforeEach(() => {
 });
 
 describe('LibraryFilterBar — タグ', () => {
-  it('renders tag chips for each tag', () => {
-    render(<LibraryFilterBar {...makeProps({ tags: [makeTag(1, 'Action'), makeTag(2, 'Drama')] })} />);
+  it('renders selected tag chips (non-selected tags are not shown)', () => {
+    // Only selected tags (filterTagIds) are rendered in the header
+    render(
+      <LibraryFilterBar
+        {...makeProps({
+          tags: [makeTag(1, 'Action'), makeTag(2, 'Drama')],
+          filterTagIds: [1, 2],
+        })}
+      />
+    );
     expect(screen.getByText('Action')).toBeInTheDocument();
     expect(screen.getByText('Drama')).toBeInTheDocument();
   });
 
-  it('clicking a tag chip calls onToggleTag with its id', () => {
+  it('unselected tags are not shown in the filter bar', () => {
+    render(<LibraryFilterBar {...makeProps({ tags: [makeTag(1, 'Action'), makeTag(2, 'Drama')], filterTagIds: [] })} />);
+    expect(screen.queryByText('Action')).not.toBeInTheDocument();
+    expect(screen.queryByText('Drama')).not.toBeInTheDocument();
+  });
+
+  it('clicking a selected tag chip calls onToggleTag with its id', () => {
     const onToggleTag = vi.fn();
     render(
       <LibraryFilterBar
-        {...makeProps({ tags: [makeTag(42, 'Sci-Fi')], onToggleTag })}
+        {...makeProps({ tags: [makeTag(42, 'Sci-Fi')], filterTagIds: [42], onToggleTag })}
       />
     );
     fireEvent.click(screen.getByText('Sci-Fi'));

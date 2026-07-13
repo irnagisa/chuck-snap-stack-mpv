@@ -1,6 +1,7 @@
 use rusqlite::{Connection, Result};
 
 pub fn init_db(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA foreign_keys=ON")?;
     conn.execute_batch("PRAGMA journal_mode=WAL")?;
     conn.execute_batch("PRAGMA busy_timeout=5000")?;
 
@@ -72,8 +73,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         );
 
         CREATE TABLE IF NOT EXISTS playlist_items (
-          playlist_id INTEGER REFERENCES playlists(id),
-          video_id    INTEGER REFERENCES videos(id),
+          playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+          video_id    INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
           position    INTEGER,
           PRIMARY KEY (playlist_id, video_id)
         );

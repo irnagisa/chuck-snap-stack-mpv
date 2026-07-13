@@ -132,6 +132,40 @@ pub fn run_data_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // Migration 6: playlist_items_cascade — ON DELETE CASCADE を既存テーブルに適用する
+    let pi_migrated: bool = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'migration_playlist_items_cascade'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    if !pi_migrated {
+        conn.execute_batch(
+            "BEGIN;
+             CREATE TABLE IF NOT EXISTS playlist_items_new (
+               playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+               video_id    INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+               position    INTEGER,
+               PRIMARY KEY (playlist_id, video_id)
+             );
+             INSERT OR IGNORE INTO playlist_items_new
+               SELECT playlist_id, video_id, position FROM playlist_items
+               WHERE playlist_id IS NOT NULL AND video_id IS NOT NULL;
+             DROP TABLE playlist_items;
+             ALTER TABLE playlist_items_new RENAME TO playlist_items;
+             INSERT OR REPLACE INTO settings (key, value)
+               VALUES ('migration_playlist_items_cascade', '1');
+             COMMIT;",
+        )
+        .unwrap_or_else(|e| {
+            log::error!("[migration6] playlist_items_cascade 失敗: {e}");
+            let _ = conn.execute_batch("ROLLBACK");
+        });
+    }
+
     Ok(())
 }
 
@@ -204,5 +238,48 @@ mod tests {
             )
             .unwrap();
         assert_eq!(val, "1");
+    }
+
+    #[test]
+    fn migration6_playlist_items_cascade_is_idempotent() {
+        let conn = setup();
+        assert!(run_data_migrations(&conn).is_ok());
+        assert!(run_data_migrations(&conn).is_ok());
+        // Migration flag should be set
+        let val: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'migration_playlist_items_cascade'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(val, "1");
+    }
+
+    #[test]
+    fn migration6_playlist_items_cascade_preserves_existing_data() {
+        let conn = setup();
+        // Insert data before migration
+        conn.execute("INSERT INTO playlists (name) VALUES ('Old List')", []).unwrap();
+        let pl_id: i64 = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO videos (path, status) VALUES ('/tmp/old.mp4', 'active')",
+            [],
+        )
+        .unwrap();
+        let vid_id: i64 = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
+            [pl_id, vid_id],
+        )
+        .unwrap();
+
+        run_data_migrations(&conn).unwrap();
+
+        // Data should be preserved after migration
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM playlist_items", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }

@@ -909,3 +909,202 @@ pub fn build_category_hierarchy(
     }
     Ok(leaf_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+    use crate::db::schema::init_db;
+
+    fn setup() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        conn
+    }
+
+    fn count_rows(conn: &Connection, table: &str) -> i64 {
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
+    }
+
+    fn insert_video(conn: &Connection, path: &str) -> i64 {
+        conn.execute(
+            "INSERT INTO videos (path, status) VALUES (?1, 'active')",
+            [path],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    // ── tag CRUD ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn create_and_delete_tag() {
+        let conn = setup();
+        conn.execute("INSERT INTO tags (name) VALUES ('horror')", []).unwrap();
+        assert_eq!(count_rows(&conn, "tags"), 1);
+        let id: i64 = conn.last_insert_rowid();
+
+        conn.execute("DELETE FROM tags WHERE id = ?1", [id]).unwrap();
+        assert_eq!(count_rows(&conn, "tags"), 0);
+    }
+
+    #[test]
+    fn delete_tag_cascades_video_tags() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/v.mp4");
+        conn.execute("INSERT INTO tags (name) VALUES ('thriller')", []).unwrap();
+        let tag_id = conn.last_insert_rowid();
+        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [vid, tag_id]).unwrap();
+        assert_eq!(count_rows(&conn, "video_tags"), 1);
+
+        conn.execute("DELETE FROM tags WHERE id = ?1", [tag_id]).unwrap();
+        assert_eq!(count_rows(&conn, "video_tags"), 0);
+        assert_eq!(count_rows(&conn, "videos"), 1); // video survives
+    }
+
+    #[test]
+    fn duplicate_tag_name_rejected() {
+        let conn = setup();
+        conn.execute("INSERT INTO tags (name) VALUES ('unique')", []).unwrap();
+        let result = conn.execute("INSERT INTO tags (name) VALUES ('unique')", []);
+        assert!(result.is_err(), "Duplicate tag name should fail");
+    }
+
+    #[test]
+    fn add_tag_to_video_and_remove() {
+        let conn = setup();
+        let vid = insert_video(&conn, "/tmp/w.mp4");
+        conn.execute("INSERT INTO tags (name) VALUES ('romance')", []).unwrap();
+        let tid = conn.last_insert_rowid();
+        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [vid, tid]).unwrap();
+        assert_eq!(count_rows(&conn, "video_tags"), 1);
+
+        conn.execute(
+            "DELETE FROM video_tags WHERE video_id = ?1 AND tag_id = ?2",
+            [vid, tid],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "video_tags"), 0);
+    }
+
+    // ── tag_category CRUD ──────────────────────────────────────────────────────
+
+    #[test]
+    fn create_and_delete_tag_category() {
+        let conn = setup();
+        conn.execute("INSERT INTO tag_categories (name) VALUES ('Genre')", []).unwrap();
+        assert_eq!(count_rows(&conn, "tag_categories"), 1);
+        let id: i64 = conn.last_insert_rowid();
+
+        conn.execute("DELETE FROM tag_categories WHERE id = ?1", [id]).unwrap();
+        assert_eq!(count_rows(&conn, "tag_categories"), 0);
+    }
+
+    #[test]
+    fn delete_tag_category_nullifies_tags() {
+        let conn = setup();
+        conn.execute("INSERT INTO tag_categories (name) VALUES ('Mood')", []).unwrap();
+        let cat_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO tags (name, tag_category_id) VALUES ('happy', ?1)",
+            [cat_id],
+        )
+        .unwrap();
+        let tag_id = conn.last_insert_rowid();
+
+        // Simulate db_delete_tag_category: first NULL the FK, then delete
+        conn.execute(
+            "UPDATE tags SET tag_category_id = NULL WHERE tag_category_id = ?1",
+            [cat_id],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM tag_categories WHERE id = ?1", [cat_id]).unwrap();
+
+        assert_eq!(count_rows(&conn, "tag_categories"), 0);
+        assert_eq!(count_rows(&conn, "tags"), 1); // tag survives with NULL category
+        let cat: Option<i64> = conn
+            .query_row(
+                "SELECT tag_category_id FROM tags WHERE id = ?1",
+                [tag_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(cat.is_none());
+    }
+
+    // ── category CRUD ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn create_root_category() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO categories (name, color) VALUES ('Movies', '#ff0000')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "categories"), 1);
+    }
+
+    #[test]
+    fn duplicate_root_category_name_rejected() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO categories (name, color) VALUES ('Movies', '#ff0000')",
+            [],
+        )
+        .unwrap();
+        let result = conn.execute(
+            "INSERT INTO categories (name, color) VALUES ('Movies', '#00ff00')",
+            [],
+        );
+        assert!(result.is_err(), "Duplicate root category should fail");
+    }
+
+    #[test]
+    fn create_child_category_same_name_different_parents_allowed() {
+        let conn = setup();
+        conn.execute("INSERT INTO categories (name) VALUES ('Parent A')", []).unwrap();
+        let p1 = conn.last_insert_rowid();
+        conn.execute("INSERT INTO categories (name) VALUES ('Parent B')", []).unwrap();
+        let p2 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO categories (name, parent_id) VALUES ('Action', ?1)",
+            [p1],
+        )
+        .unwrap();
+        let result = conn.execute(
+            "INSERT INTO categories (name, parent_id) VALUES ('Action', ?1)",
+            [p2],
+        );
+        assert!(result.is_ok(), "Same name under different parents should be allowed");
+    }
+
+    #[test]
+    fn assign_video_to_category_and_delete_category_nullifies_fk() {
+        let conn = setup();
+        conn.execute("INSERT INTO categories (name) VALUES ('Action')", []).unwrap();
+        let cat_id: i64 = conn.last_insert_rowid();
+        let vid = insert_video(&conn, "/tmp/action.mp4");
+        conn.execute(
+            "UPDATE videos SET category_id = ?1 WHERE id = ?2",
+            [cat_id, vid],
+        )
+        .unwrap();
+
+        // Simulating UI delete: unset category on videos first, then delete
+        conn.execute(
+            "UPDATE videos SET category_id = NULL WHERE category_id = ?1",
+            [cat_id],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM categories WHERE id = ?1", [cat_id]).unwrap();
+
+        assert_eq!(count_rows(&conn, "categories"), 0);
+        assert_eq!(count_rows(&conn, "videos"), 1);
+        let remaining_cat: Option<i64> = conn
+            .query_row("SELECT category_id FROM videos WHERE id = ?1", [vid], |r| r.get(0))
+            .unwrap();
+        assert!(remaining_cat.is_none());
+    }
+}
