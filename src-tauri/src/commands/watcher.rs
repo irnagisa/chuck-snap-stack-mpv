@@ -180,3 +180,11 @@ pub async fn stop_watching(
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_watching_paths(
+    state: tauri::State<'_, SharedWatcherState>,
+) -> Result<Vec<String>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    Ok(guard.keys().cloned().collect())
+}

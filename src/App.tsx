@@ -31,11 +31,12 @@ import { LibrarySidebar } from "./components/Library/LibrarySidebar";
 import { LibraryFilterBar } from "./components/Library/LibraryFilterBar";
 import { BatchActionBar } from "./components/Library/BatchActionBar";
 import InboxView from "./components/Inbox/InboxView";
+import { HomeView } from "./components/Home/HomeView";
 import { useInboxStore } from "./store/useInboxStore";
 import type { Playlist } from "./types";
 
 type SidebarTab = "category" | "playlist" | "folder";
-type MainView = "library" | "inbox";
+type MainView = "home" | "library" | "inbox";
 
 function App() {
   const { t } = useTranslation();
@@ -72,7 +73,7 @@ function App() {
     setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
     setMinRating, setHasAudio, setMinDuration, setMaxDuration,
     setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
-    fetchVideos, fetchAllForShuffle,
+    fetchVideos,
   } = useLibraryStore(useShallow((s) => ({
     initDb: s.initDb,
     scanAndImport: s.scanAndImport,
@@ -91,7 +92,6 @@ function App() {
     setSort: s.setSort,
     setPage: s.setPage,
     fetchVideos: s.fetchVideos,
-    fetchAllForShuffle: s.fetchAllForShuffle,
   })));
 
   const currentVideo = usePlayerStore((s) => s.currentVideo);
@@ -107,7 +107,14 @@ function App() {
   useWatcher();
   const { isDragging } = useDragDrop();
 
-  const [mainView, setMainView] = useState<MainView>("library");
+  const [mainView, setMainView] = useState<MainView>(() => {
+    const hasLaunched = localStorage.getItem("hasLaunched");
+    if (!hasLaunched) {
+      localStorage.setItem("hasLaunched", "true");
+      return "home";
+    }
+    return "library";
+  });
   const [searchInput, setSearchInput] = useState(filterSearch);
   const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
     const presets = [120, 180, 240, 320];
@@ -187,11 +194,26 @@ function App() {
     if (!targetId) return;
     const inPage = videos.find((v) => v.id === targetId);
     if (inPage) { libraryRef.current?.scrollToId(targetId); return; }
-    fetchAllForShuffle().then((all) => {
-      const pos = all.findIndex((v) => v.id === targetId);
-      if (pos < 0) return;
+    // 全件 IPC 転送を避けるため専用コマンドでページ番号を直接取得
+    const {
+      filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+      filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+      filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
+    } = useLibraryStore.getState();
+    invoke<number | null>('db_find_video_page', {
+      videoId: targetId,
+      filter: {
+        filterSearch, filterCategoryId, filterTagIds, filterTagMode,
+        filterMinRating, filterHasAudio, filterMinDuration,
+        filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
+        filterWatchedStatus, filterWatchDir, filterMediaType,
+        filterSortBy, filterSortOrder,
+        currentPage: 1, pageSize,
+      },
+    }).then((page) => {
+      if (page == null) return;
       pendingScrollIdRef.current = targetId;
-      handleSetPage(Math.floor(pos / pageSize) + 1);
+      handleSetPage(page);
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailVideo?.id]);
@@ -267,6 +289,23 @@ function App() {
 
   const imageList = useMemo(() => videos.filter((v) => v.media_type === "image"), [videos]);
 
+  const handleHomeOpenVideo = useCallback(
+    (v: Video) => {
+      setMainView("library");
+      openDetailVideo(v);
+    },
+    [openDetailVideo]
+  );
+
+  const handleHomeOpenFolder = useCallback(
+    (dir: string) => {
+      setMainView("library");
+      setSidebarTab("folder");
+      setWatchDirFilter(dir);
+    },
+    [setWatchDirFilter]
+  );
+
   return (
     <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       {isMiniPlayer ? (
@@ -291,7 +330,15 @@ function App() {
 
           {/* ボディ */}
           <div className="flex flex-1 min-h-0">
-            {mainView === "inbox" ? (
+            {mainView === "home" ? (
+              <ErrorBoundary>
+                <HomeView
+                  onNavigate={setMainView}
+                  onOpenVideo={handleHomeOpenVideo}
+                  onOpenFolder={handleHomeOpenFolder}
+                />
+              </ErrorBoundary>
+            ) : mainView === "inbox" ? (
               <div className="flex flex-1 min-h-0 min-w-0">
                 <ErrorBoundary>
                   <InboxView />

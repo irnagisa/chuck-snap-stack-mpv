@@ -549,7 +549,7 @@ pub struct SimilarVideo {
 pub async fn db_get_videos_without_phash(
     db_state: tauri::State<'_, DbState>,
 ) -> Result<Vec<VideoForPhash>, String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT id, path, thumbnail FROM videos \
@@ -632,7 +632,7 @@ pub async fn db_compute_video_phash(
     let hash_str = hash.to_string();
 
     {
-        let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+        let conn = db_state.conn()?;
         conn.execute(
             "UPDATE videos SET phash = ?1 WHERE id = ?2",
             rusqlite::params![&hash_str, video_id],
@@ -652,7 +652,7 @@ pub async fn db_find_similar_videos(
     threshold: u32,
 ) -> Result<Vec<Vec<SimilarVideo>>, String> {
     let videos: Vec<SimilarVideo> = {
-        let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+        let conn = db_state.conn_read()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, title, thumbnail, duration, phash \
@@ -717,7 +717,7 @@ pub async fn db_get_video_stored_phash(
     db_state: tauri::State<'_, DbState>,
     video_id: i64,
 ) -> Result<Option<String>, String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.conn_read()?;
     let phash: Option<String> = conn
         .query_row(
             "SELECT phash FROM videos WHERE id = ?1",
@@ -737,7 +737,7 @@ pub async fn db_find_similar_to_video(
     video_id: i64,
     threshold: u32,
 ) -> Result<Vec<SimilarVideo>, String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db_state.conn_read()?;
 
     // Fetch the pHash of the target video.
     let target_phash: Option<String> = conn

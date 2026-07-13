@@ -10,6 +10,27 @@ import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
 import { usePlaylistStore } from './usePlaylistStore';
 import { useToastStore, toast } from './useToastStore';
+import { RECENT_FOLDERS_SETTING_KEY, type RecentFolderEntry } from './useHomeStore';
+
+const RECENT_FOLDERS_MAX = 8;
+
+async function recordRecentFolder(dir: string): Promise<void> {
+  const raw = await invoke<string | null>('db_get_setting', { key: RECENT_FOLDERS_SETTING_KEY });
+  let list: RecentFolderEntry[] = [];
+  if (raw) {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      list = [];
+    }
+  }
+  list = list.filter((f) => f.path !== dir);
+  list.unshift({ path: dir, openedAt: new Date().toISOString() });
+  await invoke('db_set_setting', {
+    key: RECENT_FOLDERS_SETTING_KEY,
+    value: JSON.stringify(list.slice(0, RECENT_FOLDERS_MAX)),
+  });
+}
 
 export type SortBy = 'created_at' | 'duration' | 'rating';
 export type SortOrder = 'desc' | 'asc';
@@ -322,6 +343,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setWatchDirFilter: async (dir: string | null) => {
     set({ filterWatchDir: dir, currentPage: 1 });
+    if (dir) {
+      recordRecentFolder(dir).catch((e: unknown) => {
+        console.error('[useLibraryStore] recordRecentFolder error:', e);
+      });
+    }
     await get().fetchVideos();
   },
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { invoke } from '@tauri-apps/api/core';
 import type { Video, Playlist } from '../types';
 
 type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | 'rating' | null;
@@ -80,7 +81,12 @@ export const useModalStore = create<ModalStore>((set) => ({
   closeExport: () => set({ showExport: false }),
   openSmartPlaylist: () => set({ showSmartPlaylist: true }),
   closeSmartPlaylist: () => set({ showSmartPlaylist: false }),
-  openDetailVideo: (video) => set({ detailVideo: video }),
+  openDetailVideo: (video) => {
+    set({ detailVideo: video });
+    invoke('db_update_last_viewed', { videoId: video.id }).catch((e: unknown) => {
+      console.error('[useModalStore] db_update_last_viewed error:', e);
+    });
+  },
   closeDetailVideo: () => set({ detailVideo: null }),
   openPlaylist: (playlist) => set({ activePlaylist: playlist }),
   closePlaylist: () => set({ activePlaylist: null }),

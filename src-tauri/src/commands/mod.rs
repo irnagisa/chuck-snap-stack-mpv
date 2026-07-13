@@ -17,3 +17,4 @@ pub mod window;
 pub mod ytdlp;
 pub mod webserver;
 pub mod phash;
+pub mod system;

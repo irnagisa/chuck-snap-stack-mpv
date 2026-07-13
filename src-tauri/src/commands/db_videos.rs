@@ -291,7 +291,7 @@ pub async fn db_fetch_videos(
     state: State<'_, DbState>,
     filter: VideoFilter,
 ) -> Result<FetchVideosResult, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
 
     let total_count: i64 = {
@@ -369,7 +369,7 @@ pub async fn db_fetch_all_for_shuffle(
     state: State<'_, DbState>,
     filter: VideoFilter,
 ) -> Result<Vec<Video>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
 
     let sort_col = match filter.filter_sort_by.as_str() {
@@ -505,7 +505,7 @@ pub struct InboxStats {
 
 #[tauri::command]
 pub async fn db_get_inbox_videos(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
@@ -521,45 +521,88 @@ pub async fn db_get_inbox_videos(state: State<'_, DbState>) -> Result<Vec<Video>
 }
 
 #[tauri::command]
-pub async fn db_get_inbox_stats(state: State<'_, DbState>) -> Result<InboxStats, String> {
+pub async fn db_get_recent_videos(state: State<'_, DbState>, limit: i64) -> Result<Vec<Video>, String> {
+    let conn = state.conn_read()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
+                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
+                    v.created_at, v.media_type, v.source_url, v.status, v.source_type
+             FROM videos v
+             ORDER BY v.created_at DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([limit], video_from_row).map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastViewedItem {
+    pub video: Video,
+    pub last_viewed_at: String,
+}
+
+#[tauri::command]
+pub async fn db_get_last_viewed_video(state: State<'_, DbState>) -> Result<Option<LastViewedItem>, String> {
+    let conn = state.conn_read()?;
+    conn.query_row(
+        "SELECT id, path, title, duration, thumbnail, watched_at, progress, rating,
+                category_id, has_audio, watch_count, created_at, media_type, source_url,
+                status, source_type, last_viewed_at
+         FROM videos
+         WHERE last_viewed_at IS NOT NULL
+         ORDER BY last_viewed_at DESC
+         LIMIT 1",
+        [],
+        |r| {
+            Ok(LastViewedItem {
+                video: video_from_row(r)?,
+                last_viewed_at: r.get(16)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn db_update_last_viewed(state: State<'_, DbState>, video_id: i64) -> Result<(), String> {
     let conn = state.conn()?;
+    conn.execute(
+        "UPDATE videos SET last_viewed_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        [video_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn db_get_inbox_stats(state: State<'_, DbState>) -> Result<InboxStats, String> {
+    // 6本の独立クエリを2本に統合 (total は inbox 集計と独立なので別クエリ)
+    let conn = state.conn_read()?;
     let total: i64 = conn
         .query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    let inbox_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM videos WHERE status = 'inbox'", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    let missing_category: i64 = conn
+    // inbox 内の各統計を1本の集計クエリで取得
+    let (inbox_count, missing_category, missing_tags, missing_rating, almost_done):
+        (i64, i64, i64, i64, i64) = conn
         .query_row(
-            "SELECT COUNT(*) FROM videos WHERE status = 'inbox' AND category_id IS NULL",
+            "SELECT
+               COUNT(*),
+               SUM(CASE WHEN category_id IS NULL THEN 1 ELSE 0 END),
+               SUM(CASE WHEN id NOT IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END),
+               SUM(CASE WHEN rating IS NULL OR rating = 0 THEN 1 ELSE 0 END),
+               SUM(CASE WHEN (
+                     CASE WHEN category_id IS NULL THEN 0 ELSE 1 END +
+                     CASE WHEN id IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END +
+                     CASE WHEN rating > 0 THEN 1 ELSE 0 END
+                   ) = 2 THEN 1 ELSE 0 END)
+             FROM videos
+             WHERE status = 'inbox'",
             [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let missing_tags: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM videos WHERE status = 'inbox'
-             AND id NOT IN (SELECT DISTINCT video_id FROM video_tags)",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let missing_rating: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM videos WHERE status = 'inbox' AND (rating IS NULL OR rating = 0)",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let almost_done: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM videos v WHERE v.status = 'inbox' AND (
-               CASE WHEN v.category_id IS NULL THEN 0 ELSE 1 END +
-               CASE WHEN v.id IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END +
-               CASE WHEN v.rating > 0 THEN 1 ELSE 0 END
-             ) = 2",
-            [],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         )
         .map_err(|e| e.to_string())?;
     Ok(InboxStats { total, inbox_count, missing_category, missing_tags, missing_rating, almost_done })
@@ -592,7 +635,7 @@ pub async fn db_sample_inbox_videos(
     state: State<'_, DbState>,
     count: i64,
 ) -> Result<Vec<Video>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
@@ -974,7 +1017,7 @@ pub async fn db_remove_watch_dir(
 
 #[tauri::command]
 pub async fn db_get_watch_dirs(state: State<'_, DbState>) -> Result<Vec<WatchDir>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare("SELECT path, use_dir_as_category FROM watch_dirs")
         .map_err(|e| e.to_string())?;
@@ -996,7 +1039,7 @@ pub async fn db_get_pending_thumbnails(
     state: State<'_, DbState>,
     limit: i64,
 ) -> Result<Vec<PendingThumbnail>, String> {
-    let conn = state.conn()?;
+    let conn = state.conn_read()?;
     let mut stmt = conn
         .prepare(
             "SELECT id, path, thumbnail FROM videos
@@ -1108,5 +1151,65 @@ pub async fn db_update_audio_only_batch(
     conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// 指定した動画 ID がフィルタ条件下で何ページ目に位置するかを返す。
+/// fetchAllForShuffle による全件 IPC 転送を避けるための専用コマンド。
+#[tauri::command]
+pub async fn db_find_video_page(
+    state: State<'_, DbState>,
+    video_id: i64,
+    filter: VideoFilter,
+) -> Result<Option<i64>, String> {
+    let conn = state.conn_read()?;
+    let (where_clause, params) = build_where_clause(&conn, &filter);
+
+    let sort_col = match filter.filter_sort_by.as_str() {
+        "duration" => "COALESCE(v.duration, -1)",
+        "rating" => "v.rating",
+        _ => "v.created_at",
+    };
+    let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
+
+    // ウィンドウ関数 ROW_NUMBER() でフィルタ済み結果内の行番号を取得
+    let sql = format!(
+        "WITH ranked AS (
+           SELECT v.id, ROW_NUMBER() OVER (ORDER BY {sort_col} {dir}) AS rn
+           FROM videos v {where_clause}
+         )
+         SELECT rn FROM ranked WHERE id = ?",
+    );
+
+    let mut all_params: Vec<rusqlite::types::Value> = params;
+    all_params.push(rusqlite::types::Value::Integer(video_id));
+
+    let rn: Option<i64> = conn
+        .query_row(
+            &sql,
+            rusqlite::params_from_iter(all_params.iter()),
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    Ok(rn.map(|n| (n - 1) / filter.page_size + 1))
+}
+
+#[tauri::command]
+pub async fn db_get_random_video(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
+    let conn = state.conn_read()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, path, title, duration, thumbnail, watched_at, progress, rating,
+                category_id, has_audio, watch_count, created_at, media_type, source_url, status, source_type
+         FROM videos
+         WHERE (media_type IS NULL OR media_type != 'image') AND (status IS NULL OR status = 'inbox')
+         ORDER BY RANDOM() LIMIT 5",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], video_from_row)
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
