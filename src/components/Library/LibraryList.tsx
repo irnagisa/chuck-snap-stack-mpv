@@ -7,6 +7,7 @@ import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
+import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
 
@@ -73,6 +74,7 @@ const VideoRow = memo(function VideoRow({
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
+  const { isPreviewPlaying, onMouseEnter, onMouseLeave } = useAudioPreview(v.path, isAudio);
   const progressPercent =
     v.duration && v.duration > 0
       ? Math.min((v.progress / v.duration) * 100, 100)
@@ -114,6 +116,8 @@ const VideoRow = memo(function VideoRow({
     <div
       ref={rowRef}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, v); }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={`group flex items-center gap-2 px-2 rounded-lg border transition-all cursor-pointer min-w-0 ${
         compact ? 'py-1' : 'py-1.5'
       } ${
@@ -177,6 +181,17 @@ const VideoRow = memo(function VideoRow({
             <span className="text-white text-[8px] font-semibold bg-blue-500 px-1 rounded leading-tight">
               {t('library.playing')}
             </span>
+          </div>
+        )}
+        {isAudio && isPreviewPlaying && (
+          <div className="absolute inset-0 bg-black/20 flex items-end justify-center gap-px pb-0.5 pointer-events-none">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="w-0.5 bg-green-400 rounded-full audio-wave-bar"
+                style={{ height: `${5 + (i % 3) * 3}px`, animation: 'audioWave 0.5s ease-in-out infinite alternate', animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
           </div>
         )}
       </div>

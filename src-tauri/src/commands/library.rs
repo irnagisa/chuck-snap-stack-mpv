@@ -255,11 +255,33 @@ pub async fn generate_thumbnail(
             .await
             .map_err(|e| e.to_string())?;
 
-        if status.success() {
+        if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
             return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio: true });
         }
-        // アルバムアートなし: エラーとして返し、呼び出し元でサムネイルなしとして扱う
-        return Err("アルバムアートが見つかりません".to_string());
+
+        // アルバムアートなし: showwavespic フィルターで波形画像を生成する
+        // 背景 (#1f2937) + 緑の波形 (#4ade80) を overlay で合成する
+        let wave_filter = "color=c=#1f2937:s=320x180,format=rgb24[bg];\
+                           showwavespic=s=320x180:colors=#4ade80:scale=sqrt[wv];\
+                           [bg][wv]overlay";
+        let status_wave = tokio::process::Command::new(&ffmpeg_path)
+            .args([
+                "-y", "-i", &video_path,
+                "-filter_complex", wave_filter,
+                "-frames:v", "1", "-q:v", "80",
+                &output_path,
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if status_wave.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
+            return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio: true });
+        }
+
+        return Err("波形画像の生成に失敗しました".to_string());
     }
 
     // duration に応じてシーク位置を決定する

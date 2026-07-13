@@ -6,7 +6,14 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useToastStore } from '../store/useToastStore';
 import { useModalStore } from '../store/useModalStore';
 
-const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv', 'mpg', 'mpeg', 'media']);
+const VIDEO_EXTENSIONS = new Set([
+  // 動画
+  'mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'flv', 'wmv', 'mpg', 'mpeg', 'media',
+  // 音声
+  'mp3', 'flac', 'aac', 'wav', 'ogg', 'opus', 'm4a', 'wma',
+  // 画像
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'avif',
+]);
 
 function getBasename(path: string) {
   return path.replace(/\\/g, '/').split('/').pop() ?? '';

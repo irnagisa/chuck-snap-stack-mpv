@@ -6,6 +6,7 @@ import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
+import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
 
@@ -45,6 +46,7 @@ const VideoCard = memo(function VideoCard({
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
+  const { isPreviewPlaying, onMouseEnter, onMouseLeave } = useAudioPreview(v.path, isAudio);
   const handlePrimaryClick = () => onShowDetail(v);
   const progressPercent =
     v.duration && v.duration > 0
@@ -76,6 +78,8 @@ const VideoCard = memo(function VideoCard({
     <div
       ref={cardRef}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, v); }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
         fileMissing
           ? 'border-red-500/60 opacity-60'
@@ -153,6 +157,17 @@ const VideoCard = memo(function VideoCard({
         {isPlaying && (
           <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
             {t('library.playing')}
+          </div>
+        )}
+        {isAudio && isPreviewPlaying && (
+          <div className="absolute inset-0 bg-black/20 flex items-end justify-center gap-0.5 pb-1.5 pointer-events-none">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="w-1 bg-green-400 rounded-full audio-wave-bar"
+                style={{ height: `${8 + (i % 3) * 5}px`, animation: 'audioWave 0.5s ease-in-out infinite alternate', animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
           </div>
         )}
         <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
