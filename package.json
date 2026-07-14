@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e:build": "pnpm tauri build --debug --no-bundle",
+    "test:e2e": "wdio run e2e/wdio.conf.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -37,6 +39,19 @@
     "tailwindcss": "^4.3.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "@wdio/cli": "^9.29.1",
+    "@wdio/local-runner": "^9.29.1",
+    "@wdio/mocha-framework": "^9.29.1",
+    "@wdio/spec-reporter": "^9.29.1",
+    "@wdio/tauri-service": "^1.2.0",
+    "webdriverio": "^9.29.1",
+    "ts-node": "^10.9.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@wdio/native-utils": "2.5.0",
+      "webdriver>undici": "^7.0.0"
+    }
   }
 }

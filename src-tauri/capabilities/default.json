@@ -10,6 +10,7 @@
     "opener:default",
     "dialog:allow-open",
     "dialog:allow-save",
-    "notification:default"
+    "notification:default",
+    "wdio-webdriver:default"
   ]
 }

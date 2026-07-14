@@ -44,3 +44,4 @@ rand = "0.8"
 sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
 scraper = "0.20"
 
+tauri-plugin-wdio-webdriver = "1"
