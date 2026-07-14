@@ -71,6 +71,7 @@ interface LibraryState {
   thumbnailProgress: { done: number; total: number } | null;
   isDbReady: boolean;
   dbError: string | null;
+  pendingRemovedWatchDirs: string[];
 }
 
 interface LibraryActions {
@@ -112,6 +113,10 @@ interface LibraryActions {
   moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
   renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
   updateVideoPath: (oldPath: string, newPath: string) => Promise<void>;
+  addPendingRemovedWatchDir: (dir: string) => void;
+  confirmDirMissing: (dir: string) => Promise<void>;
+  dismissDirRemoved: (dir: string) => void;
+  handleWatchDirRenamed: (oldDir: string, newDir: string) => Promise<void>;
 }
 
 // Tag 配列の内容が同一かどうかを比較する (fetchVideos での参照正規化用)
@@ -171,6 +176,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   thumbnailProgress: null,
   isDbReady: false,
   dbError: null,
+  pendingRemovedWatchDirs: [],
 
   initDb: async () => {
     try {
@@ -635,6 +641,49 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   updateVideoPath: async (oldPath: string, newPath: string) => {
     await invoke('db_update_video_path', { oldPath, newPath });
     await get().fetchVideos();
+  },
+
+  addPendingRemovedWatchDir: (dir: string) => {
+    set((state) => {
+      if (state.pendingRemovedWatchDirs.includes(dir)) return state;
+      return { pendingRemovedWatchDirs: [...state.pendingRemovedWatchDirs, dir] };
+    });
+  },
+
+  confirmDirMissing: async (dir: string) => {
+    await invoke('db_mark_dir_missing', { dirPath: dir });
+    await invoke('stop_watching', { path: dir }).catch((e: unknown) => {
+      console.error(`[confirmDirMissing] ウォッチャー停止に失敗しました (${dir}):`, e);
+    });
+    set((state) => ({
+      pendingRemovedWatchDirs: state.pendingRemovedWatchDirs.filter((d) => d !== dir),
+      watchDirs: state.watchDirs.filter((d) => d !== dir),
+      filterWatchDir: state.filterWatchDir === dir ? null : state.filterWatchDir,
+    }));
+    await get().fetchVideos();
+  },
+
+  dismissDirRemoved: (dir: string) => {
+    set((state) => ({
+      pendingRemovedWatchDirs: state.pendingRemovedWatchDirs.filter((d) => d !== dir),
+    }));
+  },
+
+  handleWatchDirRenamed: async (oldDir: string, newDir: string) => {
+    await invoke('db_rename_watch_dir', { oldPath: oldDir, newPath: newDir });
+    await invoke('stop_watching', { path: oldDir }).catch((e: unknown) => {
+      console.error(`[handleWatchDirRenamed] ウォッチャー停止に失敗しました (${oldDir}):`, e);
+    });
+    await invoke('start_watching', { path: newDir }).catch((e: unknown) => {
+      console.error(`[handleWatchDirRenamed] ウォッチャー開始に失敗しました (${newDir}):`, e);
+    });
+    set((state) => ({
+      watchDirs: state.watchDirs.map((d) => (d === oldDir ? newDir : d)),
+      filterWatchDir: state.filterWatchDir === oldDir ? newDir : state.filterWatchDir,
+    }));
+    await get().fetchVideos();
+    const { t } = (await import('i18next')).default;
+    toast.success(t('app.watchDirRenamed', { old: oldDir, new: newDir }));
   },
 
   incrementWatchCount: async (videoId: number) => {

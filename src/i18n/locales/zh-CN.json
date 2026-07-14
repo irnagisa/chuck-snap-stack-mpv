@@ -32,7 +32,11 @@
     "dropImport": "拖放视频以导入",
     "dropFormats": "支持 mp4 / mkv / webm / avi / mov 等格式",
     "confirmImport": "找到 {{count}} 个文件。\n全部添加？",
-    "confirmImportButton": "添加"
+    "confirmImportButton": "添加",
+    "watchDirRemoved": "找不到文件夹",
+    "watchDirRemovedAction": "标记为缺失",
+    "watchDirRemovedDismiss": "忽略",
+    "watchDirRenamed": "文件夹已移动: {{old}} → {{new}}"
   },
   "sidebar": {
     "categoryTab": "分类",

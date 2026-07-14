@@ -27,6 +27,7 @@ import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { AppHeader } from "./components/AppHeader";
 import { ThumbnailProgressBar } from "./components/ThumbnailProgressBar";
 import { TranscodeStatusBar } from "./components/TranscodeStatusBar";
+import { WatchDirRemovedAlert } from "./components/WatchDirRemovedAlert";
 import { LibrarySidebar } from "./components/Library/LibrarySidebar";
 import { LibraryFilterBar } from "./components/Library/LibraryFilterBar";
 import { BatchActionBar } from "./components/Library/BatchActionBar";
@@ -277,6 +278,7 @@ function App() {
           <ThumbnailProgressBar />
 
           <TranscodeStatusBar />
+          <WatchDirRemovedAlert />
 
           {/* ボディ */}
           <div className="flex flex-1 min-h-0">

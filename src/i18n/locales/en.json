@@ -32,7 +32,11 @@
     "dropImport": "Drop videos to import",
     "dropFormats": "Supports mp4 / mkv / webm / avi / mov and more",
     "confirmImport": "Found {{count}} files.\nAdd all?",
-    "confirmImportButton": "Add"
+    "confirmImportButton": "Add",
+    "watchDirRemoved": "Folder not found",
+    "watchDirRemovedAction": "Mark as Missing",
+    "watchDirRemovedDismiss": "Dismiss",
+    "watchDirRenamed": "Folder moved: {{old}} → {{new}}"
   },
   "sidebar": {
     "categoryTab": "Category",

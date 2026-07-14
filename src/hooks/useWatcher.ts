@@ -17,6 +17,8 @@ export function useWatcher() {
     let u1: (() => void) | undefined;
     let u2: (() => void) | undefined;
     let u3: (() => void) | undefined;
+    let u4: (() => void) | undefined;
+    let u5: (() => void) | undefined;
 
     const batch: WatcherBatch = { creates: [], removes: [], renames: [] };
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -53,7 +55,15 @@ export function useWatcher() {
           'video-file-renamed',
           (e) => { batch.renames.push(e.payload); schedule(); }
         );
-        if (cancelled) { u1?.(); u2?.(); u3?.(); }
+        u4 = await listen<string>(
+          'watch-dir-removed',
+          (e) => { useLibraryStore.getState().addPendingRemovedWatchDir(e.payload); }
+        );
+        u5 = await listen<{ old_dir: string; new_dir: string }>(
+          'watch-dir-renamed',
+          (e) => { useLibraryStore.getState().handleWatchDirRenamed(e.payload.old_dir, e.payload.new_dir); }
+        );
+        if (cancelled) { u1?.(); u2?.(); u3?.(); u4?.(); u5?.(); }
       } catch (e) {
         console.error('[useWatcher] ファイル変更イベントのリスナー登録に失敗しました:', e);
         toast.error('フォルダ監視の初期化に失敗しました。アプリを再起動してください。');
@@ -66,6 +76,8 @@ export function useWatcher() {
       u1?.();
       u2?.();
       u3?.();
+      u4?.();
+      u5?.();
     };
   }, []);
 }

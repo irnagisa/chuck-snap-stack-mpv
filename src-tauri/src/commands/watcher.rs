@@ -18,6 +18,12 @@ pub struct FileEventPayload {
 }
 
 #[derive(Clone, serde::Serialize)]
+pub struct WatchDirRenamedPayload {
+    pub old_dir: String,
+    pub new_dir: String,
+}
+
+#[derive(Clone, serde::Serialize)]
 pub struct RenameEventPayload {
     pub old_path: String,
     pub new_path: String,
@@ -58,7 +64,7 @@ pub async fn start_watching(
         .insert(canonical.clone(), watcher);
 
     let handle = app_handle.clone();
-    let canonical_for_log = canonical;
+    let watched_dir = canonical;
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let is_video = |p: &std::path::Path| {
@@ -67,6 +73,7 @@ pub async fn start_watching(
                 .map(|ext| VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
                 .unwrap_or(false)
         };
+        let mut dir_removed_emitted = false;
         for result in rx {
             if let Ok(event) = result {
                 match event.kind {
@@ -84,11 +91,20 @@ pub async fn start_watching(
                         }
                     }
                     EventKind::Remove(_) => {
-                        for p in event.paths.iter().filter(|p| is_video(p)) {
-                            let _ = handle.emit(
-                                "video-file-removed",
-                                p.to_string_lossy().to_string(),
-                            );
+                        // 監視ディレクトリ自体が削除されたか確認
+                        let dir_removed = event.paths.iter().any(|p| {
+                            p.to_string_lossy() == watched_dir.as_str()
+                        });
+                        if dir_removed && !dir_removed_emitted {
+                            dir_removed_emitted = true;
+                            let _ = handle.emit("watch-dir-removed", watched_dir.clone());
+                        } else {
+                            for p in event.paths.iter().filter(|p| is_video(p)) {
+                                let _ = handle.emit(
+                                    "video-file-removed",
+                                    p.to_string_lossy().to_string(),
+                                );
+                            }
                         }
                     }
                     EventKind::Modify(notify::event::ModifyKind::Name(rename_mode)) => {
@@ -98,7 +114,14 @@ pub async fn start_watching(
                                 if event.paths.len() == 2 {
                                     let old = &event.paths[0];
                                     let new = &event.paths[1];
-                                    if is_video(new) {
+                                    // 監視ディレクトリ自体がリネーム/移動された場合
+                                    if old.to_string_lossy() == watched_dir.as_str() {
+                                        let payload = WatchDirRenamedPayload {
+                                            old_dir: old.to_string_lossy().to_string(),
+                                            new_dir: new.to_string_lossy().to_string(),
+                                        };
+                                        let _ = handle.emit("watch-dir-renamed", payload);
+                                    } else if is_video(new) {
                                         let payload = RenameEventPayload {
                                             old_path: old.to_string_lossy().to_string(),
                                             new_path: new.to_string_lossy().to_string(),
@@ -153,7 +176,7 @@ pub async fn start_watching(
             let msg = e.downcast_ref::<&str>().copied()
                 .or_else(|| e.downcast_ref::<String>().map(|s| s.as_str()))
                 .unwrap_or("不明なエラー");
-            log::error!("[watcher] イベント処理スレッドがパニックしました (path={}): {msg}", canonical_for_log);
+            log::error!("[watcher] イベント処理スレッドがパニックしました (path={}): {msg}", watched_dir);
         }
     });
 

@@ -687,3 +687,42 @@ pub async fn db_get_videos_for_paths(
     }
     Ok(results)
 }
+
+
+#[tauri::command]
+pub async fn db_mark_dir_missing(
+    state: State<'_, DbState>,
+    dir_path: String,
+) -> Result<(), String> {
+    let conn = state.conn()?;
+    let like_pattern = format!("{}/", dir_path.trim_end_matches('/'));
+    conn.execute(
+        "UPDATE videos SET status = 'missing' WHERE path LIKE ? || '%'",
+        rusqlite::params![like_pattern],
+    ).map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM watch_dirs WHERE path = ?",
+        rusqlite::params![dir_path],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn db_rename_watch_dir(
+    state: State<'_, DbState>,
+    old_path: String,
+    new_path: String,
+) -> Result<(), String> {
+    let conn = state.conn()?;
+    let old_prefix = format!("{}/", old_path.trim_end_matches('/'));
+    let new_prefix = format!("{}/", new_path.trim_end_matches('/'));
+    conn.execute(
+        "UPDATE videos SET path = ? || SUBSTR(path, LENGTH(?) + 1) WHERE path LIKE ? || '%'",
+        rusqlite::params![new_prefix, old_prefix, old_prefix],
+    ).map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE watch_dirs SET path = ? WHERE path = ?",
+        rusqlite::params![new_path, old_path],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}

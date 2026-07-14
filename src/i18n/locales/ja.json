@@ -32,7 +32,11 @@
     "dropImport": "動画をドロップしてインポート",
     "dropFormats": "mp4 / mkv / webm / avi / mov などに対応",
     "confirmImport": "{{count}} 件のファイルが見つかりました。\nすべて追加しますか？",
-    "confirmImportButton": "追加"
+    "confirmImportButton": "追加",
+    "watchDirRemoved": "フォルダが見つかりません",
+    "watchDirRemovedAction": "Missing にする",
+    "watchDirRemovedDismiss": "無視",
+    "watchDirRenamed": "フォルダが移動されました: {{old}} → {{new}}"
   },
   "sidebar": {
     "categoryTab": "カテゴリ",

@@ -175,6 +175,8 @@ pub fn run() {
             commands::db_videos_scan::db_get_videos_for_paths,
             commands::db_videos_scan::db_batch_watcher_update,
             commands::db_videos_scan::db_assign_category_from_path,
+            commands::db_videos_scan::db_mark_dir_missing,
+            commands::db_videos_scan::db_rename_watch_dir,
             commands::db_videos::db_add_watch_dir,
             commands::db_videos::db_remove_watch_dir,
             commands::db_videos::db_get_watch_dirs,
