@@ -15,6 +15,7 @@ import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '.
 import { listen } from '@tauri-apps/api/event';
 import { toast } from '../../store/useToastStore';
 import { similarityPct } from '../../utils/phash';
+import { formatTime, formatFileSize } from '../../utils/time';
 
 interface Props {
   video: Video;
@@ -38,20 +39,6 @@ interface VideoForPhash {
 }
 
 type SimilarThreshold = 4 | 8 | 12;
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
 
 
 export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
@@ -387,6 +374,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             type="button"
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
             onClick={onClose}
+            aria-label={t('confirm.cancel')}
           >
             ✕
           </button>
@@ -565,7 +553,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
                       {t('detail.duration')}
                     </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.duration)}</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatTime(video.duration)}</p>
                   </div>
                 )}
                 {video.progress > 0 && (
@@ -573,7 +561,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                     <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
                       {t('detail.watchProgress')}
                     </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatDuration(video.progress)}</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatTime(video.progress)}</p>
                   </div>
                 )}
                 <div>
@@ -894,7 +882,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                           </p>
                           {sim.duration != null && (
                             <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                              {formatDuration(sim.duration)}
+                              {formatTime(sim.duration)}
                             </p>
                           )}
                         </div>

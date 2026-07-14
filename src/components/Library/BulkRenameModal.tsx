@@ -148,7 +148,7 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl flex flex-col w-[680px] max-w-[95vw] max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}

@@ -171,6 +171,8 @@ export function PlayerControls() {
           onClick={toggleLoop}
           className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
           title={isLooping ? t('player.loopOff') : t('player.loopOn')}
+          aria-label={isLooping ? t('player.loopOff') : t('player.loopOn')}
+          aria-pressed={isLooping}
         >
           {t('player.loopLabel')}
         </button>
@@ -232,6 +234,7 @@ export function PlayerControls() {
             disabled={!hasPrev}
             className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
             title={t('player.prevVideo')}
+            aria-label={t('player.prevVideo')}
           >
             ⏮
           </button>
@@ -241,6 +244,7 @@ export function PlayerControls() {
           onClick={pauseResume}
           className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 w-12 text-center"
           title={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
+          aria-label={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
         >
           {isPaused ? '▶' : '⏸'}
         </button>
@@ -251,6 +255,7 @@ export function PlayerControls() {
             disabled={!hasNext}
             className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
             title={t('player.nextVideo')}
+            aria-label={t('player.nextVideo')}
           >
             ⏭
           </button>
@@ -263,6 +268,8 @@ export function PlayerControls() {
             onClick={toggleShuffle}
             className={`px-2.5 py-1 rounded text-sm shrink-0 ${isShuffle ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
             title={isShuffle ? t('player.shuffleOff') : t('player.shuffleOn')}
+            aria-label={isShuffle ? t('player.shuffleOff') : t('player.shuffleOn')}
+            aria-pressed={isShuffle}
           >
             ⇄
           </button>
@@ -272,6 +279,8 @@ export function PlayerControls() {
           onClick={toggleLoop}
           className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
           title={isLooping ? t('player.loopOff') : t('player.loopOn')}
+          aria-label={isLooping ? t('player.loopOff') : t('player.loopOn')}
+          aria-pressed={isLooping}
         >
           ↻
         </button>
@@ -282,6 +291,7 @@ export function PlayerControls() {
           onClick={handleScreenshot}
           className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
           title={t('player.screenshot')}
+          aria-label={t('player.screenshot')}
         >
           📷
         </button>
@@ -293,6 +303,8 @@ export function PlayerControls() {
             onClick={toggleQueuePanel}
             className={`px-2.5 py-1 rounded text-sm shrink-0 ${showQueuePanel ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
             title={t('player.showQueue')}
+            aria-label={t('player.showQueue')}
+            aria-pressed={showQueuePanel}
           >
             ≡
           </button>
@@ -303,6 +315,7 @@ export function PlayerControls() {
           onClick={toggleMiniPlayer}
           className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
           title={t('player.miniPlayer')}
+          aria-label={t('player.miniPlayer')}
         >
           ⇱
         </button>

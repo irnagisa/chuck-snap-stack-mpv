@@ -53,6 +53,8 @@ export function LibraryFilterBar({
   filterHasAudio,
   filterWatchedStatus,
   filterMediaType,
+  filterMinDuration,
+  filterMaxDuration,
   durationInput,
   maxDurationInput,
   totalCount,
@@ -82,6 +84,43 @@ export function LibraryFilterBar({
       {/* Row 1: 選択中タグ + ソート */}
       <div className="flex items-center gap-2">
         <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+          {/* アクティブな非タグフィルターのチップ */}
+          {filterMinRating !== 0 && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              {filterMinRating === -1 ? t('filters.ratingUnrated') : `★${filterMinRating}+`}
+              <button type="button" onClick={() => onSetMinRating(0)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+            </span>
+          )}
+          {filterHasAudio !== null && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              {filterHasAudio === 1 ? t('filters.audioYes') : t('filters.audioNo')}
+              <button type="button" onClick={() => onSetHasAudio(null)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+            </span>
+          )}
+          {filterWatchedStatus !== 'all' && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              {filterWatchedStatus === 'watched' ? t('filters.watched') : t('filters.unwatched')}
+              <button type="button" onClick={() => onSetWatchedStatus('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+            </span>
+          )}
+          {filterMediaType !== 'all' && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              {filterMediaType === 'video' ? t('filters.mediaVideo') : filterMediaType === 'audio' ? t('filters.mediaAudio') : t('filters.mediaImage')}
+              <button type="button" onClick={() => onSetMediaType('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+            </span>
+          )}
+          {filterMinDuration > 0 && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              {filterMinDuration}{t('filters.durationSuffix')}〜
+              <button type="button" onClick={() => onDurationInputChange('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+            </span>
+          )}
+          {filterMaxDuration > 0 && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              〜{filterMaxDuration}{t('filters.durationSuffix')}
+              <button type="button" onClick={() => onMaxDurationInputChange('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+            </span>
+          )}
           {filterTagIds.length > 0 && (
             <>
               {tags

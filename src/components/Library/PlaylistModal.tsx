@@ -162,6 +162,8 @@ export function PlaylistModal({ playlist, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-[480px] max-h-[80vh] flex flex-col overflow-hidden">

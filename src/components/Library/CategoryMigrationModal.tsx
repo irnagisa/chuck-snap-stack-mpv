@@ -89,7 +89,7 @@ export function CategoryMigrationModal({ onDone, onCancel }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" onClick={phase === 'confirm' ? onCancel : undefined}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" role="dialog" aria-modal="true" onClick={phase === 'confirm' ? onCancel : undefined}>
       <div
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-96 max-w-[90vw]"
         onClick={(e) => e.stopPropagation()}

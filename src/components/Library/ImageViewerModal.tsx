@@ -35,6 +35,8 @@ export function ImageViewerModal({ video, allImages, onClose, onNavigate }: Prop
   return (
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90"
+      role="dialog"
+      aria-modal="true"
       onClick={onClose}
     >
       <div

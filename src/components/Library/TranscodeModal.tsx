@@ -103,6 +103,8 @@ export function TranscodeModal({ video, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center bg-black/40"
+      role="dialog"
+      aria-modal="true"
       style={{ zIndex: 70 }}
       onClick={onClose}
     >

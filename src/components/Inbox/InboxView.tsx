@@ -109,14 +109,14 @@ export default function InboxView() {
     );
   }
 
-  const filterDefs: { type: StackType; label: string }[] = [
-    { type: 'source', label: '入手元' },
-    { type: 'date', label: '日付' },
-    { type: 'missing_metadata', label: '未設定項目' },
-    { type: 'almost_done', label: 'ほぼ完了' },
-    { type: 'directory', label: 'フォルダ' },
-    { type: 'category', label: 'カテゴリ' },
-    { type: 'tag', label: 'タグ' },
+  const filterDefs: { type: StackType; label: string; description: string }[] = [
+    { type: 'source', label: '入手元', description: 'ダウンロード・ローカルなど入手元でグループ化' },
+    { type: 'date', label: '日付', description: '追加日が同じファイルをグループ化' },
+    { type: 'missing_metadata', label: '未設定項目', description: 'カテゴリ・評価などが未設定のファイル' },
+    { type: 'almost_done', label: 'ほぼ完了', description: 'カテゴリも評価も設定済み（確認待ち）' },
+    { type: 'directory', label: 'フォルダ', description: '同じフォルダ内のファイルをグループ化' },
+    { type: 'category', label: 'カテゴリ', description: '同じカテゴリのファイルをグループ化' },
+    { type: 'tag', label: 'タグ', description: '同じタグが付いたファイルをグループ化' },
   ];
 
   return (
@@ -169,13 +169,15 @@ export default function InboxView() {
         )}
         {/* Stack type filter chips */}
         <div className="flex flex-wrap gap-1">
-          {filterDefs.map(({ type, label }) => {
+          {filterDefs.map(({ type, label, description }) => {
             const active = !hiddenTypes.has(type);
             return (
               <button
                 key={type}
                 type="button"
                 onClick={() => toggleType(type)}
+                title={description}
+                aria-pressed={active}
                 className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
                   active
                     ? 'bg-blue-100 dark:bg-blue-900/50 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
@@ -221,9 +223,12 @@ export default function InboxView() {
           </div>
         )}
         {!isLoading && videos.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-400 dark:text-gray-600">
-            <p className="text-2xl mb-2">✓</p>
-            <p className="text-sm">Inbox は空です</p>
+          <div className="flex flex-col items-center justify-center h-48 text-center">
+            <p className="text-3xl mb-3">✓</p>
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Inbox は空です</p>
+            <p className="text-xs text-gray-400 dark:text-gray-600 max-w-xs">
+              動画・音楽・画像ファイルをスキャンしてライブラリに追加すると、未整理のファイルがここに表示されます。
+            </p>
           </div>
         )}
         {(batchVideos !== null || hasAnyStacks) && (

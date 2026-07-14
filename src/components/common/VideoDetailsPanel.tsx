@@ -7,20 +7,7 @@ import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
 import { Select } from './Select';
 import type { Video, SubtitleFile } from '../../types';
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+import { formatTime, formatFileSize } from '../../utils/time';
 
 interface Props {
   video: Video;
@@ -277,7 +264,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
                 {t('detail.duration')}
               </p>
               <p className="text-xs text-gray-800 dark:text-gray-200">
-                {formatDuration(video.duration)}
+                {formatTime(video.duration)}
               </p>
             </div>
           )}
@@ -305,7 +292,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
                 {t('detail.watchProgress')}
               </p>
               <p className="text-xs text-gray-800 dark:text-gray-200">
-                {formatDuration(video.progress)}
+                {formatTime(video.progress)}
               </p>
             </div>
           )}

@@ -11,6 +11,7 @@ import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
+import { formatTime } from '../../utils/time';
 
 interface Props {
   videos: Video[];
@@ -45,13 +46,7 @@ interface VideoRowProps {
   onRegisterObserver: (el: HTMLDivElement, callback: () => void) => () => void;
 }
 
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+
 
 const ROW_HEIGHTS = { S: 38, M: 52, L: 72, XL: 90 } as const;
 
@@ -249,7 +244,7 @@ const VideoRow = memo(function VideoRow({
 
       {/* 再生時間 */}
       <span className="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-gray-400 w-14 text-right">
-        {v.duration != null ? formatDuration(v.duration) : ''}
+        {v.duration != null ? formatTime(v.duration) : ''}
       </span>
 
       {/* アクションボタン */}

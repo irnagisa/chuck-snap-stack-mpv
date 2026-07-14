@@ -14,6 +14,8 @@ export function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = 'OK'
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
     >
       <div
         className="bg-white dark:bg-gray-900 rounded-xl shadow-xl px-6 py-5 w-full max-w-sm mx-4"
