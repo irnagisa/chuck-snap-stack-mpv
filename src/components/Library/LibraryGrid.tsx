@@ -5,6 +5,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
+import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
 import { useAudioPreview } from '../../hooks/useAudioPreview';
@@ -265,7 +266,6 @@ interface Props {
   currentVideoId: number | null;
   detailVideoId?: number | null;
   scrollResetKey?: string | number;
-  itemMinWidth?: number;
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
@@ -283,7 +283,6 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
   currentVideoId,
   detailVideoId,
   scrollResetKey,
-  itemMinWidth = ITEM_MIN_WIDTH,
   onPlay,
   onShowDetail,
   onAddToPlaylist,
@@ -294,6 +293,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
 }: Props, ref: React.Ref<LibraryViewHandle>) {
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
+  const { gridItemMinWidth = ITEM_MIN_WIDTH } = useLibraryViewStore(useShallow((s) => ({ gridItemMinWidth: s.gridItemMinWidth })));
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
   const categories = useTagStore(useShallow((s) => s.categories));
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
@@ -346,7 +346,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
     const el = scrollRef.current;
     if (!el) return;
     const measure = () => {
-      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (itemMinWidth + GAP)));
+      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (gridItemMinWidth + GAP)));
       setColumns(cols);
     };
     measure();
@@ -362,7 +362,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
       if (timer !== null) clearTimeout(timer);
       ro.disconnect();
     };
-  }, [itemMinWidth]);
+  }, [gridItemMinWidth]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -465,7 +465,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
                           onCheckbox={handleCheckbox}
                           onContextMenu={handleContextMenu}
                           onRegisterObserver={registerObserver}
-                          previewEnabled={itemMinWidth >= 180}
+                          previewEnabled={gridItemMinWidth >= 180}
                         />
                       );
                     })}

@@ -1,83 +1,90 @@
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/shallow";
 import { Select } from "../common/Select";
-import type { Tag } from "../../types";
+import { useLibraryStore } from "../../store/useLibraryStore";
+import { useTagStore } from "../../store/useTagStore";
+import { useLibraryViewStore } from "../../store/useLibraryViewStore";
+import { usePlayerStore } from "../../store/usePlayerStore";
+import { useModalStore } from "../../store/useModalStore";
 import type {
   WatchedStatus,
   MediaTypeFilter,
   SortBy,
-  SortOrder,
 } from "../../store/useLibraryStore";
 
-interface Props {
-  tags: Tag[];
-  filterTagIds: number[];
-  filterTagMode: "and" | "or";
-  filterSortBy: SortBy;
-  filterSortOrder: SortOrder;
-  filterMinRating: number;
-  filterHasAudio: number | null;
-  filterWatchedStatus: WatchedStatus;
-  filterMediaType: MediaTypeFilter;
-  filterMinDuration: number;
-  filterMaxDuration: number;
-  durationInput: string;
-  maxDurationInput: string;
-  totalCount: number;
-  viewMode: "grid" | "list";
-  gridItemMinWidth: number;
-  listItemSize: "S" | "M" | "L" | "XL";
-  onToggleTag: (id: number) => void;
-  onClearTags: () => void;
-  onSetTagMode: (mode: "and" | "or") => void;
-  onSetSort: (by: SortBy, order: SortOrder) => void;
-  onSetMinRating: (v: number) => void;
-  onSetHasAudio: (v: number | null) => void;
-  onSetWatchedStatus: (v: WatchedStatus) => void;
-  onSetMediaType: (v: MediaTypeFilter) => void;
-  onDurationInputChange: (v: string) => void;
-  onMaxDurationInputChange: (v: string) => void;
-  onShuffleAll: () => void;
-  onSaveSmartPlaylist: () => void;
-  onSetViewMode: (mode: "grid" | "list") => void;
-  onSetGridItemMinWidth: (v: number) => void;
-  onSetListItemSize: (v: "S" | "M" | "L" | "XL") => void;
-}
-
-export function LibraryFilterBar({
-  tags,
-  filterTagIds,
-  filterTagMode,
-  filterSortBy,
-  filterSortOrder,
-  filterMinRating,
-  filterHasAudio,
-  filterWatchedStatus,
-  filterMediaType,
-  filterMinDuration,
-  filterMaxDuration,
-  durationInput,
-  maxDurationInput,
-  totalCount,
-  viewMode,
-  gridItemMinWidth,
-  listItemSize,
-  onToggleTag,
-  onClearTags,
-  onSetTagMode,
-  onSetSort,
-  onSetMinRating,
-  onSetHasAudio,
-  onSetWatchedStatus,
-  onSetMediaType,
-  onDurationInputChange,
-  onMaxDurationInputChange,
-  onShuffleAll,
-  onSaveSmartPlaylist,
-  onSetViewMode,
-  onSetGridItemMinWidth,
-  onSetListItemSize,
-}: Props) {
+export function LibraryFilterBar() {
   const { t } = useTranslation();
+
+  const {
+    filterTagIds, filterTagMode, filterSortBy, filterSortOrder,
+    filterMinRating, filterHasAudio, filterWatchedStatus, filterMediaType,
+    filterMinDuration, filterMaxDuration, totalCount,
+    toggleTagFilter, clearTagFilters, setTagMode, setSort,
+    setMinRating, setHasAudio, setWatchedStatus, setMediaType,
+    setMinDuration, setMaxDuration,
+  } = useLibraryStore(useShallow((s) => ({
+    filterTagIds: s.filterTagIds,
+    filterTagMode: s.filterTagMode,
+    filterSortBy: s.filterSortBy,
+    filterSortOrder: s.filterSortOrder,
+    filterMinRating: s.filterMinRating,
+    filterHasAudio: s.filterHasAudio,
+    filterWatchedStatus: s.filterWatchedStatus,
+    filterMediaType: s.filterMediaType,
+    filterMinDuration: s.filterMinDuration,
+    filterMaxDuration: s.filterMaxDuration,
+    totalCount: s.totalCount,
+    toggleTagFilter: s.toggleTagFilter,
+    clearTagFilters: s.clearTagFilters,
+    setTagMode: s.setTagMode,
+    setSort: s.setSort,
+    setMinRating: s.setMinRating,
+    setHasAudio: s.setHasAudio,
+    setWatchedStatus: s.setWatchedStatus,
+    setMediaType: s.setMediaType,
+    setMinDuration: s.setMinDuration,
+    setMaxDuration: s.setMaxDuration,
+  })));
+
+  const tags = useTagStore((s) => s.tags);
+
+  const { viewMode, gridItemMinWidth, listItemSize, setViewMode, setGridItemMinWidth, setListItemSize } =
+    useLibraryViewStore(useShallow((s) => ({
+      viewMode: s.viewMode,
+      gridItemMinWidth: s.gridItemMinWidth,
+      listItemSize: s.listItemSize,
+      setViewMode: s.setViewMode,
+      setGridItemMinWidth: s.setGridItemMinWidth,
+      setListItemSize: s.setListItemSize,
+    })));
+
+  const playShuffleAll = usePlayerStore((s) => s.playShuffleAll);
+  const openSmartPlaylist = useModalStore((s) => s.openSmartPlaylist);
+
+  // Duration フィルターのデバウンス用ローカル state
+  const [durationInput, setDurationInput] = useState(
+    filterMinDuration > 0 ? String(filterMinDuration) : ""
+  );
+  const [maxDurationInput, setMaxDurationInput] = useState(
+    filterMaxDuration > 0 ? String(filterMaxDuration) : ""
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const s = parseInt(durationInput, 10);
+      setMinDuration(isNaN(s) || s <= 0 ? 0 : s);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [durationInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const s = parseInt(maxDurationInput, 10);
+      setMaxDuration(isNaN(s) || s <= 0 ? 0 : s);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [maxDurationInput]);
 
   return (
     <div className="flex flex-col gap-1.5 mb-3 shrink-0">
@@ -88,37 +95,37 @@ export function LibraryFilterBar({
           {filterMinRating !== 0 && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
               {filterMinRating === -1 ? t('filters.ratingUnrated') : `★${filterMinRating}+`}
-              <button type="button" onClick={() => onSetMinRating(0)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+              <button type="button" onClick={() => setMinRating(0)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
           {filterHasAudio !== null && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
               {filterHasAudio === 1 ? t('filters.audioYes') : t('filters.audioNo')}
-              <button type="button" onClick={() => onSetHasAudio(null)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+              <button type="button" onClick={() => setHasAudio(null)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
           {filterWatchedStatus !== 'all' && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
               {filterWatchedStatus === 'watched' ? t('filters.watched') : t('filters.unwatched')}
-              <button type="button" onClick={() => onSetWatchedStatus('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+              <button type="button" onClick={() => setWatchedStatus('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
           {filterMediaType !== 'all' && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
               {filterMediaType === 'video' ? t('filters.mediaVideo') : filterMediaType === 'audio' ? t('filters.mediaAudio') : t('filters.mediaImage')}
-              <button type="button" onClick={() => onSetMediaType('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+              <button type="button" onClick={() => setMediaType('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
           {filterMinDuration > 0 && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
               {filterMinDuration}{t('filters.durationSuffix')}〜
-              <button type="button" onClick={() => onDurationInputChange('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+              <button type="button" onClick={() => setDurationInput('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
           {filterMaxDuration > 0 && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
               〜{filterMaxDuration}{t('filters.durationSuffix')}
-              <button type="button" onClick={() => onMaxDurationInputChange('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+              <button type="button" onClick={() => setMaxDurationInput('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
           {filterTagIds.length > 0 && (
@@ -131,7 +138,7 @@ export function LibraryFilterBar({
                     type="button"
                     className="px-1.5 py-px rounded-full text-[10px] font-medium text-white ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950 hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: tag.color }}
-                    onClick={() => onToggleTag(tag.id)}
+                    onClick={() => toggleTagFilter(tag.id)}
                     title={t("filters.tagClear")}
                   >
                     {tag.name}
@@ -147,7 +154,7 @@ export function LibraryFilterBar({
                       : t("filters.tagFilterOr")
                   }
                   onClick={() =>
-                    onSetTagMode(filterTagMode === "and" ? "or" : "and")
+                    setTagMode(filterTagMode === "and" ? "or" : "and")
                   }
                 >
                   {filterTagMode === "and" ? "AND" : "OR"}
@@ -156,7 +163,7 @@ export function LibraryFilterBar({
               <button
                 type="button"
                 className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
-                onClick={onClearTags}
+                onClick={clearTagFilters}
               >
                 {t("filters.tagClear")}
               </button>
@@ -169,7 +176,7 @@ export function LibraryFilterBar({
             variant="sm"
             value={filterSortBy}
             onChange={(e) =>
-              onSetSort(e.target.value as SortBy, filterSortOrder)
+              setSort(e.target.value as SortBy, filterSortOrder)
             }
           >
             <option value="created_at">{t("filters.sortByCreatedAt")}</option>
@@ -185,7 +192,7 @@ export function LibraryFilterBar({
                 : t("filters.sortAscTitle")
             }
             onClick={() =>
-              onSetSort(filterSortBy, filterSortOrder === "desc" ? "asc" : "desc")
+              setSort(filterSortBy, filterSortOrder === "desc" ? "asc" : "desc")
             }
           >
             {filterSortOrder === "desc" ? "↓" : "↑"}
@@ -197,7 +204,7 @@ export function LibraryFilterBar({
               title={t("app.shuffleAllTitle", {
                 count: totalCount.toLocaleString(),
               })}
-              onClick={onShuffleAll}
+              onClick={playShuffleAll}
             >
               {t("app.shuffleAll")}
             </button>
@@ -206,7 +213,7 @@ export function LibraryFilterBar({
             type="button"
             className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-400 dark:hover:border-amber-600 transition-colors"
             title={t("app.saveSmartPlaylistTitle")}
-            onClick={onSaveSmartPlaylist}
+            onClick={openSmartPlaylist}
           >
             {t("app.saveSmartPlaylist")}
           </button>
@@ -218,7 +225,7 @@ export function LibraryFilterBar({
         <Select
           variant="sm"
           value={filterMinRating}
-          onChange={(e) => onSetMinRating(Number(e.target.value))}
+          onChange={(e) => setMinRating(Number(e.target.value))}
           title="評価フィルタ"
         >
           <option value={0}>{t("filters.ratingAll")}</option>
@@ -235,7 +242,7 @@ export function LibraryFilterBar({
           value={filterHasAudio === null ? "" : String(filterHasAudio)}
           onChange={(e) => {
             const v = e.target.value;
-            onSetHasAudio(v === "" ? null : Number(v));
+            setHasAudio(v === "" ? null : Number(v));
           }}
           title="音声フィルタ"
         >
@@ -247,7 +254,7 @@ export function LibraryFilterBar({
         <Select
           variant="sm"
           value={filterWatchedStatus}
-          onChange={(e) => onSetWatchedStatus(e.target.value as WatchedStatus)}
+          onChange={(e) => setWatchedStatus(e.target.value as WatchedStatus)}
           title="視聴状態フィルタ"
         >
           <option value="all">{t("filters.watchedAll")}</option>
@@ -258,7 +265,7 @@ export function LibraryFilterBar({
         <Select
           variant="sm"
           value={filterMediaType}
-          onChange={(e) => onSetMediaType(e.target.value as MediaTypeFilter)}
+          onChange={(e) => setMediaType(e.target.value as MediaTypeFilter)}
           title="メディアタイプフィルタ"
         >
           <option value="all">{t("filters.mediaAll")}</option>
@@ -272,7 +279,7 @@ export function LibraryFilterBar({
             type="number"
             className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
             value={durationInput}
-            onChange={(e) => onDurationInputChange(e.target.value)}
+            onChange={(e) => setDurationInput(e.target.value)}
             placeholder={t("filters.minDurationPlaceholder")}
             min={0}
             title="最小長さ (秒)"
@@ -284,7 +291,7 @@ export function LibraryFilterBar({
             type="number"
             className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
             value={maxDurationInput}
-            onChange={(e) => onMaxDurationInputChange(e.target.value)}
+            onChange={(e) => setMaxDurationInput(e.target.value)}
             placeholder={t("filters.maxDurationPlaceholder")}
             min={0}
             title="最大長さ (秒)"
@@ -304,7 +311,7 @@ export function LibraryFilterBar({
                   ? "bg-blue-500 text-white"
                   : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               }`}
-              onClick={() => onSetViewMode("grid")}
+              onClick={() => setViewMode("grid")}
               title="グリッド表示"
             >
               <svg
@@ -326,7 +333,7 @@ export function LibraryFilterBar({
                   ? "bg-blue-500 text-white"
                   : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               }`}
-              onClick={() => onSetViewMode("list")}
+              onClick={() => setViewMode("list")}
               title="リスト表示"
             >
               <svg
@@ -359,7 +366,7 @@ export function LibraryFilterBar({
                     ? "bg-blue-500 text-white"
                     : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
-                onClick={() => onSetGridItemMinWidth(value)}
+                onClick={() => setGridItemMinWidth(value)}
                 title={`カードサイズ: ${label}`}
               >
                 {label}
@@ -376,7 +383,7 @@ export function LibraryFilterBar({
                     ? "bg-blue-500 text-white"
                     : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
-                onClick={() => onSetListItemSize(size)}
+                onClick={() => setListItemSize(size)}
                 title={`行サイズ: ${size}`}
               >
                 {size}

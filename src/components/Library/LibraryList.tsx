@@ -12,13 +12,13 @@ import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
 import { formatTime } from '../../utils/time';
+import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 
 interface Props {
   videos: Video[];
   currentVideoId: number | null;
   detailVideoId: number | null;
   scrollResetKey: string;
-  listRowSize?: 'S' | 'M' | 'L' | 'XL';
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
   onAddToPlaylist?: (video: Video) => void;
@@ -285,7 +285,6 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
   currentVideoId,
   detailVideoId,
   scrollResetKey,
-  listRowSize = 'M',
   onPlay,
   onShowDetail,
   onAddToPlaylist,
@@ -294,6 +293,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
   selectedIds,
   onSelectionChange,
 }: Props, ref: React.Ref<LibraryViewHandle>) {
+  const listRowSize = useLibraryViewStore((s) => s.listItemSize);
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
   const videoTags = useTagStore(useShallow((s) => s.videoTags));

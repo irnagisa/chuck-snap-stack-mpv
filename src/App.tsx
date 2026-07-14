@@ -10,8 +10,8 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
 import { useDragDrop } from "./hooks/useDragDrop";
 import { useTheme } from "./hooks/useTheme";
-import { useTagStore } from "./store/useTagStore";
 import { useModalStore } from "./store/useModalStore";
+import { useLibraryViewStore } from "./store/useLibraryViewStore";
 import { PlayerControls } from "./components/Player/PlayerControls";
 import { MiniPlayer } from "./components/Player/MiniPlayer";
 import { LibraryGrid } from "./components/Library/LibraryGrid";
@@ -33,13 +33,12 @@ import { BatchActionBar } from "./components/Library/BatchActionBar";
 import InboxView from "./components/Inbox/InboxView";
 import { HomeView } from "./components/Home/HomeView";
 import { useInboxStore } from "./store/useInboxStore";
-import type { Playlist } from "./types";
 
-type SidebarTab = "category" | "playlist" | "folder";
 type MainView = "home" | "library" | "inbox";
 
 function App() {
   const { t } = useTranslation();
+
   const {
     videos, totalCount, currentPage, pageSize,
     filterSearch, filterCategoryId, filterTagIds, filterTagMode,
@@ -68,38 +67,33 @@ function App() {
     isDbReady: s.isDbReady,
     dbError: s.dbError,
   })));
-  const {
-    initDb, scanAndImport,
-    setSearch, setCategoryFilter, toggleTagFilter, clearTagFilters, setTagMode,
-    setMinRating, setHasAudio, setMinDuration, setMaxDuration,
-    setWatchedStatus, setWatchDirFilter, setMediaType, setSort, setPage,
-    fetchVideos,
-  } = useLibraryStore(useShallow((s) => ({
-    initDb: s.initDb,
-    scanAndImport: s.scanAndImport,
-    setSearch: s.setSearch,
-    setCategoryFilter: s.setCategoryFilter,
-    toggleTagFilter: s.toggleTagFilter,
-    clearTagFilters: s.clearTagFilters,
-    setTagMode: s.setTagMode,
-    setMinRating: s.setMinRating,
-    setHasAudio: s.setHasAudio,
-    setMinDuration: s.setMinDuration,
-    setMaxDuration: s.setMaxDuration,
-    setWatchedStatus: s.setWatchedStatus,
-    setWatchDirFilter: s.setWatchDirFilter,
-    setMediaType: s.setMediaType,
-    setSort: s.setSort,
-    setPage: s.setPage,
-    fetchVideos: s.fetchVideos,
-  })));
+
+  const { initDb, scanAndImport, setSearch, setPage, fetchVideos } =
+    useLibraryStore(useShallow((s) => ({
+      initDb: s.initDb,
+      scanAndImport: s.scanAndImport,
+      setSearch: s.setSearch,
+      setPage: s.setPage,
+      fetchVideos: s.fetchVideos,
+    })));
 
   const currentVideo = usePlayerStore((s) => s.currentVideo);
   const isMiniPlayer = usePlayerStore((s) => s.isMiniPlayer);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
-  const playShuffleAll = usePlayerStore((s) => s.playShuffleAll);
-  const tags = useTagStore((s) => s.tags);
-  const { openBulkModal, openAddToPlaylist, openPlaylist, openDetailVideo, openSmartPlaylist, detailVideo, closeDetailVideo, closeAll } = useModalStore();
+
+  const { openBulkModal, openAddToPlaylist, openDetailVideo, detailVideo, closeDetailVideo, closeAll } =
+    useModalStore(useShallow((s) => ({
+      openBulkModal: s.openBulkModal,
+      openAddToPlaylist: s.openAddToPlaylist,
+      openDetailVideo: s.openDetailVideo,
+      detailVideo: s.detailVideo,
+      closeDetailVideo: s.closeDetailVideo,
+      closeAll: s.closeAll,
+    })));
+
+  const viewMode = useLibraryViewStore((s) => s.viewMode);
+  const setSidebarTab = useLibraryViewStore((s) => s.setSidebarTab);
+
   const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
 
   useTheme();
@@ -116,28 +110,6 @@ function App() {
     return "library";
   });
   const [searchInput, setSearchInput] = useState(filterSearch);
-  const [gridItemMinWidth, setGridItemMinWidth] = useState<number>(() => {
-    const presets = [120, 180, 240, 320];
-    const saved = localStorage.getItem("gridItemMinWidth");
-    if (!saved) return 180;
-    const n = Number(saved);
-    return presets.reduce((prev, cur) =>
-      Math.abs(cur - n) < Math.abs(prev - n) ? cur : prev
-    );
-  });
-  const [viewMode, setViewMode] = useState<"grid" | "list">(
-    () => (localStorage.getItem("viewMode") as "grid" | "list") ?? "grid"
-  );
-  const [listItemSize, setListItemSize] = useState<"S" | "M" | "L" | "XL">(
-    () => (localStorage.getItem("listItemSize") as "S" | "M" | "L" | "XL") ?? "M"
-  );
-  const [durationInput, setDurationInput] = useState(
-    filterMinDuration > 0 ? String(filterMinDuration) : ""
-  );
-  const [maxDurationInput, setMaxDurationInput] = useState(
-    filterMaxDuration > 0 ? String(filterMaxDuration) : ""
-  );
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("category");
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
   const [viewingImage, setViewingImage] = useState<Video | null>(null);
@@ -150,32 +122,11 @@ function App() {
   const libraryRef = useRef<LibraryViewHandle>(null);
   const pendingScrollIdRef = useRef<number | null>(null);
 
-  useEffect(() => { localStorage.setItem("gridItemMinWidth", String(gridItemMinWidth)); }, [gridItemMinWidth]);
-  useEffect(() => { localStorage.setItem("viewMode", viewMode); }, [viewMode]);
-  useEffect(() => { localStorage.setItem("listItemSize", listItemSize); }, [listItemSize]);
-
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput), 500);
     return () => clearTimeout(timer);
   }, [searchInput]);
-
-  // Debounce duration
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const s = parseInt(durationInput, 10);
-      setMinDuration(isNaN(s) || s <= 0 ? 0 : s);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [durationInput]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const s = parseInt(maxDurationInput, 10);
-      setMaxDuration(isNaN(s) || s <= 0 ? 0 : s);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [maxDurationInput]);
 
   useEffect(() => { initDb(); }, []);
 
@@ -194,7 +145,6 @@ function App() {
     if (!targetId) return;
     const inPage = videos.find((v) => v.id === targetId);
     if (inPage) { libraryRef.current?.scrollToId(targetId); return; }
-    // 全件 IPC 転送を避けるため専用コマンドでページ番号を直接取得
     const {
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
@@ -301,9 +251,9 @@ function App() {
     (dir: string) => {
       setMainView("library");
       setSidebarTab("folder");
-      setWatchDirFilter(dir);
+      useLibraryStore.getState().setWatchDirFilter(dir);
     },
-    [setWatchDirFilter]
+    [setSidebarTab]
   );
 
   return (
@@ -346,19 +296,7 @@ function App() {
               </div>
             ) : (
               <div className="flex flex-1 px-4 pt-4 pb-10 gap-4 min-h-0">
-                {isDbReady && (
-                  <LibrarySidebar
-                    sidebarTab={sidebarTab}
-                    onTabChange={setSidebarTab}
-                    selectedCategoryId={filterCategoryId}
-                    onSelectCategory={setCategoryFilter}
-                    selectedTagIds={filterTagIds}
-                    onToggleTag={toggleTagFilter}
-                    selectedDir={filterWatchDir}
-                    onSelectDir={setWatchDirFilter}
-                    onOpenPlaylist={(pl: Playlist) => openPlaylist(pl)}
-                  />
-                )}
+                {isDbReady && <LibrarySidebar />}
 
                 <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                   {!isDbReady && !dbError && (
@@ -375,40 +313,7 @@ function App() {
                   {isDbReady && (
                     <ErrorBoundary>
                       <div className="flex flex-col flex-1 min-h-0">
-                        <LibraryFilterBar
-                          tags={tags}
-                          filterTagIds={filterTagIds}
-                          filterTagMode={filterTagMode}
-                          filterSortBy={filterSortBy}
-                          filterSortOrder={filterSortOrder}
-                          filterMinRating={filterMinRating}
-                          filterHasAudio={filterHasAudio}
-                          filterWatchedStatus={filterWatchedStatus}
-                          filterMediaType={filterMediaType}
-                          filterMinDuration={filterMinDuration}
-                          filterMaxDuration={filterMaxDuration}
-                          durationInput={durationInput}
-                          maxDurationInput={maxDurationInput}
-                          totalCount={totalCount}
-                          viewMode={viewMode}
-                          gridItemMinWidth={gridItemMinWidth}
-                          listItemSize={listItemSize}
-                          onToggleTag={toggleTagFilter}
-                          onClearTags={clearTagFilters}
-                          onSetTagMode={setTagMode}
-                          onSetSort={setSort}
-                          onSetMinRating={setMinRating}
-                          onSetHasAudio={setHasAudio}
-                          onSetWatchedStatus={setWatchedStatus}
-                          onSetMediaType={setMediaType}
-                          onDurationInputChange={setDurationInput}
-                          onMaxDurationInputChange={setMaxDurationInput}
-                          onShuffleAll={playShuffleAll}
-                          onSaveSmartPlaylist={openSmartPlaylist}
-                          onSetViewMode={setViewMode}
-                          onSetGridItemMinWidth={setGridItemMinWidth}
-                          onSetListItemSize={setListItemSize}
-                        />
+                        <LibraryFilterBar />
 
                         <BatchActionBar
                           selectedVideoIds={selectedVideoIds}
@@ -424,7 +329,6 @@ function App() {
                               currentVideoId={currentVideo?.id ?? null}
                               detailVideoId={detailVideo?.id ?? null}
                               scrollResetKey={scrollResetKey}
-                              listRowSize={listItemSize}
                               onPlay={handlePlay}
                               onShowDetail={openDetailVideo}
                               onAddToPlaylist={openAddToPlaylist}
@@ -440,7 +344,6 @@ function App() {
                               currentVideoId={currentVideo?.id ?? null}
                               detailVideoId={detailVideo?.id ?? null}
                               scrollResetKey={scrollResetKey}
-                              itemMinWidth={gridItemMinWidth}
                               onPlay={handlePlay}
                               onShowDetail={openDetailVideo}
                               onAddToPlaylist={openAddToPlaylist}
