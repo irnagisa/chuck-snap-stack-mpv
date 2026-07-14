@@ -41,15 +41,19 @@ mpv --idle --no-terminal --input-ipc-server=/tmp/mpv-socket <file>
 ```
 chuck-snap-stack/
 ├── CLAUDE.md
+├── e2e/                        # E2E テスト (WebdriverIO + tauri-plugin-wdio-webdriver)
+│   ├── specs/
+│   └── wdio.conf.ts
 ├── src/                        # React フロントエンド
 │   ├── components/
-│   │   ├── Library/            # メディアライブラリ UI (30+ ファイル)
+│   │   ├── Home/               # ダッシュボード (HomeView, 各サマリーカード)
+│   │   ├── Library/            # メディアライブラリ UI (32 ファイル)
 │   │   ├── Inbox/              # Inbox・クイックソート UI
 │   │   ├── Player/             # プレイヤー UI (mpv ウィンドウのラッパー)
 │   │   ├── Settings/           # 設定パネル
 │   │   └── common/             # 共通 UI コンポーネント
 │   ├── hooks/                  # カスタムフック
-│   ├── store/                  # Zustand ストア (10 ファイル)
+│   ├── store/                  # Zustand ストア (13 ファイル)
 │   ├── types/                  # TypeScript 型定義
 │   ├── utils/                  # ユーティリティ関数
 │   ├── lib/                    # メディアアイコン等
@@ -57,7 +61,7 @@ chuck-snap-stack/
 │   └── App.tsx
 ├── src-tauri/                  # Rust/Tauri バックエンド
 │   ├── src/
-│   │   ├── commands/           # Tauri コマンド (122 個)
+│   │   ├── commands/           # Tauri コマンド (139 個)
 │   │   │   ├── library.rs      # メディアファイル操作・メタデータ抽出
 │   │   │   ├── mpv.rs          # mpv プロセス管理・IPC
 │   │   │   ├── db_videos.rs    # メディア DB CRUD・Inbox 管理
@@ -75,6 +79,8 @@ chuck-snap-stack/
 │   │   │   ├── webserver.rs    # 組み込み HTTP サーバー (サムネイル配信)
 │   │   │   ├── phash.rs        # 知覚的ハッシュ・重複検出
 │   │   │   ├── ai.rs           # AI タグ提案 (ONNX)
+│   │   │   ├── link.rs         # URL メタデータ取得・リンクアセット DB
+│   │   │   ├── system.rs       # システム情報 (ディスク情報等)
 │   │   │   ├── settings.rs     # アプリ設定・パス検出
 │   │   │   ├── utils.rs        # 検証ユーティリティ
 │   │   │   └── mod.rs
@@ -106,27 +112,28 @@ CREATE TABLE videos (
   watched_at          TEXT,
   progress            REAL DEFAULT 0,        -- 再生位置 (秒)
   rating              INTEGER DEFAULT 0,
+  created_at          TEXT DEFAULT CURRENT_TIMESTAMP,
   category_id         INTEGER REFERENCES categories(id),
-  has_audio           INTEGER DEFAULT 1,
+  has_audio           INTEGER,
   watch_count         INTEGER DEFAULT 0,
   media_type          TEXT DEFAULT 'video',  -- 'video' | 'audio' | 'image'
   source_url          TEXT,
-  status              TEXT DEFAULT 'active', -- 'active' | 'inbox' | 'missing'
-  source_type         TEXT DEFAULT 'local',  -- 'local' | 'download'
+  status              TEXT,                  -- 'active' | 'inbox' | 'missing'
+  source_type         TEXT,                  -- 'local' | 'download'
   ai_tag_suggestions  TEXT,                  -- JSON (AI 提案タグ)
   ai_new_suggestions  TEXT,                  -- JSON (未マッチの新規提案)
   ai_analyzed_at      TEXT,
   phash               TEXT,                  -- 知覚的ハッシュ (重複検出用)
-  created_at          TEXT DEFAULT CURRENT_TIMESTAMP
+  last_viewed_at      TEXT                   -- 最終視聴日時
 );
 
 -- カテゴリ (階層構造対応)
 CREATE TABLE categories (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
-  color      TEXT,
+  color      TEXT NOT NULL DEFAULT '#6366f1',
   parent_id  INTEGER REFERENCES categories(id),
-  icon       TEXT,
+  icon       TEXT DEFAULT NULL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -134,10 +141,10 @@ CREATE TABLE categories (
 CREATE TABLE tags (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   name            TEXT NOT NULL UNIQUE,
-  color           TEXT,
+  color           TEXT NOT NULL DEFAULT '#6366f1',
+  created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
   tag_category_id INTEGER REFERENCES tag_categories(id),
-  icon            TEXT,
-  created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+  icon            TEXT DEFAULT NULL
 );
 
 CREATE TABLE tag_categories (
@@ -147,8 +154,8 @@ CREATE TABLE tag_categories (
 );
 
 CREATE TABLE video_tags (
-  video_id INTEGER REFERENCES videos(id),
-  tag_id   INTEGER REFERENCES tags(id),
+  video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  tag_id   INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   PRIMARY KEY (video_id, tag_id)
 );
 
@@ -160,8 +167,8 @@ CREATE TABLE playlists (
 );
 
 CREATE TABLE playlist_items (
-  playlist_id INTEGER REFERENCES playlists(id),
-  video_id    INTEGER REFERENCES videos(id),
+  playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+  video_id    INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
   position    INTEGER,
   PRIMARY KEY (playlist_id, video_id)
 );
@@ -169,21 +176,21 @@ CREATE TABLE playlist_items (
 CREATE TABLE smart_playlists (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL,
-  filter_json TEXT,
+  filter_json TEXT NOT NULL,
   created_at  TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 監視フォルダ
 CREATE TABLE watch_dirs (
   path                TEXT PRIMARY KEY,
-  use_dir_as_category INTEGER DEFAULT 0,
-  created_at          TEXT DEFAULT CURRENT_TIMESTAMP
+  created_at          TEXT DEFAULT CURRENT_TIMESTAMP,
+  use_dir_as_category INTEGER DEFAULT 0
 );
 
 -- アプリ設定
 CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
-  value TEXT
+  value TEXT NOT NULL
 );
 ```
 
@@ -207,6 +214,13 @@ cd src-tauri && cargo check
 
 # Rust テスト
 cd src-tauri && cargo test
+
+# ユニットテスト (Vitest)
+pnpm test
+
+# E2E テスト (WebdriverIO)
+pnpm test:e2e:build   # デバッグビルド (初回・変更時)
+pnpm test:e2e         # E2E テスト実行
 ```
 
 ## Tauri コマンドのパターン
@@ -230,7 +244,7 @@ pub async fn command_name(
 .invoke_handler(tauri::generate_handler![
     commands::mpv::play,
     commands::library::scan_directory,
-    // ...他 120 個のコマンド
+    // ...他 137 個のコマンド
 ])
 ```
 
