@@ -1,4 +1,11 @@
 packages:
   - "."
+
+overrides:
+  "@wdio/native-utils": "2.5.0"
+  "webdriver>undici": "^7.0.0"
+
 allowBuilds:
-  esbuild: false
+  edgedriver: true
+  geckodriver: true
+  esbuild: true
