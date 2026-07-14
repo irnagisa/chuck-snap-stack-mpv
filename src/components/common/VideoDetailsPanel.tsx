@@ -29,6 +29,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
   const [isRescanning, setIsRescanning] = useState(false);
   const [thumbTimestamp, setThumbTimestamp] = useState('5');
   const [isCapturingThumb, setIsCapturingThumb] = useState(false);
+  const [isGeneratingWaveform, setIsGeneratingWaveform] = useState(false);
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
   const [isScanningSubs, setIsScanningSubs] = useState(false);
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
@@ -126,6 +127,31 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
       toast.error(`サムネイルの取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsCapturingThumb(false);
+    }
+  };
+
+  const handleGenerateWaveform = async () => {
+    setIsGeneratingWaveform(true);
+    try {
+      const cacheDir = await appCacheDir();
+      const hashBuffer = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(video.path)
+      );
+      const hash = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      const outputPath = await join(cacheDir, 'thumbnails', hash.slice(0, 2), `${hash}.webp`);
+      const result = await invoke<string>('generate_waveform', {
+        audioPath: video.path,
+        outputPath,
+      });
+      await invoke('db_update_video_thumbnail', { videoId: video.id, thumbnail: result });
+      onThumbnailChange?.();
+    } catch (e) {
+      toast.error(`波形の生成に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsGeneratingWaveform(false);
     }
   };
 
@@ -355,6 +381,18 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
             {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
           </button>
         </div>
+        {localMediaType === 'audio' && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handleGenerateWaveform}
+              disabled={isGeneratingWaveform}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
+            >
+              {isGeneratingWaveform ? t('detail.waveformGenerating') : t('detail.waveformGenerate')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 字幕 */}

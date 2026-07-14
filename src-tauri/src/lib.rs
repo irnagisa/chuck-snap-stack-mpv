@@ -61,6 +61,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_directory,
             commands::library::generate_thumbnail,
+            commands::library::generate_waveform,
             commands::library::get_file_size,
             commands::library::get_file_sizes,
             commands::mpv::play,

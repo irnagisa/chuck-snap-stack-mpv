@@ -205,6 +205,8 @@
     "captureAt": "秒のフレーム",
     "capture": "キャプチャ",
     "capturing": "処理中...",
+    "waveformGenerate": "波形を再生成",
+    "waveformGenerating": "生成中...",
     "subtitle": "字幕ファイル",
     "searchSubtitle": "検索",
     "searchingSubtitle": "検索中...",

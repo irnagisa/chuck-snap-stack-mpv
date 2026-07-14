@@ -205,6 +205,8 @@
     "captureAt": "秒帧",
     "capture": "截取",
     "capturing": "处理中...",
+    "waveformGenerate": "重新生成波形",
+    "waveformGenerating": "生成中...",
     "subtitle": "字幕文件",
     "searchSubtitle": "搜索",
     "searchingSubtitle": "搜索中...",

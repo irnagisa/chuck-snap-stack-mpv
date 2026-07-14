@@ -374,6 +374,50 @@ pub async fn check_has_audio(
     Ok(!out.stdout.iter().all(|b| b.is_ascii_whitespace()))
 }
 
+/// 音声ファイルの波形画像を強制的に生成する (アルバムアートをスキップ)。
+#[tauri::command]
+pub async fn generate_waveform(
+    app_settings: tauri::State<'_, SharedAppSettings>,
+    audio_path: String,
+    output_path: String,
+) -> Result<String, String> {
+    validate_media_path(&audio_path)?;
+    validate_image_output_path(&output_path)?;
+
+    let ffmpeg_path = {
+        let s = app_settings.lock().map_err(|e| e.to_string())?;
+        s.ffmpeg_path.clone()
+    };
+
+    if let Some(parent) = Path::new(&output_path).parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let wave_filter = "color=c=#1f2937:s=320x180,format=rgb24[bg];\
+                       showwavespic=s=320x180:colors=#4ade80:scale=sqrt[wv];\
+                       [bg][wv]overlay";
+    let status = tokio::process::Command::new(&ffmpeg_path)
+        .args([
+            "-y", "-i", &audio_path,
+            "-filter_complex", wave_filter,
+            "-frames:v", "1", "-q:v", "80",
+            &output_path,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
+        Ok(output_path)
+    } else {
+        Err("波形画像の生成に失敗しました".to_string())
+    }
+}
+
 /// ファイルサイズをバイト単位で返す。
 #[tauri::command]
 pub async fn get_file_size(path: String) -> Result<u64, String> {

@@ -205,6 +205,8 @@
     "captureAt": "s frame",
     "capture": "Capture",
     "capturing": "Processing...",
+    "waveformGenerate": "Regenerate Waveform",
+    "waveformGenerating": "Generating...",
     "subtitle": "Subtitle file",
     "searchSubtitle": "Search",
     "searchingSubtitle": "Searching...",
