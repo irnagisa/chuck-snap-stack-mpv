@@ -585,5 +585,11 @@
   },
   "confirm": {
     "cancel": "Cancel"
+  },
+  "about": {
+    "sectionTitle": "About",
+    "version": "Version",
+    "description": "A desktop application for managing and playing media files. Features a powerful mpv-based player, AI tag suggestions, smart playlists, and duplicate detection.",
+    "license": "License: MIT"
   }
 }

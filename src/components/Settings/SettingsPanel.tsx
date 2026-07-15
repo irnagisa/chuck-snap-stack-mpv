@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import {
@@ -61,6 +62,12 @@ export function SettingsPanel({ onClose }: Props) {
     await setCategoryMode('virtual');
     setShowVirtualConfirm(false);
   };
+
+  // アプリバージョン
+  const [appVersion, setAppVersion] = useState<string>('');
+  useEffect(() => {
+    getVersion().then(setAppVersion);
+  }, []);
 
   // ウェブサーバー
   const [wsPort, setWsPort] = useState(7777);
@@ -743,6 +750,30 @@ export function SettingsPanel({ onClose }: Props) {
           >
             {t('settings.keybindingReset')}
           </button>
+
+          <hr className="border-gray-200 dark:border-gray-700" />
+
+          {/* このアプリについて */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            {t('about.sectionTitle')}
+          </p>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Chuck Snap Stack</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {t('about.version')} {appVersion}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              {t('about.description')}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {t('about.license')}
+            </p>
+          </div>
         </div>
 
         {/* フッター */}

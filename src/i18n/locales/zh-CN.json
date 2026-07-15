@@ -585,5 +585,11 @@
   },
   "confirm": {
     "cancel": "取消"
+  },
+  "about": {
+    "sectionTitle": "关于",
+    "version": "版本",
+    "description": "一款用于管理和播放媒体文件的桌面应用。内置强大的 mpv 播放器，支持 AI 标签建议、智能播放列表和重复检测。",
+    "license": "许可证：MIT"
   }
 }
