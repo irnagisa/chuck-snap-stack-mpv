@@ -3,6 +3,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryDescendantIds } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { toast } from '../../store/useToastStore';
 import { Select } from '../common/Select';
 import { MediaIcon, IconPicker } from '../../lib/mediaIcons';
 
@@ -107,8 +108,12 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
 
   const handleDelete = async (id: number) => {
     if (selectedCategoryId === id) onSelectCategory(null);
-    await deleteCategory(id);
-    await fetchVideos();
+    try {
+      await deleteCategory(id);
+      await fetchVideos();
+    } catch (e) {
+      toast.error(String(e));
+    }
   };
 
   const startEdit = (id: number, name: string, color: string, parentId: number | null, icon: string | null) => {

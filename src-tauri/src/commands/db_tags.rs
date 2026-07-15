@@ -582,6 +582,29 @@ pub async fn db_delete_category(
             result
         };
 
+        // 子カテゴリをルートに昇格する場合、同名のルートカテゴリが存在すると
+        // UNIQUE 制約違反になるため事前にチェックする
+        if parent_id.is_none() {
+            // 削除対象自身がルートの場合、子カテゴリはルートに昇格される
+            // → 既存のルートカテゴリ名と衝突しないか確認
+            for child_name in &children_names {
+                let conflict: bool = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM categories WHERE name = ?1 AND parent_id IS NULL AND id != ?2",
+                        rusqlite::params![child_name, category_id],
+                        |r| r.get::<_, i64>(0),
+                    )
+                    .map_err(|e| e.to_string())?
+                    > 0;
+                if conflict {
+                    return Err(format!(
+                        "カテゴリ削除失敗: 子カテゴリ '{}' と同名のルートカテゴリが既に存在します",
+                        child_name
+                    ));
+                }
+            }
+        }
+
         CatInfo { cat_rel_path, parent_rel_path, children_names, sync_watch_dirs }
     }; // DB ロック解放
 
