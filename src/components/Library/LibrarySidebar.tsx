@@ -28,7 +28,7 @@ export function LibrarySidebar() {
   const openPlaylist = useModalStore((s) => s.openPlaylist);
 
   return (
-    <div className="w-44 shrink-0 flex flex-col gap-2 min-h-0">
+    <div className="w-full flex-1 flex flex-col gap-2 min-h-0">
       <div className="flex gap-1 text-xs shrink-0">
         {(
           [
@@ -52,7 +52,7 @@ export function LibrarySidebar() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-4">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         {sidebarTab === "category" ? (
           <CategorySidebar
             selectedCategoryId={filterCategoryId}

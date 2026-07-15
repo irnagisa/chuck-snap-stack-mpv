@@ -58,6 +58,36 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
   const [collapsedTagCatIds, setCollapsedTagCatIds] = useState<Set<number>>(new Set());
   const collapsedInitialized = useRef(false);
 
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const sectionsRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartRatio = useRef(0.5);
+
+  const handleDividerMouseDown = (e: React.MouseEvent) => {
+    isDragging.current = true;
+    dragStartY.current = e.clientY;
+    dragStartRatio.current = splitRatio;
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current || !sectionsRef.current) return;
+      const containerHeight = sectionsRef.current.getBoundingClientRect().height;
+      const delta = e.clientY - dragStartY.current;
+      const newRatio = Math.max(0.1, Math.min(0.9, dragStartRatio.current + delta / containerHeight));
+      setSplitRatio(newRatio);
+    };
+    const handleMouseUp = () => { isDragging.current = false; };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   useEffect(() => {
     if (!collapsedInitialized.current && categories.length > 0) {
       collapsedInitialized.current = true;
@@ -484,6 +514,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
     return rows;
   };
 
+  const hasTagsSection = (tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0);
+
   return (
     <aside className="flex flex-col h-full min-h-0 w-full min-w-0">
       <div className="relative mb-2 shrink-0">
@@ -510,7 +542,14 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1 pr-4">
+      <div
+        ref={sectionsRef}
+        className="flex-1 min-h-0"
+        style={hasTagsSection
+          ? { display: 'grid', gridTemplateRows: `${splitRatio}fr 8px ${1 - splitRatio}fr` }
+          : { display: 'flex', flexDirection: 'column' }}
+      >
+      <div className="min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1 pr-4">
       <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
         <span className="text-gray-400 dark:text-gray-500 shrink-0">
           <MediaIcon icon="folder" className="w-3.5 h-3.5" />
@@ -623,8 +662,17 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
       ) : null}
       </div>
 
-      {(tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0) ? (
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 border-t border-gray-200 dark:border-gray-700 pt-1 pr-4">
+      {hasTagsSection && (
+        <div
+          className="flex items-center cursor-ns-resize group select-none"
+          onMouseDown={handleDividerMouseDown}
+        >
+          <div className="h-px w-full bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-400 dark:group-hover:bg-blue-600 transition-colors" />
+        </div>
+      )}
+
+      {hasTagsSection && (
+        <div className="min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pt-1 pr-4">
           <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
             <span className="text-gray-400 dark:text-gray-500 shrink-0">
               <MediaIcon icon="tag" className="w-3.5 h-3.5" />
@@ -765,7 +813,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
             </div>
           )}
         </div>
-      ) : null}
+      )}
+      </div>
     </aside>
   );
 }

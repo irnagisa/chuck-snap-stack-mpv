@@ -123,6 +123,43 @@ function App() {
   const libraryRef = useRef<LibraryViewHandle>(null);
   const pendingScrollIdRef = useRef<number | null>(null);
 
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem("librarySidebarWidth");
+    return saved ? Number(saved) : 176;
+  });
+  const isSidebarDragging = useRef(false);
+  const sidebarDragStartX = useRef(0);
+  const sidebarDragStartWidth = useRef(176);
+
+  const handleSidebarDividerMouseDown = (e: React.MouseEvent) => {
+    isSidebarDragging.current = true;
+    sidebarDragStartX.current = e.clientX;
+    sidebarDragStartWidth.current = sidebarWidth;
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isSidebarDragging.current) return;
+      const delta = e.clientX - sidebarDragStartX.current;
+      const newWidth = Math.max(120, Math.min(400, sidebarDragStartWidth.current + delta));
+      setSidebarWidth(newWidth);
+      sidebarDragStartWidth.current = newWidth;
+      sidebarDragStartX.current = e.clientX;
+    };
+    const handleMouseUp = () => {
+      if (!isSidebarDragging.current) return;
+      isSidebarDragging.current = false;
+      localStorage.setItem("librarySidebarWidth", String(sidebarDragStartWidth.current));
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput), 500);
@@ -297,8 +334,21 @@ function App() {
                 </ErrorBoundary>
               </div>
             ) : (
-              <div className="flex flex-1 px-4 pt-4 pb-10 gap-4 min-h-0">
-                {isDbReady && <LibrarySidebar />}
+              <div className="flex flex-1 px-4 pt-4 pb-10 min-h-0">
+                {isDbReady && (
+                  <div style={{ width: sidebarWidth }} className="shrink-0 min-h-0 flex flex-col">
+                    <LibrarySidebar />
+                  </div>
+                )}
+
+                {isDbReady && (
+                  <div
+                    className="relative shrink-0 w-4 self-stretch cursor-col-resize group select-none"
+                    onMouseDown={handleSidebarDividerMouseDown}
+                  >
+                    <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-400 dark:group-hover:bg-blue-600 transition-colors" />
+                  </div>
+                )}
 
                 <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                   {!isDbReady && !dbError && (
@@ -323,7 +373,7 @@ function App() {
                           onClearSelection={() => setSelectedVideoIds(new Set())}
                         />
 
-                        <div className="flex-1 min-h-0">
+                        <div className="flex-1 min-h-0 pt-4 -mt-4">
                           {viewMode === "list" ? (
                             <LibraryList
                               ref={libraryRef}
