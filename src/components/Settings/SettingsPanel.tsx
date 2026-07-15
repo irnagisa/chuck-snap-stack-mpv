@@ -388,8 +388,8 @@ export function SettingsPanel({ onClose }: Props) {
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.aiModelType')}</p>
             {([
-              ['wd-tagger', t('settings.aiModelWdTagger'), t('settings.aiModelWdTaggerDesc')],
               ['joytag',    t('settings.aiModelJoyTag'),   t('settings.aiModelJoyTagDesc')],
+              ['wd-tagger', t('settings.aiModelWdTagger'), t('settings.aiModelWdTaggerDesc')],
             ] as [AiModelType, string, string][]).map(([value, label, desc]) => (
               <label
                 key={value}
