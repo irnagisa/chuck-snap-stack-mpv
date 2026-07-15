@@ -26,10 +26,10 @@ const JOYTAG_MODEL_URL: &str =
     "https://huggingface.co/fancyfeast/joytag/resolve/main/model.onnx";
 const JOYTAG_TAGS_URL: &str =
     "https://huggingface.co/fancyfeast/joytag/resolve/main/top_tags.txt";
-/// SHA-256 for JoyTag files — set to empty string to skip integrity check.
-/// Update these after downloading and verifying the files for the first time.
-const JOYTAG_MODEL_SHA256: &str = "";
-const JOYTAG_TAGS_SHA256: &str = "";
+const JOYTAG_MODEL_SHA256: &str =
+    "f85b7130e6e549b5b0822537007b7482e8c4c8e754c8d9a5bee08e27050e1097";
+const JOYTAG_TAGS_SHA256: &str =
+    "32b1963a234af848643b2bbf47d8eff1f1c7889406810c57b980f41b2b9e01d0";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
