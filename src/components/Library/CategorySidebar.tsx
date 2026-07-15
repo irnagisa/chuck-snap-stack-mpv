@@ -505,7 +505,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1 pr-4">
       <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
         <span className="text-gray-400 dark:text-gray-500 shrink-0">
           <MediaIcon icon="folder" className="w-3.5 h-3.5" />
@@ -522,7 +522,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
 
       <button
         type="button"
-        className={`relative flex items-center gap-1.5 w-full text-left px-2 py-1.5 rounded text-xs transition-colors overflow-hidden ${
+        className={`relative flex items-center gap-1.5 w-full text-left px-2 py-2.5 min-h-[2.25rem] shrink-0 rounded text-xs transition-colors overflow-hidden ${
           selectedCategoryId === null
             ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
             : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -532,12 +532,17 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
         {selectedCategoryId === null && (
           <span className="absolute left-0 inset-y-1 w-0.5 rounded-r bg-blue-400 dark:bg-blue-500" />
         )}
+        <span className="shrink-0">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+          </svg>
+        </span>
         {t('category.all')}
       </button>
 
       <button
         type="button"
-        className={`relative flex items-center gap-1.5 w-full text-left px-2 py-1.5 rounded text-xs transition-colors overflow-hidden ${
+        className={`relative flex items-center gap-1.5 w-full text-left px-2 py-2.5 min-h-[2.25rem] shrink-0 rounded text-xs transition-colors overflow-hidden ${
           selectedCategoryId === -1
             ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
             : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -547,6 +552,12 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
         {selectedCategoryId === -1 && (
           <span className="absolute left-0 inset-y-1 w-0.5 rounded-r bg-blue-400 dark:bg-blue-500" />
         )}
+        <span className="shrink-0">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            <line x1="9" y1="12" x2="15" y2="12" />
+          </svg>
+        </span>
         {t('category.uncategorized')}
       </button>
 
@@ -608,7 +619,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
       </div>
 
       {(tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0) ? (
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 border-t border-gray-200 dark:border-gray-700 pt-1">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 border-t border-gray-200 dark:border-gray-700 pt-1 pr-4">
           <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
             <span className="text-gray-400 dark:text-gray-500 shrink-0">
               <MediaIcon icon="tag" className="w-3.5 h-3.5" />
@@ -623,11 +634,13 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
             )}
             <button
               type="button"
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 leading-none"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0"
               title={t('category.addGroup')}
               onClick={() => setIsAddingTagCat(true)}
             >
-              {t('category.addGroup')}
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
             </button>
           </div>
 

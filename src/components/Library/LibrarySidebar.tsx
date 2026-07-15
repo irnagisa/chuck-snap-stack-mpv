@@ -52,7 +52,7 @@ export function LibrarySidebar() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-4">
         {sidebarTab === "category" ? (
           <CategorySidebar
             selectedCategoryId={filterCategoryId}
