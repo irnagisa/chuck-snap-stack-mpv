@@ -1,20 +1,31 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { claimPreviewSlot, releasePreviewSlot } from './previewCoordinator';
 
 const HOVER_DELAY_MS = 400;
 
 export function useVideoPreview(path: string, enabled: boolean) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tokenRef = useRef(Symbol('video-preview'));
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
-  // play/pause イベントリスナーを登録
+  // play/pause イベントリスナーを登録 (再生開始時に他のプレビューを停止させる)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const onPlay = () => setIsPreviewPlaying(true);
-    const onPause = () => setIsPreviewPlaying(false);
-    const onEnded = () => setIsPreviewPlaying(false);
+    const onPlay = () => {
+      claimPreviewSlot(tokenRef.current, () => video.pause());
+      setIsPreviewPlaying(true);
+    };
+    const onPause = () => {
+      releasePreviewSlot(tokenRef.current);
+      setIsPreviewPlaying(false);
+    };
+    const onEnded = () => {
+      releasePreviewSlot(tokenRef.current);
+      setIsPreviewPlaying(false);
+    };
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('ended', onEnded);
@@ -27,8 +38,30 @@ export function useVideoPreview(path: string, enabled: boolean) {
 
   // アンマウント時クリーンアップ
   useEffect(() => {
+    const token = tokenRef.current;
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      releasePreviewSlot(token);
+    };
+  }, []);
+
+  // ウィンドウが非アクティブになったら確実に停止する
+  useEffect(() => {
+    const stop = () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      videoRef.current?.pause();
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) stop();
+    };
+    window.addEventListener('blur', stop);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('blur', stop);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 

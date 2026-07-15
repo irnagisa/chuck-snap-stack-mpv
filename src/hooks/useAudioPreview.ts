@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { claimPreviewSlot, releasePreviewSlot } from './previewCoordinator';
 
 /** ホバー開始からプレビュー再生を始めるまでの遅延 (ms) */
 const HOVER_DELAY_MS = 400;
@@ -15,18 +16,41 @@ const PREVIEW_VOLUME = 0.4;
 export function useAudioPreview(path: string, enabled: boolean) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tokenRef = useRef(Symbol('audio-preview'));
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
   // アンマウント時のクリーンアップ
   useEffect(() => {
+    const token = tokenRef.current;
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      releasePreviewSlot(token);
       const audio = audioRef.current;
       if (audio) {
         audio.pause();
         audio.src = '';
         audioRef.current = null;
       }
+    };
+  }, []);
+
+  // ウィンドウが非アクティブになったら確実に停止する
+  useEffect(() => {
+    const stop = () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      audioRef.current?.pause();
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) stop();
+    };
+    window.addEventListener('blur', stop);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('blur', stop);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 
@@ -53,8 +77,14 @@ export function useAudioPreview(path: string, enabled: boolean) {
       if (!audio) {
         audio = new Audio();
         audio.volume = PREVIEW_VOLUME;
-        audio.addEventListener('playing', () => setIsPreviewPlaying(true));
-        audio.addEventListener('pause', () => setIsPreviewPlaying(false));
+        audio.addEventListener('playing', () => {
+          claimPreviewSlot(tokenRef.current, () => audio!.pause());
+          setIsPreviewPlaying(true);
+        });
+        audio.addEventListener('pause', () => {
+          releasePreviewSlot(tokenRef.current);
+          setIsPreviewPlaying(false);
+        });
         audioRef.current = audio;
       }
       // src が未設定の場合のみセット (2回目以降のホバーは再利用)
