@@ -350,7 +350,7 @@ function App() {
                   </div>
                 )}
 
-                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden pt-4 -mt-4 pl-2 -ml-2 pr-2">
                   {!isDbReady && !dbError && (
                     <p className="text-gray-500 text-sm dark:text-gray-400">
                       {t("app.dbInitializing")}

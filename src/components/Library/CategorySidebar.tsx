@@ -549,7 +549,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
           ? { display: 'grid', gridTemplateRows: `${splitRatio}fr 8px ${1 - splitRatio}fr` }
           : { display: 'flex', flexDirection: 'column' }}
       >
-      <div className="min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1 pr-4">
+      <div className="min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1">
       <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
         <span className="text-gray-400 dark:text-gray-500 shrink-0">
           <MediaIcon icon="folder" className="w-3.5 h-3.5" />
