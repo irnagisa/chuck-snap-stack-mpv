@@ -250,7 +250,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
         <div className="group flex items-center gap-0.5">
           <button
             type="button"
-            className={`flex-1 text-left px-2 py-1 text-xs flex items-center gap-1.5 rounded transition-colors min-w-0 ${
+            className={`flex-1 text-left px-2 py-2 text-xs flex items-center gap-1.5 rounded transition-colors min-w-0 ${
               selectedTagIds.includes(tag.id)
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -683,7 +683,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
 
           {filteredTagsByCategory.map(({ category, tags: groupTags }) => (
             <div key={category.id} className="mb-1">
-              <div className="group flex items-center gap-0.5 px-1">
+              <div className="group flex items-center gap-0.5 px-1 py-2">
                 {editingTagCatId === category.id ? (
                   <div className="flex flex-col gap-1 flex-1 py-0.5">
                     <input
