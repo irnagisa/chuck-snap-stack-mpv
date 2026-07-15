@@ -343,7 +343,7 @@ function App() {
 
                 {isDbReady && (
                   <div
-                    className="relative shrink-0 w-4 self-stretch cursor-col-resize group select-none"
+                    className="relative shrink-0 w-4 self-stretch cursor-col-resize group select-none -mt-4"
                     onMouseDown={handleSidebarDividerMouseDown}
                   >
                     <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-400 dark:group-hover:bg-blue-600 transition-colors" />
@@ -439,7 +439,7 @@ function App() {
                 </div>
 
                 {/* 詳細パネル */}
-                <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
+                <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden -my-4 -mr-4">
                   {detailVideo ? (
                     <VideoDetailModal
                       key={detailVideo.id}
