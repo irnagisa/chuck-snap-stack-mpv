@@ -44,6 +44,8 @@ export type Theme = 'light' | 'dark' | 'auto';
 
 export type CategoryMode = 'virtual' | 'sync';
 
+export type AiModelType = 'wd-tagger' | 'joytag';
+
 export interface AppSettings {
   mpvPath: string;
   ffmpegPath: string;
@@ -57,6 +59,7 @@ export interface AppSettings {
   language: Language;
   categoryMode: CategoryMode;
   aiEnabled: boolean;
+  aiModelType: AiModelType;
 }
 
 const DEFAULTS: AppSettings = {
@@ -72,6 +75,7 @@ const DEFAULTS: AppSettings = {
   language: "ja",
   categoryMode: 'virtual',
   aiEnabled: false,
+  aiModelType: 'wd-tagger',
 };
 
 interface SettingsStore extends AppSettings {
@@ -80,6 +84,7 @@ interface SettingsStore extends AppSettings {
   saveSettings: (settings: AppSettings) => Promise<void>;
   saveKeybindings: (bindings: KeyBindings) => Promise<void>;
   setCategoryMode: (mode: CategoryMode) => Promise<void>;
+  setAiModelType: (type: AiModelType) => Promise<void>;
 }
 
 async function syncToRust(settings: AppSettings) {
@@ -137,6 +142,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       language,
       categoryMode: (map["category_mode"] as CategoryMode | undefined) ?? 'virtual',
       aiEnabled: map["ai_enabled"] === "true",
+      aiModelType: (map["ai_model_type"] as AiModelType | undefined) ?? 'wd-tagger',
     };
 
     set({ ...settings, isLoaded: true });
@@ -169,5 +175,10 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   setCategoryMode: async (mode: CategoryMode) => {
     await invoke("db_set_setting", { key: "category_mode", value: mode });
     set({ categoryMode: mode });
+  },
+
+  setAiModelType: async (type: AiModelType) => {
+    await invoke("db_set_setting", { key: "ai_model_type", value: type });
+    set({ aiModelType: type });
   },
 }));

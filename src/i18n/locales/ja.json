@@ -143,7 +143,12 @@
     "categoryModeActive": "現在のモード",
     "sectionAi": "AI 機能",
     "aiEnabled": "AI タグ提案を有効にする",
-    "aiEnabledDesc": "WD Tagger を使ってサムネイルからタグを自動提案します（初回使用時にモデル約 200 MB をダウンロード）"
+    "aiEnabledDesc": "AIモデルを使ってサムネイルからタグを自動提案します（初回使用時にモデルをダウンロード）",
+    "aiModelType": "使用するモデル",
+    "aiModelWdTagger": "WD ViT Tagger v3",
+    "aiModelWdTaggerDesc": "Danbooru タグに特化した高精度モデル（約 200 MB）。アニメ・イラスト系コンテンツに最適。",
+    "aiModelJoyTag": "JoyTag",
+    "aiModelJoyTagDesc": "汎用英語タグに対応したモデル（約 700 MB）。実写・イラスト問わず幅広いコンテンツに対応。"
   },
   "keybindings": {
     "pause": "一時停止/再開",

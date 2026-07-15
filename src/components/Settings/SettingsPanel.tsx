@@ -4,7 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import {
   useSettingsStore, type AppSettings, type KeyAction, type Theme, type CategoryMode,
-  KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
+  type AiModelType, KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
 } from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { LANGUAGE_LABELS, type Language } from "../../i18n";
@@ -31,10 +31,10 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 
 export function SettingsPanel({ onClose }: Props) {
   const { t } = useTranslation();
-  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, categoryMode, aiEnabled, saveSettings, saveKeybindings, setCategoryMode } = useSettingsStore();
+  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, categoryMode, aiEnabled, aiModelType, saveSettings, saveKeybindings, setCategoryMode, setAiModelType } = useSettingsStore();
   const { watchDirs, scanAndImport, removeWatchDir, isScanning, isThumbnailGenerating } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, categoryMode, aiEnabled });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, language, categoryMode, aiEnabled, aiModelType });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
@@ -382,6 +382,36 @@ export function SettingsPanel({ onClose }: Props) {
                 }`}
               />
             </button>
+          </div>
+
+          {/* AIモデル選択 */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.aiModelType')}</p>
+            {([
+              ['wd-tagger', t('settings.aiModelWdTagger'), t('settings.aiModelWdTaggerDesc')],
+              ['joytag',    t('settings.aiModelJoyTag'),   t('settings.aiModelJoyTagDesc')],
+            ] as [AiModelType, string, string][]).map(([value, label, desc]) => (
+              <label
+                key={value}
+                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  aiModelType === value
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="ai-model-type"
+                  checked={aiModelType === value}
+                  onChange={() => setAiModelType(value)}
+                  className="mt-0.5 accent-blue-600"
+                />
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{desc}</p>
+                </div>
+              </label>
+            ))}
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />

@@ -45,7 +45,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const { t } = useTranslation();
   const { fetchVideos, updateVideo, rescanVideo } = useLibraryStore();
   const { play } = usePlayerStore();
-  const { aiEnabled } = useSettingsStore();
+  const { aiEnabled, aiModelType } = useSettingsStore();
 
   const [localTitle, setLocalTitle] = useState(video.title ?? video.path.split('/').pop() ?? '');
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
@@ -174,7 +174,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
 
   useEffect(() => {
     invoke<{ downloaded: boolean; downloading: boolean; progress: number }>(
-      'check_ai_model_status'
+      'check_ai_model_status',
+      { modelType: aiModelType }
     )
       .then((s) => {
         setAiModelDownloaded(s.downloaded);
@@ -182,7 +183,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
         setAiDownloadProgress(s.progress);
       })
       .catch(() => setAiModelDownloaded(false));
-  }, []);
+  }, [aiModelType]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -206,7 +207,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     setAiDownloadProgress(0);
     setAiError(null);
     try {
-      await invoke('download_ai_model');
+      await invoke('download_ai_model', { modelType: aiModelType });
     } catch (e) {
       setAiError(String(e));
       setAiDownloading(false);
@@ -639,7 +640,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   onClick={handleDownloadAiModel}
                   className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-medium"
                 >
-                  AI タグ機能を有効にする（~200 MB）
+                  AI タグ機能を有効にする（{aiModelType === 'joytag' ? '~700 MB' : '~200 MB'}）
                 </button>
               )}
 

@@ -143,7 +143,12 @@
     "categoryModeActive": "当前模式",
     "sectionAi": "AI 功能",
     "aiEnabled": "启用 AI 标签建议",
-    "aiEnabledDesc": "使用 WD Tagger 从缩略图自动建议标签（首次使用需下载约 200 MB 的模型）"
+    "aiEnabledDesc": "使用 AI 模型从缩略图自动建议标签（首次使用时需下载模型）",
+    "aiModelType": "使用的模型",
+    "aiModelWdTagger": "WD ViT Tagger v3",
+    "aiModelWdTaggerDesc": "专为 Danbooru 标签优化的高精度模型（约 200 MB）。适合动漫和插画内容。",
+    "aiModelJoyTag": "JoyTag",
+    "aiModelJoyTagDesc": "通用英语标签模型（约 700 MB）。适用于实拍照片和插画等各类内容。"
   },
   "keybindings": {
     "pause": "播放/暂停",
