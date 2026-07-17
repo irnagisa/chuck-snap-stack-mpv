@@ -36,7 +36,6 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 futures-util = "0.3"
 log = "0.4"
 trash = "5"
-tract-onnx = "0.21"
 image = "0.25"
 csv = "1.3"
 sha2 = "0.10"
@@ -44,3 +43,5 @@ rand = "0.8"
 sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
 scraper = "0.20"
 tauri-plugin-wdio-webdriver = "1"
+ort = { version = "=2.0.0-rc.12", features = ["load-dynamic"] }
+ndarray = "0.17"

@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod commands;
 pub mod db;
+pub mod runtime;
 
 use std::sync::Mutex;
 
@@ -47,6 +48,17 @@ pub fn run() {
             let reader = rusqlite::Connection::open(&db_path)?;
             reader.execute_batch("PRAGMA journal_mode=WAL; PRAGMA query_only=ON;")?;
             app.manage(DbState { writer: Mutex::new(writer), reader: Mutex::new(reader) });
+            // ONNX Runtime 初期化 (OS ごとの dylib ロード)
+            // バックグラウンドスレッドで実行: CoreML dlopen が UI イベントループを必要とするため
+            // setup hook 内でブロックするとウィンドウが表示されない
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = runtime::initialize_runtime(&handle) {
+                        eprintln!("ORT init failed: {e}");
+                    }
+                });
+            }
             Ok(())
         })
         .manage(MpvState::new())
@@ -202,6 +214,7 @@ pub fn run() {
             // ai
             commands::ai::check_ai_model_status,
             commands::ai::download_ai_model,
+            commands::ai::uninstall_ai_model,
             commands::ai::analyze_thumbnail_for_tags,
             commands::system::get_disk_info,
             commands::db_videos::db_get_random_video,

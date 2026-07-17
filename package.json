@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:e2e:build": "pnpm tauri build --debug --no-bundle",
-    "test:e2e": "wdio run e2e/wdio.conf.ts"
+    "test:e2e": "wdio run e2e/wdio.conf.ts",
+    "update:onnxruntime": "node scripts/update-onnxruntime.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

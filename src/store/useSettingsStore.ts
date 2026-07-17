@@ -160,10 +160,11 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       theme: settings.theme,
       autoPlayNext: settings.autoPlayNext,
       language: settings.language,
+      aiEnabled: settings.aiEnabled,
     });
     await i18n.changeLanguage(settings.language);
-    // categoryMode は setCategoryMode で独立管理するため上書きしない
-    set((state) => ({ ...settings, categoryMode: state.categoryMode }));
+    // categoryMode・aiModelType は独立したコマンドで管理するため上書きしない
+    set((state) => ({ ...settings, categoryMode: state.categoryMode, aiModelType: state.aiModelType }));
     await syncToRust(settings);
   },
 

@@ -146,9 +146,17 @@
     "aiEnabledDesc": "使用 AI 模型从缩略图自动建议标签（首次使用时需下载模型）",
     "aiModelType": "使用的模型",
     "aiModelWdTagger": "WD ViT Tagger v3",
-    "aiModelWdTaggerDesc": "专为 Danbooru 标签优化的高精度模型（约 200 MB）。适合动漫和插画内容。",
+    "aiModelWdTaggerDesc": "专为 Danbooru 标签优化的高精度模型（约 361 MB）。适合动漫和插画内容。",
     "aiModelJoyTag": "JoyTag",
-    "aiModelJoyTagDesc": "通用英语标签模型（约 700 MB）。适用于实拍照片和插画等各类内容。"
+    "aiModelJoyTagDesc": "通用英语标签模型（约 380 MB）。适用于实拍照片和插画等各类内容。",
+    "aiModelInstalled": "已安装",
+    "aiModelInstall": "安装",
+    "aiModelUninstall": "卸载",
+    "aiModelUninstalling": "删除中…",
+    "aiModelDownloading": "下载中",
+    "aiModelUninstallConfirmTitle": "卸载 AI 模型？",
+    "aiModelUninstallConfirmDesc": "模型文件将被删除。如需再次使用 AI 标签建议，需要重新安装。",
+    "aiModelUninstallConfirm": "卸载"
   },
   "keybindings": {
     "pause": "播放/暂停",

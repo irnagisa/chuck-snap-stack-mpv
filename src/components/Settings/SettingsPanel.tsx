@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import {
   useSettingsStore, type AppSettings, type KeyAction, type Theme, type CategoryMode,
-  type AiModelType, KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
+  KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
 } from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { LANGUAGE_LABELS, type Language } from "../../i18n";
@@ -75,6 +76,13 @@ export function SettingsPanel({ onClose }: Props) {
   const [wsLoading, setWsLoading] = useState(false);
   const [localIp, setLocalIp] = useState<string | null>(null);
 
+  // AIモデル状態
+  const [aiModelDownloaded, setAiModelDownloaded] = useState(false);
+  const [aiModelDownloading, setAiModelDownloading] = useState(false);
+  const [aiModelProgress, setAiModelProgress] = useState(0);
+  const [aiModelUninstalling, setAiModelUninstalling] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
+
   useEffect(() => {
     invoke<number | null>('get_web_server_port').then((port) => {
       if (port != null) {
@@ -84,6 +92,60 @@ export function SettingsPanel({ onClose }: Props) {
     });
     invoke<string | null>('get_local_ip').then(setLocalIp);
   }, []);
+
+  // AIモデル状態を取得
+  useEffect(() => {
+    invoke<{ downloaded: boolean; downloading: boolean; progress: number }>(
+      'check_ai_model_status',
+      { modelType: 'wd-tagger' }
+    ).then((s) => {
+      setAiModelDownloaded(s.downloaded);
+      setAiModelDownloading(s.downloading);
+      setAiModelProgress(s.progress);
+    }).catch(console.error);
+  }, []);
+
+  // ダウンロード進捗イベントをリッスン
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<number>('ai://download-progress', (e) => {
+      setAiModelProgress(e.payload);
+      if (e.payload >= 1.0) {
+        setAiModelDownloading(false);
+        setAiModelDownloaded(true);
+      }
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
+
+  const handleInstallModel = async () => {
+    try {
+      setAiModelDownloading(true);
+      setAiModelProgress(0);
+      await invoke('download_ai_model', { modelType: 'wd-tagger' });
+      // Ensure ai_model_type is set to wd-tagger in DB/store (migrates from joytag if needed)
+      if (aiModelType !== 'wd-tagger') {
+        await setAiModelType('wd-tagger');
+      }
+      setAiModelDownloaded(true);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+      setAiModelDownloading(false);
+    }
+  };
+
+  const handleUninstallModel = async () => {
+    setConfirmUninstall(false);
+    setAiModelUninstalling(true);
+    try {
+      await invoke('uninstall_ai_model', { modelType: 'wd-tagger' });
+      setAiModelDownloaded(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAiModelUninstalling(false);
+    }
+  };
 
   const handleStartWs = async () => {
     setWsLoading(true);
@@ -195,6 +257,35 @@ export function SettingsPanel({ onClose }: Props) {
         onDone={handleMigrationDone}
         onCancel={() => setShowMigrationModal(false)}
       />
+    )}
+
+    {confirmUninstall && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" onClick={() => setConfirmUninstall(false)}>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-80 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            {t('settings.aiModelUninstallConfirmTitle')}
+          </h3>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+            {t('settings.aiModelUninstallConfirmDesc')}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="flex-1 px-3 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded"
+              onClick={handleUninstallModel}
+            >
+              {t('settings.aiModelUninstallConfirm')}
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+              onClick={() => setConfirmUninstall(false)}
+            >
+              {t('confirm.cancel')}
+            </button>
+          </div>
+        </div>
+      </div>
     )}
 
     {showVirtualConfirm && (
@@ -391,34 +482,53 @@ export function SettingsPanel({ onClose }: Props) {
             </button>
           </div>
 
-          {/* AIモデル選択 */}
+          {/* AIモデル (WD ViT Tagger v3) - インストール/アンインストール */}
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.aiModelType')}</p>
-            {([
-              ['joytag',    t('settings.aiModelJoyTag'),   t('settings.aiModelJoyTagDesc')],
-              ['wd-tagger', t('settings.aiModelWdTagger'), t('settings.aiModelWdTaggerDesc')],
-            ] as [AiModelType, string, string][]).map(([value, label, desc]) => (
-              <label
-                key={value}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                  aiModelType === value
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="ai-model-type"
-                  checked={aiModelType === value}
-                  onChange={() => setAiModelType(value)}
-                  className="mt-0.5 accent-blue-600"
-                />
-                <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{desc}</p>
-                </div>
-              </label>
-            ))}
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-500 bg-blue-50 dark:bg-blue-950/30">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{t('settings.aiModelWdTagger')}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('settings.aiModelWdTaggerDesc')}</p>
+                {aiModelDownloading && (
+                  <div className="mt-2">
+                    <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 transition-all duration-300"
+                        style={{ width: `${Math.round(aiModelProgress * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {t('settings.aiModelDownloading')} {Math.round(aiModelProgress * 100)}%
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1.5">
+                {aiModelDownloaded && !aiModelDownloading ? (
+                  <>
+                    <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                      {t('settings.aiModelInstalled')}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={aiModelUninstalling}
+                      onClick={() => setConfirmUninstall(true)}
+                      className="text-xs px-2 py-0.5 text-red-500 hover:text-red-700 dark:hover:text-red-400 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition-colors"
+                    >
+                      {aiModelUninstalling ? t('settings.aiModelUninstalling') : t('settings.aiModelUninstall')}
+                    </button>
+                  </>
+                ) : !aiModelDownloading ? (
+                  <button
+                    type="button"
+                    onClick={handleInstallModel}
+                    className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                  >
+                    {t('settings.aiModelInstall')}
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />

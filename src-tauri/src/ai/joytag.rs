@@ -1,6 +1,10 @@
 use std::path::Path;
+use std::sync::Mutex;
 use image::{imageops, DynamicImage, Rgba, RgbaImage};
-use tract_onnx::prelude::*;
+use ndarray::{Array4, Ix2};
+use ort::ep;
+use ort::session::Session;
+use ort::value::Tensor;
 
 pub const IMG_SIZE: u32 = 448;
 pub const SCORE_THRESHOLD: f32 = 0.35;
@@ -10,22 +14,22 @@ const MEAN: [f32; 3] = [0.48145466, 0.4578275, 0.40821073];
 const STD: [f32; 3] = [0.26862954, 0.26130258, 0.27577711];
 
 pub struct JoyTagger {
-    model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
+    // session.run() は &mut self を要求するため Mutex で内部可変にする
+    session: Mutex<Session>,
     pub tags: Vec<String>,
 }
 
 impl JoyTagger {
     pub fn load(model_path: &Path, tags_path: &Path) -> Result<Self, String> {
-        let model = tract_onnx::onnx()
-            .model_for_path(model_path)
+        let session = Session::builder()
             .map_err(|e| e.to_string())?
-            .into_optimized()
+            // CPU EP を明示指定: CoreML EP は Intel Mac + macOS Tahoe でモデルコンパイルがハングするため除外
+            .with_execution_providers([ep::CPU::default().build()])
             .map_err(|e| e.to_string())?
-            .into_runnable()
+            .commit_from_file(model_path)
             .map_err(|e| e.to_string())?;
-
         let tags = load_tags_txt(tags_path)?;
-        Ok(Self { model, tags })
+        Ok(Self { session: Mutex::new(session), tags })
     }
 
     /// Run inference on the given image path (thumbnail JPEG/WebP).
@@ -33,19 +37,29 @@ impl JoyTagger {
     /// Category is always 0 — JoyTag has no category concept.
     pub fn infer(&self, image_path: &Path) -> Result<Vec<(String, f32, i32)>, String> {
         let img = image::open(image_path).map_err(|e| e.to_string())?;
-        let input = preprocess_image(img);
+        let array = preprocess_image(img);
 
-        let result = self
-            .model
-            .run(tvec!(input.into()))
+        let mut session = self.session.lock().map_err(|e| e.to_string())?;
+
+        // 入力名をモデルメタデータから動的取得（ハードコードしない）
+        let input_name = session.inputs()[0].name().to_string();
+
+        let tensor = Tensor::<f32>::from_array(array)
             .map_err(|e| e.to_string())?;
 
-        let view = result[0]
-            .to_array_view::<f32>()
+        let outputs = session
+            .run(ort::inputs![input_name => tensor])
             .map_err(|e| e.to_string())?;
 
-        // Output shape: [1, num_tags]
-        let num_tags = view.len();
+        // 出力 shape: [1, num_tags] → Ix2 に変換してインデックスアクセス
+        let raw_view = outputs[0]
+            .try_extract_array::<f32>()
+            .map_err(|e| e.to_string())?;
+        let view = raw_view
+            .into_dimensionality::<Ix2>()
+            .map_err(|e| e.to_string())?;
+
+        let num_tags = view.shape()[1];
         let results: Vec<(String, f32, i32)> = self
             .tags
             .iter()
@@ -67,9 +81,9 @@ impl JoyTagger {
     }
 }
 
-/// Preprocess image to NCHW float32 tensor [1, 3, 448, 448] in RGB order, CLIP normalized.
+/// Preprocess image to NCHW float32 Array4 [1, 3, 448, 448] in RGB order, CLIP normalized.
 /// Values are normalised as: (pixel/255 - mean) / std per channel.
-fn preprocess_image(img: DynamicImage) -> Tensor {
+fn preprocess_image(img: DynamicImage) -> Array4<f32> {
     // Composite onto white background (handle transparency)
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
@@ -110,9 +124,7 @@ fn preprocess_image(img: DynamicImage) -> Tensor {
         }
     }
 
-    tract_ndarray::Array4::from_shape_vec((n, c, h_sz, w_sz), data)
-        .expect("shape mismatch")
-        .into()
+    Array4::from_shape_vec((n, c, h_sz, w_sz), data).expect("shape mismatch")
 }
 
 /// Load tags from top_tags.txt (one tag per line, empty lines ignored).
@@ -132,19 +144,18 @@ mod tests {
     use std::io::Write;
 
     fn write_temp_txt(lines: &[&str]) -> (std::fs::File, std::path::PathBuf) {
-        let path = std::env::temp_dir().join(format!(
-            "joytag_test_{}.txt",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .subsec_nanos()
-        ));
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("joytag_test_{}.txt", id));
         let mut f = std::fs::File::create(&path).unwrap();
         for line in lines {
             writeln!(f, "{}", line).unwrap();
         }
         (f, path)
     }
+
+    // ── load_tags_txt ───────────────────────────────────────────────────────
 
     #[test]
     fn load_tags_txt_basic() {
@@ -170,6 +181,8 @@ mod tests {
         assert_eq!(tags, vec!["cat", "dog"]);
     }
 
+    // ── preprocess_image ────────────────────────────────────────────────────
+
     #[test]
     fn preprocess_image_output_shape() {
         let img = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
@@ -177,9 +190,9 @@ mod tests {
             200,
             image::Rgb([128u8, 64u8, 32u8]),
         ));
-        let tensor = preprocess_image(img);
+        let array = preprocess_image(img);
         // Must be NCHW [1, 3, 448, 448]
-        assert_eq!(tensor.shape(), &[1, 3, 448, 448]);
+        assert_eq!(array.shape(), &[1, 3, 448, 448]);
     }
 
     #[test]
@@ -190,11 +203,10 @@ mod tests {
             10,
             image::Rgb([255u8, 255u8, 255u8]),
         ));
-        let tensor = preprocess_image(img);
-        let view = tensor.to_array_view::<f32>().unwrap();
+        let array = preprocess_image(img);
         for ch in 0..3usize {
             let expected = (1.0f32 - MEAN[ch]) / STD[ch];
-            let actual = view[[0, ch, 0, 0]];
+            let actual = array[[0, ch, 0, 0]];
             assert!(
                 (actual - expected).abs() < 1e-4,
                 "ch={} expected={:.6} actual={:.6}",
@@ -213,11 +225,10 @@ mod tests {
             10,
             image::Rgb([0u8, 0u8, 0u8]),
         ));
-        let tensor = preprocess_image(img);
-        let view = tensor.to_array_view::<f32>().unwrap();
+        let array = preprocess_image(img);
         for ch in 0..3usize {
             let expected = (0.0f32 - MEAN[ch]) / STD[ch];
-            let actual = view[[0, ch, 0, 0]];
+            let actual = array[[0, ch, 0, 0]];
             assert!(
                 (actual - expected).abs() < 1e-4,
                 "ch={} expected={:.6} actual={:.6}",
@@ -236,12 +247,11 @@ mod tests {
             *pixel = image::Rgba([0u8, 0u8, 0u8, 0u8]); // fully transparent black
         }
         let img = DynamicImage::ImageRgba8(rgba_img);
-        let tensor = preprocess_image(img);
-        let view = tensor.to_array_view::<f32>().unwrap();
+        let array = preprocess_image(img);
         // Should be treated as white
         for ch in 0..3usize {
             let expected = (1.0f32 - MEAN[ch]) / STD[ch];
-            let actual = view[[0, ch, 0, 0]];
+            let actual = array[[0, ch, 0, 0]];
             assert!(
                 (actual - expected).abs() < 1e-4,
                 "ch={} expected={:.6} actual={:.6}",

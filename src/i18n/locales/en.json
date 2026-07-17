@@ -146,9 +146,17 @@
     "aiEnabledDesc": "Automatically suggest tags from thumbnails using an AI model (model download required on first use)",
     "aiModelType": "Model",
     "aiModelWdTagger": "WD ViT Tagger v3",
-    "aiModelWdTaggerDesc": "High-accuracy model specialized for Danbooru tags (~200 MB). Best for anime and illustration content.",
+    "aiModelWdTaggerDesc": "High-accuracy model specialized for Danbooru tags (~361 MB). Best for anime and illustration content.",
     "aiModelJoyTag": "JoyTag",
-    "aiModelJoyTagDesc": "General-purpose English tagging model (~700 MB). Works well across real photos and illustrations."
+    "aiModelJoyTagDesc": "General-purpose English tagging model (~380 MB). Works well across real photos and illustrations.",
+    "aiModelInstalled": "Installed",
+    "aiModelInstall": "Install",
+    "aiModelUninstall": "Uninstall",
+    "aiModelUninstalling": "Removing…",
+    "aiModelDownloading": "Downloading",
+    "aiModelUninstallConfirmTitle": "Uninstall AI model?",
+    "aiModelUninstallConfirmDesc": "The model files will be deleted. You will need to reinstall to use AI tag suggestions again.",
+    "aiModelUninstallConfirm": "Uninstall"
   },
   "keybindings": {
     "pause": "Play/Pause",

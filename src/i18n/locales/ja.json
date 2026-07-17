@@ -146,9 +146,17 @@
     "aiEnabledDesc": "AIモデルを使ってサムネイルからタグを自動提案します（初回使用時にモデルをダウンロード）",
     "aiModelType": "使用するモデル",
     "aiModelWdTagger": "WD ViT Tagger v3",
-    "aiModelWdTaggerDesc": "Danbooru タグに特化した高精度モデル（約 200 MB）。アニメ・イラスト系コンテンツに最適。",
+    "aiModelWdTaggerDesc": "Danbooru タグに特化した高精度モデル（約 361 MB）。アニメ・イラスト系コンテンツに最適。",
     "aiModelJoyTag": "JoyTag",
-    "aiModelJoyTagDesc": "汎用英語タグに対応したモデル（約 700 MB）。実写・イラスト問わず幅広いコンテンツに対応。"
+    "aiModelJoyTagDesc": "汎用英語タグに対応したモデル（約 380 MB）。実写・イラスト問わず幅広いコンテンツに対応。",
+    "aiModelInstalled": "インストール済み",
+    "aiModelInstall": "インストール",
+    "aiModelUninstall": "アンインストール",
+    "aiModelUninstalling": "削除中…",
+    "aiModelDownloading": "ダウンロード中",
+    "aiModelUninstallConfirmTitle": "モデルをアンインストールしますか？",
+    "aiModelUninstallConfirmDesc": "モデルファイルが削除されます。再度 AI タグ提案を使用するには再インストールが必要です。",
+    "aiModelUninstallConfirm": "アンインストール"
   },
   "keybindings": {
     "pause": "一時停止/再開",

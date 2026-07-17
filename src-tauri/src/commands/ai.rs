@@ -225,6 +225,59 @@ fn emit_progress(
     let _ = app.emit("ai://download-progress", progress);
 }
 
+/// Uninstall model files for the specified model type.
+///
+/// Security measures:
+/// - `model_type` is validated through the ModelKind whitelist (unknown values → WdTagger).
+/// - The deletion path is derived internally via `ai_dir()`, never from user-supplied path input.
+/// - We verify the resolved path equals the path we independently expect for this model kind,
+///   ensuring no path traversal is possible even if the internal helpers were somehow changed.
+/// - Only two known filenames (`model.onnx` and the kind-specific tags file) are deleted;
+///   the directory itself is never removed.
+#[tauri::command]
+pub async fn uninstall_ai_model(
+    app: AppHandle,
+    state: tauri::State<'_, AiTaggerState>,
+    model_type: String,
+) -> Result<(), String> {
+    // 1. Parse through whitelist — unknown input silently becomes WdTagger
+    let kind = ModelKind::from_str(&model_type);
+
+    // 2. Resolve deletion directory internally (not from user input)
+    let dir = ai_dir(&app, &kind)?;
+
+    // 3. Defense-in-depth: verify the resolved path matches the independently constructed
+    //    expected path.  kind.as_str() returns only static ASCII strings ("wd-tagger" /
+    //    "joytag"), so there is no path-traversal risk, but we assert it explicitly.
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let expected = app_data.join("ai").join(kind.as_str());
+    if dir != expected {
+        return Err("不正なモデルパスです".into());
+    }
+
+    // 4. Delete only known filenames — never the directory itself
+    let model_file = dir.join("model.onnx");
+    let tags_file = tags_path(&app, &kind)?;
+
+    for file in &[&model_file, &tags_file] {
+        if file.exists() {
+            std::fs::remove_file(file)
+                .map_err(|e| format!("ファイルの削除に失敗しました: {}", e))?;
+        }
+    }
+
+    // 5. Evict cached tagger if the uninstalled model was loaded
+    {
+        let mut inner = state.0.lock().map_err(|e| e.to_string())?;
+        if inner.loaded_kind.as_ref() == Some(&kind) {
+            inner.tagger = None;
+            inner.loaded_kind = None;
+        }
+    }
+
+    Ok(())
+}
+
 /// Analyse the video's thumbnail and return tag suggestions.
 /// The model used is determined by the `ai_model_type` DB setting.
 #[tauri::command]
