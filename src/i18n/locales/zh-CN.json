@@ -144,6 +144,7 @@
     "sectionAi": "AI 功能",
     "aiEnabled": "启用 AI 标签建议",
     "aiEnabledDesc": "使用 AI 模型从缩略图自动建议标签（首次使用时需下载模型）",
+    "aiNsfwWarning": "⚠ AI 标签建议可能包含涉及性内容的标签。",
     "aiModelType": "使用的模型",
     "aiModelWdTagger": "WD ViT Tagger v3",
     "aiModelWdTaggerDesc": "专为 Danbooru 标签优化的高精度模型（约 361 MB）。适合动漫和插画内容。",
@@ -241,7 +242,8 @@
     "similarPct": "相似度 {{pct}}%",
     "similarRedetect": "重新搜索",
     "similarNotRun": "尚未执行相似视频搜索",
-    "similarDetect": "搜索相似视频"
+    "similarDetect": "搜索相似视频",
+    "aiNsfwWarning": "⚠ AI 标签建议可能包含涉及性内容的标签。"
   },
   "download": {
     "title": "从 URL 下载",

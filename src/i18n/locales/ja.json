@@ -144,6 +144,7 @@
     "sectionAi": "AI 機能",
     "aiEnabled": "AI タグ提案を有効にする",
     "aiEnabledDesc": "AIモデルを使ってサムネイルからタグを自動提案します（初回使用時にモデルをダウンロード）",
+    "aiNsfwWarning": "⚠ AIタグ提案には性的な内容を示すタグが含まれる場合があります。",
     "aiModelType": "使用するモデル",
     "aiModelWdTagger": "WD ViT Tagger v3",
     "aiModelWdTaggerDesc": "Danbooru タグに特化した高精度モデル（約 361 MB）。アニメ・イラスト系コンテンツに最適。",
@@ -241,7 +242,8 @@
     "similarPct": "類似度 {{pct}}%",
     "similarRedetect": "再検索",
     "similarNotRun": "類似動画の検索はまだ実行されていません",
-    "similarDetect": "類似動画を検索する"
+    "similarDetect": "類似動画を検索する",
+    "aiNsfwWarning": "⚠ AIタグ提案には性的な内容を示すタグが含まれる場合があります。"
   },
   "download": {
     "title": "URL からダウンロード",

@@ -634,6 +634,10 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                 AI タグ提案
               </label>
 
+              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
+                {t('detail.aiNsfwWarning')}
+              </p>
+
               {aiModelDownloaded === false && !aiDownloading && (
                 <button
                   type="button"

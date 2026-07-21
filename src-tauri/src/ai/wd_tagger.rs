@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use image::{imageops, DynamicImage, Rgba, RgbaImage};
 use ndarray::{Array4, Ix2};
 use ort::ep;
+use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
 use ort::value::Tensor;
 
@@ -23,13 +24,23 @@ pub struct WdTagger {
 
 impl WdTagger {
     pub fn load(model_path: &Path, csv_path: &Path) -> Result<Self, String> {
-        let session = Session::builder()
+        eprintln!("[wd_tagger] load() 開始: {model_path:?}");
+        let mut builder = Session::builder()
             .map_err(|e| e.to_string())?
             // CPU EP を明示指定: CoreML EP は Intel Mac + macOS Tahoe でモデルコンパイルがハングするため除外
             .with_execution_providers([ep::CPU::default().build()])
             .map_err(|e| e.to_string())?
-            .commit_from_file(model_path)
+            // Level3 (既定) の積極的最適化が Intel Mac + macOS Tahoe でのストール要因になり
+            // 得るため抑制する。あわせてスレッドプール自動検出・並列実行も無効化する。
+            .with_optimization_level(GraphOptimizationLevel::Level1)
+            .map_err(|e| e.to_string())?
+            .with_intra_threads(4)
+            .map_err(|e| e.to_string())?
+            .with_parallel_execution(false)
             .map_err(|e| e.to_string())?;
+        eprintln!("[wd_tagger] commit_from_file() 呼び出し前");
+        let session = builder.commit_from_file(model_path).map_err(|e| e.to_string())?;
+        eprintln!("[wd_tagger] commit_from_file() 完了");
         let tags = load_tags_csv(csv_path)?;
         Ok(Self { session: Mutex::new(session), tags })
     }
@@ -48,9 +59,11 @@ impl WdTagger {
         let tensor = Tensor::<f32>::from_array(array)
             .map_err(|e| e.to_string())?;
 
+        eprintln!("[wd_tagger] session.run() 呼び出し前");
         let outputs = session
             .run(ort::inputs![input_name => tensor])
             .map_err(|e| e.to_string())?;
+        eprintln!("[wd_tagger] session.run() 完了");
 
         // 出力 shape: [1, num_tags] → Ix2 に変換してインデックスアクセス
         let raw_view = outputs[0]

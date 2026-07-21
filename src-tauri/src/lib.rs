@@ -54,8 +54,17 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    if let Err(e) = runtime::initialize_runtime(&handle) {
-                        eprintln!("ORT init failed: {e}");
+                    eprintln!("[runtime] initialize_runtime() 開始");
+                    let started = std::time::Instant::now();
+                    match runtime::initialize_runtime(&handle) {
+                        Ok(()) => eprintln!(
+                            "[runtime] initialize_runtime() 完了 ({:.1}s)",
+                            started.elapsed().as_secs_f32()
+                        ),
+                        Err(e) => eprintln!(
+                            "ORT init failed ({:.1}s): {e}",
+                            started.elapsed().as_secs_f32()
+                        ),
                     }
                 });
             }

@@ -25,7 +25,7 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 walkdir = "2"
-tokio = { version = "1", features = ["time", "process", "rt", "net", "sync", "io-util"] }
+tokio = { version = "1", features = ["time", "process", "rt", "net", "sync", "io-util", "macros"] }
 tokio-util = { version = "0.7", features = ["io"] }
 axum = "0.7"
 tower-http = { version = "0.5", features = ["cors"] }
@@ -43,5 +43,9 @@ rand = "0.8"
 sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
 scraper = "0.20"
 tauri-plugin-wdio-webdriver = "1"
-ort = { version = "=2.0.0-rc.12", features = ["load-dynamic"] }
+# default-features を無効化し api-22 以降を含めない: SessionBuilder::new() が
+# api-22 で追加された SessionOptionsSetEpSelectionPolicy(MaxEfficiency) を無条件に呼ぶが、
+# この呼び出しが Intel Mac + macOS Tahoe で EP/デバイス列挙のため無限にハングする
+# (Session::builder() から一切復帰しない) 問題を確認したため、api-21 に留める。
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "load-dynamic", "ndarray", "api-21"] }
 ndarray = "0.17"

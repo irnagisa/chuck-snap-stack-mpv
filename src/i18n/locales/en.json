@@ -144,6 +144,7 @@
     "sectionAi": "AI Features",
     "aiEnabled": "Enable AI Tag Suggestions",
     "aiEnabledDesc": "Automatically suggest tags from thumbnails using an AI model (model download required on first use)",
+    "aiNsfwWarning": "⚠ AI tag suggestions may include tags describing sexual content.",
     "aiModelType": "Model",
     "aiModelWdTagger": "WD ViT Tagger v3",
     "aiModelWdTaggerDesc": "High-accuracy model specialized for Danbooru tags (~361 MB). Best for anime and illustration content.",
@@ -241,7 +242,8 @@
     "similarPct": "{{pct}}% similar",
     "similarRedetect": "Re-search",
     "similarNotRun": "Similar video search has not been run yet",
-    "similarDetect": "Search for similar videos"
+    "similarDetect": "Search for similar videos",
+    "aiNsfwWarning": "⚠ AI tag suggestions may include tags describing sexual content."
   },
   "download": {
     "title": "Download from URL",

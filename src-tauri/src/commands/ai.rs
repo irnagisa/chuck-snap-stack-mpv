@@ -31,6 +31,25 @@ const JOYTAG_MODEL_SHA256: &str =
 const JOYTAG_TAGS_SHA256: &str =
     "32b1963a234af848643b2bbf47d8eff1f1c7889406810c57b980f41b2b9e01d0";
 
+/// モデルロード・推論それぞれの上限時間。
+/// ORT が特定環境 (Intel Mac + macOS Tahoe 等) でストールするケースに備え、
+/// 有限時間で確実にエラー復帰させ、UI が「分析中…」のまま固まるのを防ぐ。
+const AI_STAGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// `spawn_blocking` の `JoinHandle` を `timeout` 内で待ち、発生しうる3種類のエラー
+/// (タイムアウト / タスクパニック等の `JoinError` / タスク内部の `Err`) を単一の
+/// `String` エラーへ正規化する。
+async fn await_with_timeout<T>(
+    handle: tokio::task::JoinHandle<Result<T, String>>,
+    timeout: std::time::Duration,
+    timeout_msg: &str,
+) -> Result<T, String> {
+    tokio::time::timeout(timeout, handle)
+        .await
+        .map_err(|_| timeout_msg.to_string())?
+        .map_err(|e| e.to_string())?
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -342,29 +361,35 @@ pub async fn analyze_thumbnail_for_tags(
             return Err("AIモデルがダウンロードされていません".into());
         }
 
+        eprintln!("[ai] モデルロード開始: kind={model_kind:?}");
         let kind_for_load = model_kind.clone();
         let tagger: std::sync::Arc<dyn Tagger + Send + Sync> = match kind_for_load {
             ModelKind::WdTagger => {
                 let mp2 = mp.clone();
                 let tp2 = tp.clone();
-                let t = tokio::task::spawn_blocking(move || {
-                    verify_sha256(&mp2, WD_MODEL_SHA256)?;
-                    verify_sha256(&tp2, WD_TAGS_SHA256)?;
-                    WdTagger::load(&mp2, &tp2)
-                })
-                .await
-                .map_err(|e| e.to_string())??;
+                let t = await_with_timeout(
+                    tokio::task::spawn_blocking(move || {
+                        verify_sha256(&mp2, WD_MODEL_SHA256)?;
+                        verify_sha256(&tp2, WD_TAGS_SHA256)?;
+                        WdTagger::load(&mp2, &tp2)
+                    }),
+                    AI_STAGE_TIMEOUT,
+                    "AIモデルの読み込みがタイムアウトしました",
+                )
+                .await?;
                 std::sync::Arc::new(t)
             }
             ModelKind::JoyTag => {
-                let t = tokio::task::spawn_blocking(move || {
-                    JoyTagger::load(&mp, &tp)
-                })
-                .await
-                .map_err(|e| e.to_string())??;
+                let t = await_with_timeout(
+                    tokio::task::spawn_blocking(move || JoyTagger::load(&mp, &tp)),
+                    AI_STAGE_TIMEOUT,
+                    "AIモデルの読み込みがタイムアウトしました",
+                )
+                .await?;
                 std::sync::Arc::new(t)
             }
         };
+        eprintln!("[ai] モデルロード完了");
 
         let mut inner = ai.0.lock().map_err(|e| e.to_string())?;
         inner.tagger = Some(tagger);
@@ -376,7 +401,14 @@ pub async fn analyze_thumbnail_for_tags(
         let inner = ai.0.lock().map_err(|e| e.to_string())?;
         inner.tagger.clone().ok_or("モデルのロードに失敗")?
     };
-    let ai_tags = tokio::task::block_in_place(|| tagger.run(&thumb_path))?;
+    eprintln!("[ai] 推論開始: video_id={video_id}");
+    let ai_tags = await_with_timeout(
+        tokio::task::spawn_blocking(move || tagger.run(&thumb_path)),
+        AI_STAGE_TIMEOUT,
+        "AI 分析がタイムアウトしました",
+    )
+    .await?;
+    eprintln!("[ai] 推論完了: {}件のタグ候補", ai_tags.len());
 
     // Build suggestions
     let result = suggest::build_suggestions(&ai_tags, &user_tags, 20);
@@ -395,4 +427,36 @@ pub async fn analyze_thumbnail_for_tags(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn await_with_timeout_returns_ok_on_fast_success() {
+        let handle = tokio::task::spawn_blocking(|| Ok::<_, String>(42));
+        let result = await_with_timeout(handle, Duration::from_millis(200), "timeout").await;
+        assert_eq!(result, Ok(42));
+    }
+
+    #[tokio::test]
+    async fn await_with_timeout_propagates_inner_error() {
+        let handle = tokio::task::spawn_blocking(|| Err::<(), _>("読み込み失敗".to_string()));
+        let result = await_with_timeout(handle, Duration::from_millis(200), "timeout").await;
+        assert_eq!(result, Err("読み込み失敗".to_string()));
+    }
+
+    /// UI が「分析中…」のまま永久に固まるのを防ぐための回帰テスト。
+    /// タスクが `timeout` 内に終わらない場合、`timeout_msg` で確実にエラー復帰することを確認する。
+    #[tokio::test]
+    async fn await_with_timeout_returns_timeout_message_when_task_hangs() {
+        let handle = tokio::task::spawn_blocking(|| {
+            std::thread::sleep(Duration::from_millis(300));
+            Ok::<_, String>(())
+        });
+        let result = await_with_timeout(handle, Duration::from_millis(30), "AI分析がタイムアウトしました").await;
+        assert_eq!(result, Err("AI分析がタイムアウトしました".to_string()));
+    }
 }
