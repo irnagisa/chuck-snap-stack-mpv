@@ -266,9 +266,12 @@ if (!hasError) {
   const cfg = PLATFORMS[host];
   const ortConfPath = join(ROOT, 'src-tauri', 'tauri.ort.conf.json');
   const resourceKey = `libs/${cfg.destDir}/${cfg.destName}`;
-  const ortConf = { bundle: { resources: { [resourceKey]: './' } } };
+  // 宛先はディレクトリ ("./") ではなくファイル名にする必要がある。
+  // tauri-build がリソースコピーに fs::copy(src, dest) を使うため、
+  // dest がディレクトリだと "Is a directory (os error 21)" で失敗する。
+  const ortConf = { bundle: { resources: { [resourceKey]: cfg.destName } } };
   writeFileSync(ortConfPath, JSON.stringify(ortConf, null, 2) + '\n');
-  console.log(`tauri.ort.conf.json を生成しました (${resourceKey} → ./)。`);
+  console.log(`tauri.ort.conf.json を生成しました (${resourceKey} → ${cfg.destName})。`);
   console.log('リリースビルド: pnpm tauri build --config src-tauri/tauri.ort.conf.json');
 }
 
