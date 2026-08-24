@@ -12,7 +12,7 @@ export function MiniPlayer() {
   const {
     currentVideo, playbackTime, duration, isPaused,
     queue, queueIndex, isMiniPlayer,
-    pauseResume, seekTo, quit, playNext, playPrev, toggleMiniPlayer,
+    pauseResume, seekTo, quit, playNext, playPrev, toggleMiniPlayer, patchVideoFields,
   } = usePlayerStore(useShallow((s) => ({
     currentVideo: s.currentVideo,
     playbackTime: s.playbackTime,
@@ -27,6 +27,7 @@ export function MiniPlayer() {
     playNext: s.playNext,
     playPrev: s.playPrev,
     toggleMiniPlayer: s.toggleMiniPlayer,
+    patchVideoFields: s.patchVideoFields,
   })));
 
   const { videoTags, categories, fetchVideoTags } = useTagStore(useShallow((s) => ({
@@ -73,6 +74,7 @@ export function MiniPlayer() {
     const next = star === localRating ? 0 : star;
     setLocalRating(next);
     await updateVideo(currentVideo.id, { rating: next });
+    patchVideoFields(currentVideo.id, { rating: next });
   };
 
   return (

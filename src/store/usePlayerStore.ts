@@ -43,6 +43,7 @@ interface PlayerActions {
   reorderQueue: (newQueue: Video[]) => void;
   removeFromQueue: (videoId: number) => void;
   jumpToQueue: (index: number) => Promise<void>;
+  patchVideoFields: (videoId: number, updates: Partial<Video>) => void;
 }
 
 // モジュールレベルで一度だけリスナーを登録する
@@ -481,6 +482,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       invoke<Chapter[]>('get_chapters', { videoPath: video.path })
         .then((chapters) => set({ chapters }))
         .catch(() => { set({ chapters: [] }); });
+    },
+
+    // useLibraryStore 側で動画情報 (評価等) を更新した際、
+    // currentVideo/queue/originalQueue にも同じ変更を反映して食い違いを防ぐ
+    patchVideoFields: (videoId: number, updates: Partial<Video>) => {
+      const { currentVideo, queue, originalQueue } = get();
+      set({
+        currentVideo: currentVideo?.id === videoId ? { ...currentVideo, ...updates } : currentVideo,
+        queue: queue.map((v) => v.id === videoId ? { ...v, ...updates } : v),
+        originalQueue: originalQueue.map((v) => v.id === videoId ? { ...v, ...updates } : v),
+      });
     },
   };
 });
