@@ -119,7 +119,7 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   fetchVideoTagsForIds: async (videoIds) => {
     const safeIds = videoIds.filter((id) => Number.isFinite(id));
     if (safeIds.length === 0) return;
-    const rows = await invoke<{ video_id: number; id: number; name: string; color: string; icon: string | null; tag_category_id: number | null; created_at: string }[]>(
+    const rows = await invoke<{ videoId: number; id: number; name: string; color: string; icon: string | null; tagCategoryId: number | null; createdAt: string }[]>(
       'db_fetch_video_tags_for_ids',
       { videoIds: safeIds }
     );
@@ -128,13 +128,13 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
     const fetched: Record<number, Tag[]> = {};
     for (const id of safeIds) fetched[id] = [];
     for (const row of rows) {
-      fetched[row.video_id].push({
+      fetched[row.videoId].push({
         id: row.id,
         name: row.name,
         color: row.color,
         icon: row.icon,
-        tag_category_id: row.tag_category_id,
-        created_at: row.created_at,
+        tag_category_id: row.tagCategoryId,
+        created_at: row.createdAt,
       });
     }
     // Merge into existing state instead of replacing — preserves tags loaded by fetchVideoTags.
