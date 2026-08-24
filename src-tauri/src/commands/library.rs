@@ -422,24 +422,31 @@ pub async fn generate_waveform(
 #[tauri::command]
 pub async fn get_file_size(path: String) -> Result<u64, String> {
     validate_path(&path)?;
-    fs::metadata(&path)
-        .map(|m| m.len())
-        .map_err(|e| format!("ファイルサイズ取得失敗: {e}"))
+    tokio::task::spawn_blocking(move || {
+        fs::metadata(&path)
+            .map(|m| m.len())
+            .map_err(|e| format!("ファイルサイズ取得失敗: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 複数ファイルのサイズをバッチで返す。パスが不正な場合または存在しない場合は None。
 #[tauri::command]
 pub async fn get_file_sizes(paths: Vec<String>) -> Result<Vec<Option<u64>>, String> {
-    let sizes = paths
-        .iter()
-        .map(|p| {
-            validate_path(p)
-                .ok()
-                .and_then(|_| fs::metadata(p).ok())
-                .map(|m| m.len())
-        })
-        .collect();
-    Ok(sizes)
+    tokio::task::spawn_blocking(move || {
+        paths
+            .iter()
+            .map(|p| {
+                validate_path(p)
+                    .ok()
+                    .and_then(|_| fs::metadata(p).ok())
+                    .map(|m| m.len())
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -501,11 +508,13 @@ pub async fn delete_video_file(
             ));
         }
     }
-    match fs::remove_file(&path) {
+    tokio::task::spawn_blocking(move || match fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(format!("ファイル削除失敗: {e}")),
-    }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 動画ファイルを指定ディレクトリへ移動し、新しいパスを返す。

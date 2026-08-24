@@ -482,27 +482,37 @@ pub async fn db_update_category(
         }
     }; // DB ロック解放
 
-    // Step 2: FS リネーム (DB ロック外)
-    for watch_dir in &sync_watch_dirs {
-        let old_abs = Path::new(watch_dir).join(&old_rel_path);
-        let new_abs = Path::new(watch_dir).join(&new_rel_path);
+    // Step 2: FS リネーム (DB ロック外、ブロッキング I/O のため spawn_blocking で実行)
+    tokio::task::spawn_blocking({
+        let sync_watch_dirs = sync_watch_dirs.clone();
+        let old_rel_path = old_rel_path.clone();
+        let new_rel_path = new_rel_path.clone();
+        move || -> Result<(), String> {
+            for watch_dir in &sync_watch_dirs {
+                let old_abs = Path::new(watch_dir).join(&old_rel_path);
+                let new_abs = Path::new(watch_dir).join(&new_rel_path);
 
-        if !old_abs.exists() {
-            continue;
+                if !old_abs.exists() {
+                    continue;
+                }
+                if new_abs.exists() {
+                    return Err(format!(
+                        "カテゴリ名変更失敗: 移動先ディレクトリが既に存在します: {}",
+                        new_abs.display()
+                    ));
+                }
+                if let Some(new_parent) = new_abs.parent() {
+                    std::fs::create_dir_all(new_parent)
+                        .map_err(|e| format!("親ディレクトリ作成失敗: {e}"))?;
+                }
+                std::fs::rename(&old_abs, &new_abs)
+                    .map_err(|e| format!("ディレクトリリネーム失敗: {e}"))?;
+            }
+            Ok(())
         }
-        if new_abs.exists() {
-            return Err(format!(
-                "カテゴリ名変更失敗: 移動先ディレクトリが既に存在します: {}",
-                new_abs.display()
-            ));
-        }
-        if let Some(new_parent) = new_abs.parent() {
-            std::fs::create_dir_all(new_parent)
-                .map_err(|e| format!("親ディレクトリ作成失敗: {e}"))?;
-        }
-        std::fs::rename(&old_abs, &new_abs)
-            .map_err(|e| format!("ディレクトリリネーム失敗: {e}"))?;
-    }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     // Step 3: DB 更新 (videos.path + categories)
     {
@@ -608,89 +618,96 @@ pub async fn db_delete_category(
         CatInfo { cat_rel_path, parent_rel_path, children_names, sync_watch_dirs }
     }; // DB ロック解放
 
-    // Step 2: FS 操作 (DB ロック外)
+    // Step 2: FS 操作 (DB ロック外、ブロッキング I/O のため spawn_blocking で実行)
     // (old_path, new_path) のリスト: ファイル移動の追跡用
-    let mut exact_updates: Vec<(String, String)> = Vec::new(); // ファイル単位
-    let mut prefix_updates: Vec<(String, String)> = Vec::new(); // ディレクトリ単位
+    let (exact_updates, prefix_updates): (Vec<(String, String)>, Vec<(String, String)>) =
+        tokio::task::spawn_blocking(move || -> Result<_, String> {
+            let mut exact_updates: Vec<(String, String)> = Vec::new(); // ファイル単位
+            let mut prefix_updates: Vec<(String, String)> = Vec::new(); // ディレクトリ単位
 
-    if !info.sync_watch_dirs.is_empty() {
-        for watch_dir in &info.sync_watch_dirs {
-            let cat_abs = Path::new(watch_dir).join(&info.cat_rel_path);
-            if !cat_abs.exists() {
-                continue;
-            }
+            if !info.sync_watch_dirs.is_empty() {
+                for watch_dir in &info.sync_watch_dirs {
+                    let cat_abs = Path::new(watch_dir).join(&info.cat_rel_path);
+                    if !cat_abs.exists() {
+                        continue;
+                    }
 
-            // 直接ファイルの移動先: 親カテゴリ dir か Unsorted
-            let dest_for_files = match &info.parent_rel_path {
-                Some(p) => Path::new(watch_dir).join(p),
-                None => Path::new(watch_dir).join("Unsorted"),
-            };
+                    // 直接ファイルの移動先: 親カテゴリ dir か Unsorted
+                    let dest_for_files = match &info.parent_rel_path {
+                        Some(p) => Path::new(watch_dir).join(p),
+                        None => Path::new(watch_dir).join("Unsorted"),
+                    };
 
-            // 子カテゴリディレクトリの衝突を事前確認
-            for child_name in &info.children_names {
-                let child_old = cat_abs.join(child_name);
-                let child_new = Path::new(watch_dir).join(child_name);
-                if child_old.exists() && child_new.exists() {
-                    return Err(format!(
-                        "カテゴリ削除失敗: 子カテゴリ '{}' のディレクトリが既に存在します: {}",
-                        child_name,
-                        child_new.display()
-                    ));
+                    // 子カテゴリディレクトリの衝突を事前確認
+                    for child_name in &info.children_names {
+                        let child_old = cat_abs.join(child_name);
+                        let child_new = Path::new(watch_dir).join(child_name);
+                        if child_old.exists() && child_new.exists() {
+                            return Err(format!(
+                                "カテゴリ削除失敗: 子カテゴリ '{}' のディレクトリが既に存在します: {}",
+                                child_name,
+                                child_new.display()
+                            ));
+                        }
+                    }
+
+                    // 移動先ディレクトリを作成
+                    std::fs::create_dir_all(&dest_for_files)
+                        .map_err(|e| format!("移動先ディレクトリ作成失敗: {e}"))?;
+
+                    // cat_abs の直下ファイル (サブディレクトリは除く) を移動
+                    for entry in std::fs::read_dir(&cat_abs).map_err(|e| e.to_string())? {
+                        let entry = entry.map_err(|e| e.to_string())?;
+                        let entry_path = entry.path();
+                        if !entry_path.is_file() {
+                            continue;
+                        }
+                        let filename = entry_path.file_name().unwrap();
+                        let dest_path = resolve_unique_path(&dest_for_files.join(filename));
+
+                        // TOCTOU 防止: 移動先をアトミックに確保してから rename
+                        std::fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(&dest_path)
+                            .map_err(|e| format!("移動先ファイル確保失敗: {e}"))?;
+
+                        if let Err(e) = std::fs::rename(&entry_path, &dest_path) {
+                            let _ = std::fs::remove_file(&dest_path);
+                            return Err(format!("ファイル移動失敗: {e}"));
+                        }
+
+                        exact_updates.push((
+                            entry_path.to_string_lossy().into_owned(),
+                            dest_path.to_string_lossy().into_owned(),
+                        ));
+                    }
+
+                    // 子カテゴリディレクトリを watch_dir 直下へ移動 (root 昇格に対応)
+                    for child_name in &info.children_names {
+                        let child_old = cat_abs.join(child_name);
+                        let child_new = Path::new(watch_dir).join(child_name);
+                        if !child_old.exists() {
+                            continue;
+                        }
+                        std::fs::rename(&child_old, &child_new)
+                            .map_err(|e| format!("子カテゴリディレクトリ移動失敗: {e}"))?;
+
+                        prefix_updates.push((
+                            format!("{}/", child_old.to_string_lossy()),
+                            format!("{}/", child_new.to_string_lossy()),
+                        ));
+                    }
+
+                    // 空になったカテゴリディレクトリを削除 (失敗は無視)
+                    let _ = std::fs::remove_dir(&cat_abs);
                 }
             }
 
-            // 移動先ディレクトリを作成
-            std::fs::create_dir_all(&dest_for_files)
-                .map_err(|e| format!("移動先ディレクトリ作成失敗: {e}"))?;
-
-            // cat_abs の直下ファイル (サブディレクトリは除く) を移動
-            for entry in std::fs::read_dir(&cat_abs).map_err(|e| e.to_string())? {
-                let entry = entry.map_err(|e| e.to_string())?;
-                let entry_path = entry.path();
-                if !entry_path.is_file() {
-                    continue;
-                }
-                let filename = entry_path.file_name().unwrap();
-                let dest_path = resolve_unique_path(&dest_for_files.join(filename));
-
-                // TOCTOU 防止: 移動先をアトミックに確保してから rename
-                std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&dest_path)
-                    .map_err(|e| format!("移動先ファイル確保失敗: {e}"))?;
-
-                if let Err(e) = std::fs::rename(&entry_path, &dest_path) {
-                    let _ = std::fs::remove_file(&dest_path);
-                    return Err(format!("ファイル移動失敗: {e}"));
-                }
-
-                exact_updates.push((
-                    entry_path.to_string_lossy().into_owned(),
-                    dest_path.to_string_lossy().into_owned(),
-                ));
-            }
-
-            // 子カテゴリディレクトリを watch_dir 直下へ移動 (root 昇格に対応)
-            for child_name in &info.children_names {
-                let child_old = cat_abs.join(child_name);
-                let child_new = Path::new(watch_dir).join(child_name);
-                if !child_old.exists() {
-                    continue;
-                }
-                std::fs::rename(&child_old, &child_new)
-                    .map_err(|e| format!("子カテゴリディレクトリ移動失敗: {e}"))?;
-
-                prefix_updates.push((
-                    format!("{}/", child_old.to_string_lossy()),
-                    format!("{}/", child_new.to_string_lossy()),
-                ));
-            }
-
-            // 空になったカテゴリディレクトリを削除 (失敗は無視)
-            let _ = std::fs::remove_dir(&cat_abs);
-        }
-    }
+            Ok((exact_updates, prefix_updates))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
     // Step 3: videos.path を DB 更新
     if !exact_updates.is_empty() || !prefix_updates.is_empty() {

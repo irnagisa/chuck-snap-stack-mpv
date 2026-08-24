@@ -677,38 +677,42 @@ pub async fn db_find_similar_videos(
         rows
     };
 
-    let hashes: Vec<u64> = videos
-        .iter()
-        .map(|v| v.phash.parse().unwrap_or(0))
-        .collect();
+    tokio::task::spawn_blocking(move || {
+        let hashes: Vec<u64> = videos
+            .iter()
+            .map(|v| v.phash.parse().unwrap_or(0))
+            .collect();
 
-    let n = videos.len();
-    let mut parent: Vec<usize> = (0..n).collect();
+        let n = videos.len();
+        let mut parent: Vec<usize> = (0..n).collect();
 
-    for i in 0..n {
-        for j in (i + 1)..n {
-            if hamming_distance(hashes[i], hashes[j]) <= threshold {
-                union(&mut parent, i, j);
+        for i in 0..n {
+            for j in (i + 1)..n {
+                if hamming_distance(hashes[i], hashes[j]) <= threshold {
+                    union(&mut parent, i, j);
+                }
             }
         }
-    }
 
-    let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
-    for i in 0..n {
-        let root = find(&mut parent, i);
-        group_map.entry(root).or_default().push(i);
-    }
+        let mut group_map: HashMap<usize, Vec<usize>> = HashMap::new();
+        for i in 0..n {
+            let root = find(&mut parent, i);
+            group_map.entry(root).or_default().push(i);
+        }
 
-    let mut result: Vec<Vec<SimilarVideo>> = group_map
-        .into_values()
-        .filter(|g| g.len() > 1)
-        .map(|group| group.iter().map(|&i| videos[i].clone()).collect())
-        .collect();
+        let mut result: Vec<Vec<SimilarVideo>> = group_map
+            .into_values()
+            .filter(|g| g.len() > 1)
+            .map(|group| group.iter().map(|&i| videos[i].clone()).collect())
+            .collect();
 
-    // Largest groups first
-    result.sort_by(|a, b| b.len().cmp(&a.len()));
+        // Largest groups first
+        result.sort_by(|a, b| b.len().cmp(&a.len()));
 
-    Ok(result)
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Returns the stored pHash string for a video, or null if not yet computed.
