@@ -56,9 +56,13 @@ pub async fn get_default_mpv_path() -> String {
 }
 
 /// 指定パスがファイルとして存在するか確認する。
+/// ネットワークドライブ等では stat() が長時間ブロックしうるため、
+/// tokio ワーカースレッドを塞がないよう spawn_blocking 経由で実行する。
 #[tauri::command]
 pub async fn path_exists(path: String) -> bool {
-    std::path::Path::new(&path).exists()
+    tokio::task::spawn_blocking(move || std::path::Path::new(&path).exists())
+        .await
+        .unwrap_or(false)
 }
 
 /// 実行ファイルパスを検証する。
