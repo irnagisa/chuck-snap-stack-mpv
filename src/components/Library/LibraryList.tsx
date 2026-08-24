@@ -13,6 +13,7 @@ import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
 import { formatTime } from '../../utils/time';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 interface Props {
   videos: Video[];
@@ -44,6 +45,7 @@ interface VideoRowProps {
   onCheckbox: (e: React.MouseEvent, video: Video, idx: number) => void;
   onContextMenu: (e: React.MouseEvent, video: Video) => void;
   onRegisterObserver: (el: HTMLDivElement, callback: () => void) => () => void;
+  previewEnabled: boolean;
 }
 
 
@@ -66,13 +68,14 @@ const VideoRow = memo(function VideoRow({
   onCheckbox,
   onContextMenu,
   onRegisterObserver,
+  previewEnabled,
 }: VideoRowProps) {
   const { t } = useTranslation();
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
   const isVideo = !isImage && !isAudio;
-  const { isPreviewPlaying: isAudioPreviewPlaying, onMouseEnter: audioMouseEnter, onMouseLeave: audioMouseLeave } = useAudioPreview(v.path, isAudio);
-  const { videoRef, isPreviewPlaying: isVideoPreviewPlaying, onMouseEnter: videoMouseEnter, onMouseLeave: videoMouseLeave } = useVideoPreview(v.path, isVideo && listRowSize !== 'S');
+  const { isPreviewPlaying: isAudioPreviewPlaying, onMouseEnter: audioMouseEnter, onMouseLeave: audioMouseLeave } = useAudioPreview(v.path, isAudio && previewEnabled);
+  const { videoRef, isPreviewPlaying: isVideoPreviewPlaying, onMouseEnter: videoMouseEnter, onMouseLeave: videoMouseLeave } = useVideoPreview(v.path, isVideo && previewEnabled && listRowSize !== 'S');
   const onMouseEnter = useCallback(() => { audioMouseEnter(); videoMouseEnter(); }, [audioMouseEnter, videoMouseEnter]);
   const onMouseLeave = useCallback(() => { audioMouseLeave(); videoMouseLeave(); }, [audioMouseLeave, videoMouseLeave]);
   const progressPercent =
@@ -294,6 +297,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
   onSelectionChange,
 }: Props, ref: React.Ref<LibraryViewHandle>) {
   const listRowSize = useLibraryViewStore((s) => s.listItemSize);
+  const hoverPreviewEnabled = useSettingsStore((s) => s.hoverPreviewEnabled);
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
@@ -426,6 +430,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
                     onCheckbox={handleCheckbox}
                     onContextMenu={handleContextMenu}
                     onRegisterObserver={registerObserver}
+                    previewEnabled={hoverPreviewEnabled}
                   />
                 </div>
               );

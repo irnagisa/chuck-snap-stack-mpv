@@ -56,6 +56,7 @@ export interface AppSettings {
   keybindings: KeyBindings;
   theme: Theme;
   autoPlayNext: boolean;
+  hoverPreviewEnabled: boolean;
   language: Language;
   categoryMode: CategoryMode;
   aiEnabled: boolean;
@@ -72,6 +73,7 @@ const DEFAULTS: AppSettings = {
   keybindings: DEFAULT_KEYBINDINGS,
   theme: "auto",
   autoPlayNext: false,
+  hoverPreviewEnabled: true,
   language: "ja",
   categoryMode: 'virtual',
   aiEnabled: false,
@@ -139,6 +141,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       keybindings,
       theme: (map["theme"] as Theme | undefined) ?? DEFAULTS.theme,
       autoPlayNext: map["auto_play_next"] === "true",
+      hoverPreviewEnabled: map["hover_preview_enabled"] !== "false",
       language,
       categoryMode: (map["category_mode"] as CategoryMode | undefined) ?? 'virtual',
       aiEnabled: map["ai_enabled"] === "true",
@@ -159,6 +162,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       screenshotDir: settings.screenshotDir,
       theme: settings.theme,
       autoPlayNext: settings.autoPlayNext,
+      hoverPreviewEnabled: settings.hoverPreviewEnabled,
       language: settings.language,
       aiEnabled: settings.aiEnabled,
     });

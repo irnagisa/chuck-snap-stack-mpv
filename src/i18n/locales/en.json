@@ -100,6 +100,8 @@
     "sectionPlayback": "Playback",
     "autoPlayNext": "Auto Play Next",
     "autoPlayNextDesc": "Automatically play the next video when the current one ends",
+    "hoverPreview": "Hover Preview",
+    "hoverPreviewDesc": "Preview-play video or audio when hovering over a thumbnail",
     "sectionExecutable": "Executables",
     "mpvPath": "mpv path",
     "mpvPathPlaceholder": "/opt/homebrew/bin/mpv",

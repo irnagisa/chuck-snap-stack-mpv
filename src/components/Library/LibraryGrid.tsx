@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { useShallow } from 'zustand/shallow';
 import { TagBadge } from './TagBadge';
 import { useAudioPreview } from '../../hooks/useAudioPreview';
@@ -53,7 +54,7 @@ const VideoCard = memo(function VideoCard({
   const isImage = v.media_type === 'image';
   const isAudio = v.media_type === 'audio';
   const isVideo = !isImage && !isAudio && !isLink;
-  const { isPreviewPlaying: isAudioPreviewPlaying, onMouseEnter: audioMouseEnter, onMouseLeave: audioMouseLeave } = useAudioPreview(v.path, isAudio);
+  const { isPreviewPlaying: isAudioPreviewPlaying, onMouseEnter: audioMouseEnter, onMouseLeave: audioMouseLeave } = useAudioPreview(v.path, isAudio && previewEnabled);
   const { videoRef, isPreviewPlaying: isVideoPreviewPlaying, onMouseEnter: videoMouseEnter, onMouseLeave: videoMouseLeave } = useVideoPreview(v.path, isVideo && previewEnabled);
   const onMouseEnter = useCallback(() => { audioMouseEnter(); videoMouseEnter(); }, [audioMouseEnter, videoMouseEnter]);
   const onMouseLeave = useCallback(() => { audioMouseLeave(); videoMouseLeave(); }, [audioMouseLeave, videoMouseLeave]);
@@ -294,6 +295,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
   const { gridItemMinWidth = ITEM_MIN_WIDTH } = useLibraryViewStore(useShallow((s) => ({ gridItemMinWidth: s.gridItemMinWidth })));
+  const hoverPreviewEnabled = useSettingsStore((s) => s.hoverPreviewEnabled);
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
   const categories = useTagStore(useShallow((s) => s.categories));
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
@@ -465,7 +467,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
                           onCheckbox={handleCheckbox}
                           onContextMenu={handleContextMenu}
                           onRegisterObserver={registerObserver}
-                          previewEnabled={gridItemMinWidth >= 180}
+                          previewEnabled={hoverPreviewEnabled && gridItemMinWidth >= 180}
                         />
                       );
                     })}

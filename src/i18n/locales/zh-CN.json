@@ -100,6 +100,8 @@
     "sectionPlayback": "播放",
     "autoPlayNext": "自动播放下一个",
     "autoPlayNextDesc": "当队列中的视频结束时，自动播放下一个",
+    "hoverPreview": "悬停预览",
+    "hoverPreviewDesc": "将鼠标悬停在缩略图上时预览播放视频或音频",
     "sectionExecutable": "可执行文件",
     "mpvPath": "mpv 路径",
     "mpvPathPlaceholder": "/opt/homebrew/bin/mpv",

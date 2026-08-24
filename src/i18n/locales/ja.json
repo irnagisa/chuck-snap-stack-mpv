@@ -100,6 +100,8 @@
     "sectionPlayback": "再生",
     "autoPlayNext": "自動再生",
     "autoPlayNextDesc": "キュー内の動画が終了したとき、次の動画を自動的に再生する",
+    "hoverPreview": "ホバープレビュー",
+    "hoverPreviewDesc": "サムネイルにマウスを合わせたときに動画や音声をプレビュー再生する",
     "sectionExecutable": "実行ファイル",
     "mpvPath": "mpv パス",
     "mpvPathPlaceholder": "/opt/homebrew/bin/mpv",

@@ -12,7 +12,7 @@ pub async fn db_load_settings(state: State<'_, DbState>) -> Result<HashMap<Strin
         .prepare(
             "SELECT key, value FROM settings WHERE key IN (
               'mpv_path','ffmpeg_path','ffprobe_path','ytdlp_path',
-              'download_dir','screenshot_dir','keybindings','theme','auto_play_next','language',
+              'download_dir','screenshot_dir','keybindings','theme','auto_play_next','hover_preview_enabled','language',
               'category_mode','ai_enabled','ai_model_type'
             )",
         )
@@ -39,6 +39,7 @@ pub async fn db_save_settings(
     screenshot_dir: String,
     theme: String,
     auto_play_next: bool,
+    hover_preview_enabled: bool,
     language: String,
     ai_enabled: bool,
 ) -> Result<(), String> {
@@ -52,6 +53,7 @@ pub async fn db_save_settings(
         ("screenshot_dir", screenshot_dir),
         ("theme", theme),
         ("auto_play_next", auto_play_next.to_string()),
+        ("hover_preview_enabled", hover_preview_enabled.to_string()),
         ("language", language),
         ("ai_enabled", ai_enabled.to_string()),
     ];
