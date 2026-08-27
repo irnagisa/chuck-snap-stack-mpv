@@ -4,7 +4,7 @@ use std::path::Path;
 use tauri::State;
 
 use crate::db::DbState;
-use super::utils::resolve_unique_path;
+use super::utils::{normalize_path_str, resolve_unique_path};
 use super::db_videos::auto_graduate_if_complete;
 
 #[derive(Serialize, Deserialize)]
@@ -518,8 +518,8 @@ pub async fn db_update_category(
     {
         let conn = state.conn()?;
         for watch_dir in &sync_watch_dirs {
-            let old_abs = Path::new(watch_dir).join(&old_rel_path).to_string_lossy().into_owned();
-            let new_abs = Path::new(watch_dir).join(&new_rel_path).to_string_lossy().into_owned();
+            let old_abs = normalize_path_str(&Path::new(watch_dir).join(&old_rel_path).to_string_lossy());
+            let new_abs = normalize_path_str(&Path::new(watch_dir).join(&new_rel_path).to_string_lossy());
             // パスが old_abs/ 以下のファイルを一括更新
             conn.execute(
                 "UPDATE videos SET path = ?1 || substr(path, length(?2) + 1) WHERE path LIKE ?3",
@@ -678,8 +678,8 @@ pub async fn db_delete_category(
                         }
 
                         exact_updates.push((
-                            entry_path.to_string_lossy().into_owned(),
-                            dest_path.to_string_lossy().into_owned(),
+                            normalize_path_str(&entry_path.to_string_lossy()),
+                            normalize_path_str(&dest_path.to_string_lossy()),
                         ));
                     }
 
@@ -694,8 +694,8 @@ pub async fn db_delete_category(
                             .map_err(|e| format!("子カテゴリディレクトリ移動失敗: {e}"))?;
 
                         prefix_updates.push((
-                            format!("{}/", child_old.to_string_lossy()),
-                            format!("{}/", child_new.to_string_lossy()),
+                            format!("{}/", normalize_path_str(&child_old.to_string_lossy())),
+                            format!("{}/", normalize_path_str(&child_new.to_string_lossy())),
                         ));
                     }
 

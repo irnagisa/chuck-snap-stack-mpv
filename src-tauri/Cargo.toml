@@ -42,6 +42,7 @@ sha2 = "0.10"
 rand = "0.8"
 sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
 scraper = "0.20"
+unicode-normalization = "0.1"
 tauri-plugin-wdio-webdriver = "1"
 # default-features を無効化し api-22 以降を含めない: SessionBuilder::new() が
 # api-22 で追加された SessionOptionsSetEpSelectionPolicy(MaxEfficiency) を無条件に呼ぶが、

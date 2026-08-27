@@ -4,7 +4,7 @@ use std::path::Path;
 use std::fs;
 
 use super::settings::SharedAppSettings;
-use super::utils::{resolve_unique_path, validate_image_output_path, validate_media_path, validate_path, validate_text_path, validate_video_path};
+use super::utils::{normalize_path_str, resolve_unique_path, validate_image_output_path, validate_media_path, validate_path, validate_text_path, validate_video_path};
 use crate::db::DbState;
 
 #[derive(Serialize)]
@@ -117,22 +117,27 @@ pub fn scan_dir_core(path: &str) -> ScanResult {
             skipped_count += 1;
             continue;
         };
-        let title = entry
-            .path()
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
+        // macOS (APFS/HFS+) はファイル名を NFD 分解形で返すため、DB 保存前に NFC へ
+        // 正規化する (normalize_path_str のドキュメント参照)。
+        let title = normalize_path_str(
+            entry
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(""),
+        );
         let file_path = entry.path().to_path_buf();
         let parent_dir_name = file_path.parent().and_then(|p| {
             if p == root {
                 None
             } else {
-                p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(normalize_path_str)
             }
         });
         files.push(ScannedFile {
-            path: file_path.to_string_lossy().to_string(),
+            path: normalize_path_str(&file_path.to_string_lossy()),
             title,
             parent_dir_name,
             media_type: media_type.to_string(),
@@ -593,7 +598,7 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
                 return Err("移動先がディレクトリ外に解決されました".to_string());
             }
         }
-        return Ok(canonical_dest.to_string_lossy().into_owned());
+        return Ok(normalize_path_str(&canonical_dest.to_string_lossy()));
     }
 
     // rename 失敗 (クロスデバイス) → placeholder fd を保持したまま直接書き込む
@@ -637,7 +642,7 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
         tokio::fs::remove_file(&source)
             .await
             .map_err(|e| format!("元ファイルの削除失敗 (コピー先にデータは存在します): {e}"))?;
-        return Ok(canonical_dest.to_string_lossy().into_owned());
+        return Ok(normalize_path_str(&canonical_dest.to_string_lossy()));
     }
 }
 
@@ -722,7 +727,7 @@ pub async fn copy_video_file(source_path: String, dest_dir: String) -> Result<St
             return Err("コピー先がディレクトリ外に解決されました".to_string());
         }
     }
-    Ok(canonical.to_string_lossy().into_owned())
+    Ok(normalize_path_str(&canonical.to_string_lossy()))
 }
 
 /// 複数の動画ファイルを一括削除する。各ファイルの削除成否を (path, success) の配列で返す。
@@ -1206,7 +1211,7 @@ pub async fn migrate_root_files_to_inbox(
         let new_path: String = if tokio::fs::rename(source, &dest_path).await.is_ok() {
             drop(placeholder); // rename 成功: placeholder の inode は置換済み
             match tokio::fs::canonicalize(&dest_path).await {
-                Ok(p) => p.to_string_lossy().into_owned(),
+                Ok(p) => normalize_path_str(&p.to_string_lossy()),
                 Err(e) => {
                     errors.push(format!("移動後パスの正規化失敗 ({old_path}): {e}"));
                     continue;
@@ -1261,7 +1266,7 @@ pub async fn migrate_root_files_to_inbox(
             }
 
             let canonical_dest = match tokio::fs::canonicalize(&dest_path).await {
-                Ok(p) => p.to_string_lossy().into_owned(),
+                Ok(p) => normalize_path_str(&p.to_string_lossy()),
                 Err(e) => {
                     let _ = tokio::fs::remove_file(&dest_path).await;
                     errors.push(format!("コピー先の正規化失敗 ({old_path}): {e}"));
@@ -1351,4 +1356,73 @@ pub async fn cleanup_jpg_thumbnails(
         }
     }
     Ok(count)
+}
+
+#[cfg(test)]
+mod scan_dir_core_tests {
+    use super::*;
+
+    /// テストごとに一意な一時ディレクトリを作成し、テスト終了時に自動削除する。
+    struct TempDir(std::path::PathBuf);
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "chuck-snap-stack-test-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn scan_dir_core_normalizes_nfd_filename_to_nfc() {
+        let dir = TempDir::new("nfd");
+        // NFD 分解形 (か + 濁点結合文字) のファイル名で作成する
+        let nfd_name = "\u{304B}\u{3099}.mp4";
+        fs::write(dir.0.join(nfd_name), b"dummy").unwrap();
+
+        let result = scan_dir_core(dir.0.to_str().unwrap());
+
+        assert_eq!(result.files.len(), 1);
+        let nfc_title = "\u{304C}"; // NFC 合成形 (が)
+        assert_eq!(result.files[0].title, nfc_title);
+        assert!(
+            result.files[0].path.ends_with(&format!("{nfc_title}.mp4")),
+            "path should end with NFC-normalized filename, got: {}",
+            result.files[0].path
+        );
+    }
+
+    #[test]
+    fn scan_dir_core_finds_ascii_video_file() {
+        let dir = TempDir::new("ascii");
+        fs::write(dir.0.join("video.mp4"), b"dummy").unwrap();
+
+        let result = scan_dir_core(dir.0.to_str().unwrap());
+
+        assert_eq!(result.files.len(), 1);
+        assert_eq!(result.files[0].title, "video");
+        assert_eq!(result.files[0].media_type, "video");
+    }
+
+    #[test]
+    fn scan_dir_core_skips_unsupported_extension() {
+        let dir = TempDir::new("skip");
+        fs::write(dir.0.join("notes.txt"), b"dummy").unwrap();
+
+        let result = scan_dir_core(dir.0.to_str().unwrap());
+
+        assert_eq!(result.files.len(), 0);
+        assert_eq!(result.skipped_count, 1);
+    }
 }

@@ -10,13 +10,14 @@ use crate::commands::db_videos::{
     ScanImportResult, RescanResult, VideoIdPath, WatcherCreate, WatcherRename,
 };
 use crate::commands::library::scan_dir_core;
+use crate::commands::utils::normalize_path_str;
 use crate::db::DbState;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn get_relative_dir_path(file_path: &str, root_dir: &str) -> Option<String> {
-    let norm_file = file_path.replace('\\', "/");
-    let norm_root = root_dir.replace('\\', "/").trim_end_matches('/').to_string();
+    let norm_file = normalize_path_str(&file_path.replace('\\', "/"));
+    let norm_root = normalize_path_str(root_dir.replace('\\', "/").trim_end_matches('/'));
     let dir = norm_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
     if dir == norm_root {
         Some(String::new()) // root dir directly
@@ -184,6 +185,9 @@ pub async fn db_scan_and_import(
 ) -> Result<ScanImportResult, String> {
     // パス検証: 絶対パス・パストラバーサル禁止・最低深度チェック
     super::utils::validate_path(&path)?;
+    // scan_dir_core が返すファイルパスは NFC 正規化済みのため、prefix 比較や
+    // watch_dirs.path への保存に使うルートパスも同じ形式に揃える
+    let path = normalize_path_str(&path);
     if std::path::Path::new(&path).components().count() < 3 {
         return Err(
             "ルートや最上位ディレクトリはスキャン対象に指定できません".to_string(),
@@ -308,6 +312,10 @@ pub async fn db_rescan_all_dirs(
     target_dir: Option<String>,
     download_dir: Option<String>,
 ) -> Result<RescanResult, String> {
+    // watch_dirs.path / videos.path は NFC 正規化済みで保存されているため、
+    // 比較に使う入力パスも同じ形式に揃える
+    let target_dir = target_dir.map(|d| normalize_path_str(&d));
+    let download_dir = download_dir.map(|d| normalize_path_str(&d));
     // Step 1: Get dirs to scan from DB
     let dirs_to_scan: Vec<(String, bool)> = {
         let conn = state.conn()?;
@@ -544,6 +552,22 @@ pub async fn db_batch_watcher_update(
     removes: Vec<String>,
     renames: Vec<WatcherRename>,
 ) -> Result<(), String> {
+    // watcher.rs 側で正規化済みだが、他の呼び出し元からも安全にできるよう
+    // DB 書き込み境界でも念のため NFC 正規化を統一する
+    let creates: Vec<WatcherCreate> = creates
+        .into_iter()
+        .map(|c| WatcherCreate { path: normalize_path_str(&c.path), title: c.title })
+        .collect();
+    let removes: Vec<String> = removes.iter().map(|p| normalize_path_str(p)).collect();
+    let renames: Vec<WatcherRename> = renames
+        .into_iter()
+        .map(|r| WatcherRename {
+            old_path: normalize_path_str(&r.old_path),
+            new_path: normalize_path_str(&r.new_path),
+            title: r.title,
+        })
+        .collect();
+
     let conn = state.conn()?;
 
     // Removals
@@ -665,6 +689,7 @@ pub async fn db_get_videos_for_paths(
     if paths.is_empty() {
         return Ok(vec![]);
     }
+    let paths: Vec<String> = paths.iter().map(|p| normalize_path_str(p)).collect();
     let conn = state.conn_read()?;
     const BATCH: usize = 499;
     let mut results = Vec::new();
@@ -694,6 +719,7 @@ pub async fn db_mark_dir_missing(
     state: State<'_, DbState>,
     dir_path: String,
 ) -> Result<(), String> {
+    let dir_path = normalize_path_str(&dir_path);
     let conn = state.conn()?;
     let like_pattern = format!("{}/", dir_path.trim_end_matches('/'));
     conn.execute(
@@ -713,6 +739,8 @@ pub async fn db_rename_watch_dir(
     old_path: String,
     new_path: String,
 ) -> Result<(), String> {
+    let old_path = normalize_path_str(&old_path);
+    let new_path = normalize_path_str(&new_path);
     let conn = state.conn()?;
     let old_prefix = format!("{}/", old_path.trim_end_matches('/'));
     let new_prefix = format!("{}/", new_path.trim_end_matches('/'));
@@ -725,4 +753,48 @@ pub async fn db_rename_watch_dir(
         rusqlite::params![new_path, old_path],
     ).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // NFC 合成形の "が" (U+304C) と NFD 分解形の "か" + 濁点結合文字 (U+304B U+3099)
+    const NFC_GA: &str = "\u{304C}";
+    const NFD_GA: &str = "\u{304B}\u{3099}";
+
+    #[test]
+    fn get_relative_dir_path_matches_root_directly() {
+        let rel = get_relative_dir_path("/Users/foo/lib/video.mp4", "/Users/foo/lib");
+        assert_eq!(rel, Some(String::new()));
+    }
+
+    #[test]
+    fn get_relative_dir_path_returns_subdir() {
+        let rel = get_relative_dir_path("/Users/foo/lib/anime/video.mp4", "/Users/foo/lib");
+        assert_eq!(rel, Some("anime".to_string()));
+    }
+
+    #[test]
+    fn get_relative_dir_path_returns_none_outside_root() {
+        let rel = get_relative_dir_path("/Users/foo/other/video.mp4", "/Users/foo/lib");
+        assert_eq!(rel, None);
+    }
+
+    #[test]
+    fn get_relative_dir_path_matches_when_file_is_nfd_and_root_is_nfc() {
+        // ファイル側 (WalkDir 由来) が NFD、呼び出し元が渡すルートが NFC でも一致する
+        let file_path = format!("/Users/foo/lib/{NFD_GA}/video.mp4");
+        let root = format!("/Users/foo/lib/{NFC_GA}");
+        let rel = get_relative_dir_path(&file_path, &root);
+        assert_eq!(rel, Some(String::new()));
+    }
+
+    #[test]
+    fn get_relative_dir_path_matches_when_root_is_nfd_and_file_is_nfc() {
+        let file_path = format!("/Users/foo/lib/{NFC_GA}/video.mp4");
+        let root = format!("/Users/foo/lib/{NFD_GA}");
+        let rel = get_relative_dir_path(&file_path, &root);
+        assert_eq!(rel, Some(String::new()));
+    }
 }
