@@ -44,6 +44,8 @@ pub struct VideoFilter {
     pub filter_tag_ids: Vec<i64>,
     pub filter_tag_mode: String,
     pub filter_min_rating: i64,
+    #[serde(default = "default_rating_mode")]
+    pub filter_rating_mode: String,
     pub filter_has_audio: Option<i64>,
     pub filter_min_duration: f64,
     pub filter_max_duration: Option<f64>,
@@ -54,6 +56,10 @@ pub struct VideoFilter {
     pub filter_sort_order: String,
     pub current_page: i64,
     pub page_size: i64,
+}
+
+fn default_rating_mode() -> String {
+    "gte".to_string()
 }
 
 #[derive(Serialize)]
@@ -226,7 +232,12 @@ fn build_where_clause(
     if filter.filter_min_rating == -1 {
         conditions.push("(v.rating = 0 OR v.rating IS NULL)".to_string());
     } else if filter.filter_min_rating > 0 {
-        conditions.push("v.rating >= ?".to_string());
+        let op = match filter.filter_rating_mode.as_str() {
+            "lte" => "<=",
+            "eq" => "=",
+            _ => ">=",
+        };
+        conditions.push(format!("v.rating {op} ?"));
         params.push(Value::Integer(filter.filter_min_rating));
     }
 

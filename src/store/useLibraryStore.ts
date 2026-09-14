@@ -37,6 +37,7 @@ export type SortOrder = 'desc' | 'asc';
 export type WatchedStatus = 'all' | 'watched' | 'unwatched';
 export type TagFilterMode = 'and' | 'or';
 export type MediaTypeFilter = 'all' | 'video' | 'audio' | 'image';
+export type RatingMode = 'gte' | 'lte' | 'eq';
 
 interface ScanResult {
   newCount: number;
@@ -56,6 +57,7 @@ interface LibraryState {
   filterTagIds: number[];
   filterTagMode: TagFilterMode;
   filterMinRating: number;
+  filterRatingMode: RatingMode;
   filterHasAudio: number | null;
   filterMinDuration: number;
   filterMaxDuration: number;
@@ -85,6 +87,7 @@ interface LibraryActions {
   clearTagFilters: () => Promise<void>;
   setTagMode: (mode: TagFilterMode) => Promise<void>;
   setMinRating: (rating: number) => Promise<void>;
+  setRatingMode: (mode: RatingMode) => Promise<void>;
   setHasAudio: (hasAudio: number | null) => Promise<void>;
   setMinDuration: (seconds: number) => Promise<void>;
   setMaxDuration: (seconds: number) => Promise<void>;
@@ -161,6 +164,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterTagIds: [],
   filterTagMode: 'and',
   filterMinRating: 0,
+  filterRatingMode: 'gte',
   filterHasAudio: null,
   filterMinDuration: 0,
   filterMaxDuration: 0,
@@ -213,7 +217,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const {
       currentPage, pageSize, filterSortBy, filterSortOrder,
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
-      filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+      filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
       filterWatchedStatus, filterWatchDir, filterMediaType,
     } = get();
 
@@ -228,6 +232,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterTagIds,
         filterTagMode,
         filterMinRating,
+        filterRatingMode,
         filterHasAudio,
         filterMinDuration,
         filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
@@ -279,6 +284,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterTagIds: get().filterTagIds,
         filterTagMode: get().filterTagMode,
         filterMinRating: get().filterMinRating,
+        filterRatingMode: get().filterRatingMode,
         filterHasAudio: get().filterHasAudio,
         filterMinDuration: get().filterMinDuration,
         filterMaxDuration: get().filterMaxDuration > 0 ? get().filterMaxDuration : null,
@@ -324,6 +330,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setMinRating: async (rating: number) => {
     set({ filterMinRating: rating, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setRatingMode: async (mode: RatingMode) => {
+    set({ filterRatingMode: mode, currentPage: 1 });
     await get().fetchVideos();
   },
 

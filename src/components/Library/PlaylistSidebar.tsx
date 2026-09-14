@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import type { Playlist, SmartPlaylist } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
-import { useLibraryStore, type SortBy, type SortOrder, type WatchedStatus } from '../../store/useLibraryStore';
+import { useLibraryStore, type SortBy, type SortOrder, type WatchedStatus, type RatingMode } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
 
 interface Props {
@@ -14,7 +14,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
   const { t } = useTranslation();
   const { playlists, createPlaylist, deletePlaylist } = usePlaylistStore();
   const {
-    setSearch, setCategoryFilter, setMinRating, setHasAudio,
+    setSearch, setCategoryFilter, setMinRating, setRatingMode, setHasAudio,
     setMinDuration, setMaxDuration, setWatchedStatus, setSort,
   } = useLibraryStore();
   const [isCreating, setIsCreating] = useState(false);
@@ -41,6 +41,7 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
       if (f.filterSearch !== undefined) await setSearch(f.filterSearch);
       if (f.filterCategoryId !== undefined) await setCategoryFilter(f.filterCategoryId);
       if (f.filterMinRating !== undefined) await setMinRating(f.filterMinRating);
+      if (f.filterRatingMode !== undefined) await setRatingMode(f.filterRatingMode as RatingMode);
       if (f.filterHasAudio !== undefined) await setHasAudio(f.filterHasAudio);
       if (f.filterMinDuration !== undefined) await setMinDuration(f.filterMinDuration);
       if (f.filterMaxDuration !== undefined) await setMaxDuration(f.filterMaxDuration);

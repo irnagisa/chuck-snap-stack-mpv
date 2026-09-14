@@ -11,7 +11,7 @@ interface Props {
 export function SmartPlaylistModal({ onClose }: Props) {
   const { t } = useTranslation();
   const {
-    filterSearch, filterCategoryId, filterTagIds, filterMinRating,
+    filterSearch, filterCategoryId, filterTagIds, filterMinRating, filterRatingMode,
     filterHasAudio, filterMinDuration, filterMaxDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
   } = useLibraryStore();
 
@@ -24,7 +24,7 @@ export function SmartPlaylistModal({ onClose }: Props) {
     setIsSaving(true);
     try {
       const filterState = {
-        filterSearch, filterCategoryId, filterTagIds, filterMinRating,
+        filterSearch, filterCategoryId, filterTagIds, filterMinRating, filterRatingMode,
         filterHasAudio, filterMinDuration, filterMaxDuration, filterWatchedStatus, filterSortBy, filterSortOrder,
       };
       await invoke('db_create_smart_playlist', {
@@ -43,7 +43,14 @@ export function SmartPlaylistModal({ onClose }: Props) {
   if (filterSearch) filterSummary.push(t('smartPlaylist.filterSearch', { query: filterSearch }));
   if (filterCategoryId !== null) filterSummary.push(t('smartPlaylist.filterCategory'));
   if (filterTagIds.length > 0) filterSummary.push(t('smartPlaylist.filterTags', { count: filterTagIds.length }));
-  if (filterMinRating > 0) filterSummary.push(t('smartPlaylist.filterRating', { rating: filterMinRating }));
+  if (filterMinRating > 0) {
+    const ratingKey = filterRatingMode === 'lte'
+      ? 'smartPlaylist.filterRatingLte'
+      : filterRatingMode === 'eq'
+        ? 'smartPlaylist.filterRatingEq'
+        : 'smartPlaylist.filterRating';
+    filterSummary.push(t(ratingKey, { rating: filterMinRating }));
+  }
   if (filterHasAudio !== null) filterSummary.push(filterHasAudio ? t('smartPlaylist.filterAudioYes') : t('smartPlaylist.filterAudioNo'));
   if (filterMinDuration > 0) filterSummary.push(t('smartPlaylist.filterMinDuration', { seconds: filterMinDuration }));
   if (filterMaxDuration > 0) filterSummary.push(t('smartPlaylist.filterMaxDuration', { seconds: filterMaxDuration }));
