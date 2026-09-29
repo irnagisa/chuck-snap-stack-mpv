@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Video, Playlist } from '../types';
 
-type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | 'rating' | null;
+type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | 'rating' | 'moveDir' | null;
 
 interface ModalStore {
   showSettings: boolean;

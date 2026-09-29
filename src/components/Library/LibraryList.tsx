@@ -25,6 +25,7 @@ interface Props {
   onAddToPlaylist?: (video: Video) => void;
   onSetTag?: (video: Video) => void;
   onSetCategory?: (video: Video) => void;
+  onMoveDir?: (video: Video) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
 }
@@ -293,6 +294,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
   onAddToPlaylist,
   onSetTag,
   onSetCategory,
+  onMoveDir,
   selectedIds,
   onSelectionChange,
 }: Props, ref: React.Ref<LibraryViewHandle>) {
@@ -458,6 +460,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
           onAddToPlaylist={onAddToPlaylist ? () => { onAddToPlaylist!(contextMenu.video); setContextMenu(null); } : undefined}
           onSetTag={onSetTag ? () => { onSetTag!(contextMenu.video); setContextMenu(null); } : undefined}
           onSetCategory={onSetCategory ? () => { onSetCategory!(contextMenu.video); setContextMenu(null); } : undefined}
+          onMoveDir={onMoveDir ? () => { onMoveDir!(contextMenu.video); setContextMenu(null); } : undefined}
           onDelete={() => { setDeleteTarget(contextMenu.video); setContextMenu(null); }}
         />
       )}

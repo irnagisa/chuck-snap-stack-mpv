@@ -276,6 +276,11 @@ function App() {
     [openBulkModal]
   );
 
+  const handleContextMoveDir = useCallback(
+    (v: Video) => { setSelectedVideoIds(new Set([v.id])); openBulkModal("moveDir"); },
+    [openBulkModal]
+  );
+
   const imageList = useMemo(() => videos.filter((v) => v.media_type === "image"), [videos]);
 
   const handleHomeOpenVideo = useCallback(
@@ -387,6 +392,7 @@ function App() {
                               onAddToPlaylist={openAddToPlaylist}
                               onSetTag={handleContextSetTag}
                               onSetCategory={handleContextSetCategory}
+                              onMoveDir={handleContextMoveDir}
                               selectedIds={selectedVideoIds}
                               onSelectionChange={setSelectedVideoIds}
                             />
@@ -402,6 +408,7 @@ function App() {
                               onAddToPlaylist={openAddToPlaylist}
                               onSetTag={handleContextSetTag}
                               onSetCategory={handleContextSetCategory}
+                              onMoveDir={handleContextMoveDir}
                               selectedIds={selectedVideoIds}
                               onSelectionChange={setSelectedVideoIds}
                             />

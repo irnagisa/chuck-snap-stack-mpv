@@ -60,6 +60,13 @@ export function BatchActionBar({
       </button>
       <button
         type="button"
+        className="px-2.5 py-1 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded"
+        onClick={() => openBulkModal("moveDir")}
+      >
+        {t("batch.moveDir")}
+      </button>
+      <button
+        type="button"
         className="px-2.5 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded"
         onClick={() => openBulkModal("rename")}
       >

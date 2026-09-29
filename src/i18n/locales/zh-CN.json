@@ -85,7 +85,8 @@
     "delete": "删除",
     "rescan": "重新扫描",
     "setRating": "设置评分",
-    "deselect": "取消选择"
+    "deselect": "取消选择",
+    "moveDir": "移动到其他文件夹"
   },
   "pagination": {
     "prev": "← 上一页",
@@ -608,5 +609,17 @@
     "version": "版本",
     "description": "一款用于管理和播放媒体文件的桌面应用。内置强大的 mpv 播放器，支持 AI 标签建议、智能播放列表和重复检测。",
     "license": "许可证：MIT"
+  },
+  "bulkMoveDir": {
+    "title": "文件夹间移动",
+    "desc": "为 {{count}} 个视频选择目标文件夹",
+    "empty": "暂无已注册的文件夹",
+    "applying": "移动中...",
+    "apply": "移动",
+    "cancel": "取消",
+    "running": "移动中... {{done}} / {{total}}",
+    "failed": "{{count}} 个文件移动失败",
+    "syncModeNote": "Sync 模式：目标文件夹中若无对应分类目录将自动创建",
+    "virtualModeNote": "Virtual 模式：直接移动到所选文件夹根目录"
   }
 }
