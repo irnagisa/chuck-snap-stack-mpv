@@ -893,6 +893,10 @@ pub async fn db_move_video_file_db(
 ) -> Result<(), String> {
     let new_path = normalize_path_str(&new_path);
     let conn = state.conn()?;
+    // ファイルウォッチャーが移動先を先に検知し video-file-created として
+    // 別レコードを INSERT している場合があるため、UPDATE 前に競合レコードを除去する
+    // (db_batch_watcher_update のリネーム処理と同様のパターン)
+    remove_conflicting_videos(&conn, &new_path, video_id)?;
     // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
     let rows_affected = conn
         .execute(
