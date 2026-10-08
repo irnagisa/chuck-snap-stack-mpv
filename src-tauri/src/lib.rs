@@ -111,6 +111,7 @@ pub fn run() {
             commands::download::cancel_download,
             commands::transcode::transcode_video,
             commands::transcode::cancel_transcode,
+            commands::transcode::trash_transcode_source,
             commands::mpv::set_playback_speed,
             commands::mpv::take_screenshot,
             commands::mpv::set_ab_loop_a,

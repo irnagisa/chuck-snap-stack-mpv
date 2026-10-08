@@ -501,7 +501,13 @@
     "crfVeryLowBitrate": "非常に低ビットレート — ファイルサイズが増える可能性があります",
     "timeEstimate": "※ Intel i5 の場合、1GB あたり 15〜30 分程度かかります（preset・CRF により変動）",
     "close": "閉じる",
-    "start": "変換開始"
+    "start": "変換開始",
+    "trashOriginal": "変換完了後、元ファイルをゴミ箱に移動する",
+    "trashOriginalNote": "変換後ファイルの再生時間・映像/音声ストリームを検証し、問題がない場合のみ元ファイルをゴミ箱へ移動します（完全削除はしません）。ゴミ箱が使えない外部ストレージ等では、同じフォルダ内の「.ChuckSnapStackTrash」に「.trashed」を付けて退避します。検証に失敗した場合や変換中に元ファイルが変更された場合は元ファイルを残します。プレイリスト・視聴履歴は引き継がれません。",
+    "trashOriginalDone": "元ファイルをゴミ箱に移動しました",
+    "trashOriginalQuarantined": "ゴミ箱を使用できなかったため、元ファイルを退避しました（不要なら手動で削除してください）: {{location}}",
+    "trashOriginalFailed": "元ファイルは削除せずに残しました: {{error}}",
+    "trashOriginalSkipped": "変換後ファイルをライブラリに登録できなかったため、元ファイルは削除せずに残しました"
   },
   "export": {
     "title": "エクスポート / インポート",
