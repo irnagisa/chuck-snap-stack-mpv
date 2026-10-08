@@ -501,7 +501,13 @@
     "crfVeryLowBitrate": "极低比特率 — 文件大小可能增加",
     "timeEstimate": "* Intel i5 上每 GB 约需 15–30 分钟（因预设和 CRF 而异）",
     "close": "关闭",
-    "start": "开始转码"
+    "start": "开始转码",
+    "trashOriginal": "转换完成后将原文件移至废纸篓",
+    "trashOriginalNote": "将先校验转换后文件的时长及视频/音频流，仅在校验通过时才将原文件移至废纸篓（不会永久删除）。在无法使用废纸篓的外部存储等卷上，会将其加上“.trashed”后缀移至同一文件夹内的“.ChuckSnapStackTrash”。若校验失败或原文件在转换期间被修改，则保留原文件。播放列表和观看记录不会迁移。",
+    "trashOriginalDone": "已将原文件移至废纸篓",
+    "trashOriginalQuarantined": "无法使用废纸篓，已将原文件移至暂存位置（如不再需要请手动删除）：{{location}}",
+    "trashOriginalFailed": "已保留原文件：{{error}}",
+    "trashOriginalSkipped": "转换后的文件未能添加到媒体库，已保留原文件"
   },
   "export": {
     "title": "导出 / 导入",

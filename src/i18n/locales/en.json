@@ -501,7 +501,13 @@
     "crfVeryLowBitrate": "Very low bitrate — file size may increase",
     "timeEstimate": "* On Intel i5, expect 15–30 min per GB (varies by preset and CRF)",
     "close": "Close",
-    "start": "Start Transcode"
+    "start": "Start Transcode",
+    "trashOriginal": "Move the original file to Trash after conversion",
+    "trashOriginalNote": "The converted file's duration and video/audio streams are verified first; the original is moved to Trash (never permanently deleted) only if the checks pass. On volumes where Trash is unavailable (e.g. external storage), it is moved into a \".ChuckSnapStackTrash\" folder in the same directory with a \".trashed\" suffix. If verification fails or the original is modified during conversion, it is kept. Playlists and watch history are not carried over.",
+    "trashOriginalDone": "Moved the original file to Trash",
+    "trashOriginalQuarantined": "Trash was unavailable, so the original file was moved aside (delete it manually if no longer needed): {{location}}",
+    "trashOriginalFailed": "Kept the original file: {{error}}",
+    "trashOriginalSkipped": "Kept the original file because the converted file could not be added to the library"
   },
   "export": {
     "title": "Export / Import",

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useTagStore } from '../../store/useTagStore';
 import { useTranscodeStore } from '../../store/useTranscodeStore';
+import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
 
 function formatSize(bytes: number): string {
@@ -28,6 +29,11 @@ function suggestCrf(bitrateKbps: number): { crf: number; reasonKey: string } {
   return { crf: 50, reasonKey: 'transcode.crfVeryLowBitrate' };
 }
 
+/** trash_transcode_source の戻り値 */
+type SourceDisposal =
+  | { method: 'trash' }
+  | { method: 'quarantine'; location: string };
+
 interface Props {
   video: Video;
   onClose: () => void;
@@ -35,7 +41,7 @@ interface Props {
 
 export function TranscodeModal({ video, onClose }: Props) {
   const { t } = useTranslation();
-  const { addVideoFromPath, fetchVideos } = useLibraryStore();
+  const { addVideoFromPath, updateVideo, fetchVideos, removeVideo } = useLibraryStore();
   const { addTagToVideo, setVideoCategory, videoTags } = useTagStore();
   const { isRunning, start } = useTranscodeStore();
 
@@ -43,6 +49,7 @@ export function TranscodeModal({ video, onClose }: Props) {
   const [crf, setCrf] = useState<number>(32);
   const [preset, setPreset] = useState<number>(8);
   const [crfReasonKey, setCrfReasonKey] = useState<string>('');
+  const [trashOriginal, setTrashOriginal] = useState(false);
 
   const PRESET_OPTIONS = [
     { value: 13, labelKey: 'transcode.preset13Label', descKey: 'transcode.preset13Desc' },
@@ -70,9 +77,13 @@ export function TranscodeModal({ video, onClose }: Props) {
 
   const handleStart = async () => {
     const stem = previewOutput.split('/').pop()?.replace(/\.av1\.mkv$/, '') ?? previewOutput;
-    // onSuccess 実行時点での category_id とタグを確定しておく
+    // onSuccess 実行時点での category_id・評価・タグを確定しておく
     const originalCategoryId = video.category_id;
+    const originalRating = video.rating;
     const originalTags = [...(videoTags[video.id] ?? [])];
+    const originalId = video.id;
+    const originalPath = video.path;
+    const shouldTrashOriginal = trashOriginal;
 
     start({
       videoPath: video.path,
@@ -83,17 +94,47 @@ export function TranscodeModal({ video, onClose }: Props) {
       preset,
       onSuccess: async (outputPath) => {
         const newId = await addVideoFromPath(outputPath, stem);
-        if (newId == null) return;
+        if (newId == null) {
+          if (shouldTrashOriginal) toast.error(t('transcode.trashOriginalSkipped'));
+          return;
+        }
         // カテゴリをコピー
         if (originalCategoryId != null) {
           await setVideoCategory(newId, originalCategoryId);
+        }
+        // 評価をコピー
+        if (originalRating > 0) {
+          await updateVideo(newId, { rating: originalRating });
         }
         // タグをコピー
         for (const tag of originalTags) {
           await addTagToVideo(newId, tag.id);
         }
-        if (originalCategoryId != null || originalTags.length > 0) {
+        if (originalCategoryId != null || originalRating > 0 || originalTags.length > 0) {
           await fetchVideos();
+        }
+        // 元ファイルをゴミ箱へ移動 (メタデータのコピー完了後のみ)。
+        // 変換結果の検証はバックエンドで行い、失敗時は元ファイルを残す。
+        if (shouldTrashOriginal) {
+          let disposal: SourceDisposal;
+          try {
+            disposal = await invoke<SourceDisposal>('trash_transcode_source', { inputPath: originalPath, outputPath });
+          } catch (e) {
+            console.error('[transcode] 元ファイルのゴミ箱移動を中止:', e);
+            toast.error(t('transcode.trashOriginalFailed', { error: String(e) }));
+            return;
+          }
+          try {
+            await removeVideo(originalId);
+          } catch (e) {
+            console.error('[transcode] 元ファイルのライブラリ登録解除に失敗:', e);
+          }
+          if (disposal.method === 'quarantine') {
+            // ゴミ箱が使えない外部ストレージ等: 退避先を長めに表示する
+            toast.info(t('transcode.trashOriginalQuarantined', { location: disposal.location }), 15000);
+          } else {
+            toast.success(t('transcode.trashOriginalDone'));
+          }
         }
       },
     });
@@ -214,6 +255,24 @@ export function TranscodeModal({ video, onClose }: Props) {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* 元ファイルの扱い */}
+              <div>
+                <label className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={trashOriginal}
+                    onChange={(e) => setTrashOriginal(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span className="font-medium">{t('transcode.trashOriginal')}</span>
+                </label>
+                {trashOriginal && (
+                  <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+                    {t('transcode.trashOriginalNote')}
+                  </p>
+                )}
               </div>
 
               <p className="text-xs text-yellow-600 dark:text-yellow-400">
