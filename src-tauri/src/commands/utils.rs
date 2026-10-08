@@ -1,9 +1,21 @@
 use std::path::{Component, Path, PathBuf};
+use unicode_normalization::UnicodeNormalization;
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "wmv", "mpg", "mpeg", "media"];
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "aac", "wav", "ogg", "opus", "m4a", "wma"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "heic", "avif"];
 const TEXT_EXTENSIONS: &[&str] = &["json", "txt", "csv", "tsv", "md", "xml", "yaml", "yml", "toml", "nfo", "srt", "vtt"];
+
+/// パス文字列を Unicode 正規化形式 NFC に統一する。
+///
+/// macOS (APFS/HFS+) はファイル名に含まれる合成可能な文字 (濁点付き仮名など) を
+/// NFD 分解形でファイルシステムから返す。DB の `videos.path` / `watch_dirs.path`
+/// はバイト単位の文字列比較 (`=` / `LIKE` / `IN`) で突合されるため、書き込み・
+/// 比較の全経路で正規化形式を統一しないと同一ファイルが別レコード扱いになったり
+/// 既存レコードと一致せずスキャン・ウォッチャー更新が失敗したりする。
+pub fn normalize_path_str(s: &str) -> String {
+    s.nfc().collect()
+}
 
 /// 絶対パスであり `..` コンポーネントや制御文字を含まないことを検証する。
 pub fn validate_path(path: &str) -> Result<PathBuf, String> {
@@ -218,6 +230,35 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- normalize_path_str ---
+
+    #[test]
+    fn normalize_path_str_composes_nfd_kana_to_nfc() {
+        // "が" (NFC, U+304C) vs "か" + 濁点結合文字 (NFD, U+304B U+3099)
+        let nfc = "\u{304C}";
+        let nfd = "\u{304B}\u{3099}";
+        assert_ne!(nfc, nfd, "テストの前提: NFC と NFD はバイト列として異なる");
+        assert_eq!(normalize_path_str(nfd), nfc);
+    }
+
+    #[test]
+    fn normalize_path_str_is_idempotent_on_already_nfc_input() {
+        let nfc = "\u{304C}";
+        assert_eq!(normalize_path_str(nfc), nfc);
+    }
+
+    #[test]
+    fn normalize_path_str_leaves_ascii_path_unchanged() {
+        assert_eq!(normalize_path_str("/tmp/video.mp4"), "/tmp/video.mp4");
+    }
+
+    #[test]
+    fn normalize_path_str_normalizes_full_path_with_nfd_component() {
+        let path_with_nfd = "/Users/foo/\u{304B}\u{3099}\u{3044}\u{305F}\u{3099}\u{306F}.mp4";
+        let expected = "/Users/foo/\u{304C}\u{3044}\u{3060}\u{306F}.mp4";
+        assert_eq!(normalize_path_str(path_with_nfd), expected);
+    }
 
     // --- validate_path ---
 

@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::db::DbState;
 use super::db_tags::VideoTagRow;
+use super::utils::normalize_path_str;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ pub struct VideoFilter {
     pub filter_tag_ids: Vec<i64>,
     pub filter_tag_mode: String,
     pub filter_min_rating: i64,
+    #[serde(default = "default_rating_mode")]
+    pub filter_rating_mode: String,
     pub filter_has_audio: Option<i64>,
     pub filter_min_duration: f64,
     pub filter_max_duration: Option<f64>,
@@ -53,6 +56,10 @@ pub struct VideoFilter {
     pub filter_sort_order: String,
     pub current_page: i64,
     pub page_size: i64,
+}
+
+fn default_rating_mode() -> String {
+    "gte".to_string()
 }
 
 #[derive(Serialize)]
@@ -225,7 +232,12 @@ fn build_where_clause(
     if filter.filter_min_rating == -1 {
         conditions.push("(v.rating = 0 OR v.rating IS NULL)".to_string());
     } else if filter.filter_min_rating > 0 {
-        conditions.push("v.rating >= ?".to_string());
+        let op = match filter.filter_rating_mode.as_str() {
+            "lte" => "<=",
+            "eq" => "=",
+            _ => ">=",
+        };
+        conditions.push(format!("v.rating {op} ?"));
         params.push(Value::Integer(filter.filter_min_rating));
     }
 
@@ -450,7 +462,7 @@ pub async fn db_update_video(
     }
     if let Some(v) = path {
         set_parts.push("path = ?");
-        params.push(rusqlite::types::Value::Text(v));
+        params.push(rusqlite::types::Value::Text(normalize_path_str(&v)));
         // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
         set_parts.push("thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END");
     }
@@ -750,6 +762,7 @@ pub async fn db_add_video_from_path(
     source_url: Option<String>,
     source_type: Option<String>,
 ) -> Result<Option<i64>, String> {
+    let path = normalize_path_str(&path);
     let media_type = media_type_for_path(&path);
     let st = source_type.as_deref().unwrap_or("download");
     let conn = state.conn()?;
@@ -779,6 +792,7 @@ pub async fn db_remove_video_by_path(
     state: State<'_, DbState>,
     path: String,
 ) -> Result<(), String> {
+    let path = normalize_path_str(&path);
     let conn = state.conn()?;
     let id: Option<i64> = conn
         .query_row("SELECT id FROM videos WHERE path = ?1", [&path], |r| r.get(0))
@@ -813,6 +827,8 @@ pub async fn db_update_video_path(
     old_path: String,
     new_path: String,
 ) -> Result<(), String> {
+    let old_path = normalize_path_str(&old_path);
+    let new_path = normalize_path_str(&new_path);
     let conn = state.conn()?;
     let video_id: Option<i64> = conn
         .query_row("SELECT id FROM videos WHERE path = ?1", [&old_path], |r| r.get(0))
@@ -845,6 +861,7 @@ pub async fn db_rename_video_file(
     video_id: i64,
     new_path: String,
 ) -> Result<(), String> {
+    let new_path = normalize_path_str(&new_path);
     let conn = state.conn()?;
     // remove_conflicting_videos + UPDATE を単一トランザクションで実行して不整合を防ぐ
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
@@ -874,7 +891,12 @@ pub async fn db_move_video_file_db(
     video_id: i64,
     new_path: String,
 ) -> Result<(), String> {
+    let new_path = normalize_path_str(&new_path);
     let conn = state.conn()?;
+    // ファイルウォッチャーが移動先を先に検知し video-file-created として
+    // 別レコードを INSERT している場合があるため、UPDATE 前に競合レコードを除去する
+    // (db_batch_watcher_update のリネーム処理と同様のパターン)
+    remove_conflicting_videos(&conn, &new_path, video_id)?;
     // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
     let rows_affected = conn
         .execute(
@@ -935,6 +957,7 @@ pub async fn db_add_watch_dir(
 ) -> Result<(), String> {
     // パス検証: 絶対パス・パストラバーサル禁止
     super::utils::validate_path(&path)?;
+    let path = normalize_path_str(&path);
     // ルートや最上位ディレクトリ (/Volumes, /Users 等) の登録を拒否する。
     // escape_like_dir("/") が空文字になるとウォッチ削除時に全動画が消えるため、
     // パスコンポーネント数が 3 未満 (例: "/" や "/Users") は受け付けない。
@@ -958,6 +981,7 @@ pub async fn db_remove_watch_dir(
     state: State<'_, DbState>,
     path: String,
 ) -> Result<(), String> {
+    let path = normalize_path_str(&path);
     let conn = state.conn()?;
     let escaped = escape_like_dir(&path);
     // escape_like_dir("/") は空文字になり LIKE '/%' が全パスにマッチするため、

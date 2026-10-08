@@ -9,6 +9,7 @@ import { BulkTagModal } from './Library/BulkTagModal';
 import { BulkCategoryModal } from './Library/BulkCategoryModal';
 import { BulkRenameModal } from './Library/BulkRenameModal';
 import { BulkRatingModal } from './Library/BulkRatingModal';
+import { BulkMoveDirModal } from './Library/BulkMoveDirModal';
 import { DuplicatesModal } from './Library/DuplicatesModal';
 import { MissingFilesModal } from './Library/MissingFilesModal';
 import { StatsModal } from './Library/StatsModal';
@@ -121,6 +122,17 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
 
       {bulkModal === 'rating' && (
         <BulkRatingModal
+          videoIds={Array.from(selectedVideoIds)}
+          onClose={closeBulkModal}
+          onDone={() => {
+            closeBulkModal();
+            onClearSelection();
+          }}
+        />
+      )}
+
+      {bulkModal === 'moveDir' && (
+        <BulkMoveDirModal
           videoIds={Array.from(selectedVideoIds)}
           onClose={closeBulkModal}
           onDone={() => {

@@ -12,6 +12,7 @@ interface Props {
   onAddToPlaylist?: () => void;
   onSetTag?: () => void;
   onSetCategory?: () => void;
+  onMoveDir?: () => void;
   onDelete: () => void;
 }
 
@@ -25,6 +26,7 @@ export function VideoContextMenu({
   onAddToPlaylist,
   onSetTag,
   onSetCategory,
+  onMoveDir,
   onDelete,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -59,6 +61,7 @@ export function VideoContextMenu({
     ...(onAddToPlaylist ? [{ label: 'プレイリストに追加', icon: '+', onClick: onAddToPlaylist }] : []),
     ...(onSetTag ? [{ label: 'タグを設定', icon: '🏷', onClick: onSetTag }] : []),
     ...(onSetCategory ? [{ label: 'カテゴリを設定', icon: '📁', onClick: onSetCategory }] : []),
+    ...(onMoveDir ? [{ label: '他のディレクトリへ移動', icon: '➡', onClick: onMoveDir }] : []),
     { label: '削除', icon: '🗑', onClick: onDelete, danger: true },
   ];
 

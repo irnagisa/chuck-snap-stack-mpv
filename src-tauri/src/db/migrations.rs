@@ -1,5 +1,7 @@
 use rusqlite::{Connection, Result};
 
+use crate::commands::utils::normalize_path_str;
+
 pub fn run_data_migrations(conn: &Connection) -> Result<()> {
     // Migration 1: categories_perparent_unique
     // Recreate categories table without unique constraint on name so that
@@ -166,6 +168,59 @@ pub fn run_data_migrations(conn: &Connection) -> Result<()> {
         });
     }
 
+    // Migration 7: nfc_path_normalize — 既存の videos.path / watch_dirs.path を
+    // Unicode 正規化形式 NFC に統一する。
+    // macOS (APFS/HFS+) はファイル名を NFD 分解形で返すため、本修正以前に登録された
+    // レコードには NFD のまま保存されたパスが混在している可能性がある。DB のパス
+    // 比較はバイト単位のため、正規化形式が揃っていないとスキャン・ウォッチャー更新で
+    // 既存レコードと一致せず「一部ファイルがスキャンできない」問題が起きる。
+    let nfc_migrated: bool = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'migration_nfc_path_normalize'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    if !nfc_migrated {
+        normalize_table_paths(conn, "videos")?;
+        normalize_table_paths(conn, "watch_dirs")?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_nfc_path_normalize', '1')",
+            [],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// `table` の `path` 列を Unicode 正規化形式 NFC に書き換える。
+/// `path` には UNIQUE 制約があるため、正規化後の値がすでに別行として存在する
+/// 場合は UPDATE がエラーになる (同一ファイルが NFC/NFD 両表記で二重登録されて
+/// いた稀なケース)。その行は正規化をスキップしてログに残し、他の行の処理を継続する。
+fn normalize_table_paths(conn: &Connection, table: &str) -> Result<()> {
+    let rows: Vec<(i64, String)> = {
+        let mut stmt = conn.prepare(&format!("SELECT rowid, path FROM {table}"))?;
+        let x = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_>>()?;
+        x
+    };
+
+    for (rowid, path) in rows {
+        let normalized = normalize_path_str(&path);
+        if normalized == path {
+            continue;
+        }
+        let update_sql = format!("UPDATE {table} SET path = ?1 WHERE rowid = ?2");
+        if let Err(e) = conn.execute(&update_sql, rusqlite::params![normalized, rowid]) {
+            log::warn!(
+                "[migration7] {table}.rowid={rowid} の NFC 正規化をスキップしました \
+                 (正規化後のパスが既存レコードと衝突しています): {e}"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -281,5 +336,109 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM playlist_items", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    // --- migration 7: nfc_path_normalize ---
+
+    // NFC 合成形の "が" (U+304C) と NFD 分解形の "か" + 濁点結合文字 (U+304B U+3099)
+    const NFC_GA: &str = "\u{304C}";
+    const NFD_GA: &str = "\u{304B}\u{3099}";
+
+    #[test]
+    fn migration7_normalizes_nfd_video_path_to_nfc() {
+        let conn = setup();
+        let nfd_path = format!("/tmp/{NFD_GA}.mp4");
+        conn.execute("INSERT INTO videos (path, status) VALUES (?1, 'active')", [&nfd_path])
+            .unwrap();
+
+        run_data_migrations(&conn).unwrap();
+
+        let nfc_path = format!("/tmp/{NFC_GA}.mp4");
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM videos WHERE path = ?1",
+                [&nfc_path],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "path should be rewritten to its NFC form");
+    }
+
+    #[test]
+    fn migration7_normalizes_nfd_watch_dir_path_to_nfc() {
+        let conn = setup();
+        let nfd_path = format!("/tmp/{NFD_GA}lib");
+        conn.execute(
+            "INSERT INTO watch_dirs (path, use_dir_as_category) VALUES (?1, 0)",
+            [&nfd_path],
+        )
+        .unwrap();
+
+        run_data_migrations(&conn).unwrap();
+
+        let nfc_path = format!("/tmp/{NFC_GA}lib");
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM watch_dirs WHERE path = ?1",
+                [&nfc_path],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "watch_dirs.path should be rewritten to its NFC form");
+    }
+
+    #[test]
+    fn migration7_leaves_already_nfc_path_untouched() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO videos (path, status) VALUES ('/tmp/video.mp4', 'active')",
+            [],
+        )
+        .unwrap();
+
+        run_data_migrations(&conn).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM videos WHERE path = '/tmp/video.mp4'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn migration7_sets_flag_and_is_idempotent() {
+        let conn = setup();
+        assert!(run_data_migrations(&conn).is_ok());
+        assert!(run_data_migrations(&conn).is_ok());
+        let val: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'migration_nfc_path_normalize'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(val, "1");
+    }
+
+    #[test]
+    fn migration7_skips_row_that_would_collide_after_normalization() {
+        let conn = setup();
+        // 同一ファイルが NFC 表記・NFD 表記の二重レコードとして存在する稀なケース
+        let nfc_path = format!("/tmp/{NFC_GA}.mp4");
+        let nfd_path = format!("/tmp/{NFD_GA}.mp4");
+        conn.execute("INSERT INTO videos (path, status) VALUES (?1, 'active')", [&nfc_path])
+            .unwrap();
+        conn.execute("INSERT INTO videos (path, status) VALUES (?1, 'active')", [&nfd_path])
+            .unwrap();
+
+        // 衝突する行があってもマイグレーション全体は失敗しない
+        assert!(run_data_migrations(&conn).is_ok());
+
+        // 両方の行が残り、データは失われない (重複解消は本マイグレーションの対象外)
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 2);
     }
 }

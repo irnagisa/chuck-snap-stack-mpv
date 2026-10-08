@@ -43,7 +43,7 @@ function App() {
   const {
     videos, totalCount, currentPage, pageSize,
     filterSearch, filterCategoryId, filterTagIds, filterTagMode,
-    filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+    filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
     filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
     isThumbnailGenerating, isDbReady, dbError,
   } = useLibraryStore(useShallow((s) => ({
@@ -56,6 +56,7 @@ function App() {
     filterTagIds: s.filterTagIds,
     filterTagMode: s.filterTagMode,
     filterMinRating: s.filterMinRating,
+    filterRatingMode: s.filterRatingMode,
     filterHasAudio: s.filterHasAudio,
     filterMinDuration: s.filterMinDuration,
     filterMaxDuration: s.filterMaxDuration,
@@ -185,14 +186,14 @@ function App() {
     if (inPage) { libraryRef.current?.scrollToId(targetId); return; }
     const {
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
-      filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+      filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
       filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
     } = useLibraryStore.getState();
     invoke<number | null>('db_find_video_page', {
       videoId: targetId,
       filter: {
         filterSearch, filterCategoryId, filterTagIds, filterTagMode,
-        filterMinRating, filterHasAudio, filterMinDuration,
+        filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration,
         filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
         filterWatchedStatus, filterWatchDir, filterMediaType,
         filterSortBy, filterSortOrder,
@@ -245,13 +246,13 @@ function App() {
     () =>
       [
         filterSearch, filterCategoryId, filterTagIds.join(","), filterTagMode,
-        filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+        filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
         filterWatchedStatus, filterWatchDir, filterMediaType,
         filterSortBy, filterSortOrder, currentPage,
       ].join("|"),
     [
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
-      filterMinRating, filterHasAudio, filterMinDuration, filterMaxDuration,
+      filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
       filterWatchedStatus, filterWatchDir, filterMediaType,
       filterSortBy, filterSortOrder, currentPage,
     ]
@@ -272,6 +273,11 @@ function App() {
 
   const handleContextSetCategory = useCallback(
     (v: Video) => { setSelectedVideoIds(new Set([v.id])); openBulkModal("category"); },
+    [openBulkModal]
+  );
+
+  const handleContextMoveDir = useCallback(
+    (v: Video) => { setSelectedVideoIds(new Set([v.id])); openBulkModal("moveDir"); },
     [openBulkModal]
   );
 
@@ -386,6 +392,7 @@ function App() {
                               onAddToPlaylist={openAddToPlaylist}
                               onSetTag={handleContextSetTag}
                               onSetCategory={handleContextSetCategory}
+                              onMoveDir={handleContextMoveDir}
                               selectedIds={selectedVideoIds}
                               onSelectionChange={setSelectedVideoIds}
                             />
@@ -401,6 +408,7 @@ function App() {
                               onAddToPlaylist={openAddToPlaylist}
                               onSetTag={handleContextSetTag}
                               onSetCategory={handleContextSetCategory}
+                              onMoveDir={handleContextMoveDir}
                               selectedIds={selectedVideoIds}
                               onSelectionChange={setSelectedVideoIds}
                             />

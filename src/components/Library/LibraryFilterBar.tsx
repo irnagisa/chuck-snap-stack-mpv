@@ -11,6 +11,7 @@ import type {
   WatchedStatus,
   MediaTypeFilter,
   SortBy,
+  RatingMode,
 } from "../../store/useLibraryStore";
 
 export function LibraryFilterBar() {
@@ -18,10 +19,10 @@ export function LibraryFilterBar() {
 
   const {
     filterTagIds, filterTagMode, filterSortBy, filterSortOrder,
-    filterMinRating, filterHasAudio, filterWatchedStatus, filterMediaType,
+    filterMinRating, filterRatingMode, filterHasAudio, filterWatchedStatus, filterMediaType,
     filterMinDuration, filterMaxDuration, totalCount,
     toggleTagFilter, clearTagFilters, setTagMode, setSort,
-    setMinRating, setHasAudio, setWatchedStatus, setMediaType,
+    setMinRating, setRatingMode, setHasAudio, setWatchedStatus, setMediaType,
     setMinDuration, setMaxDuration,
   } = useLibraryStore(useShallow((s) => ({
     filterTagIds: s.filterTagIds,
@@ -29,6 +30,7 @@ export function LibraryFilterBar() {
     filterSortBy: s.filterSortBy,
     filterSortOrder: s.filterSortOrder,
     filterMinRating: s.filterMinRating,
+    filterRatingMode: s.filterRatingMode,
     filterHasAudio: s.filterHasAudio,
     filterWatchedStatus: s.filterWatchedStatus,
     filterMediaType: s.filterMediaType,
@@ -40,6 +42,7 @@ export function LibraryFilterBar() {
     setTagMode: s.setTagMode,
     setSort: s.setSort,
     setMinRating: s.setMinRating,
+    setRatingMode: s.setRatingMode,
     setHasAudio: s.setHasAudio,
     setWatchedStatus: s.setWatchedStatus,
     setMediaType: s.setMediaType,
@@ -94,7 +97,9 @@ export function LibraryFilterBar() {
           {/* アクティブな非タグフィルターのチップ */}
           {filterMinRating !== 0 && (
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              {filterMinRating === -1 ? t('filters.ratingUnrated') : `★${filterMinRating}+`}
+              {filterMinRating === -1
+                ? t('filters.ratingUnrated')
+                : `★${filterMinRating}${filterRatingMode === 'lte' ? '-' : filterRatingMode === 'eq' ? '=' : '+'}`}
               <button type="button" onClick={() => setMinRating(0)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
@@ -230,12 +235,25 @@ export function LibraryFilterBar() {
         >
           <option value={0}>{t("filters.ratingAll")}</option>
           <option value={-1}>{t("filters.ratingUnrated")}</option>
-          <option value={1}>{t("filters.ratingAbove1")}</option>
-          <option value={2}>{t("filters.ratingAbove2")}</option>
-          <option value={3}>{t("filters.ratingAbove3")}</option>
-          <option value={4}>{t("filters.ratingAbove4")}</option>
-          <option value={5}>{t("filters.ratingOnly5")}</option>
+          <option value={1}>{t("filters.rating1")}</option>
+          <option value={2}>{t("filters.rating2")}</option>
+          <option value={3}>{t("filters.rating3")}</option>
+          <option value={4}>{t("filters.rating4")}</option>
+          <option value={5}>{t("filters.rating5")}</option>
         </Select>
+
+        {filterMinRating > 0 && (
+          <Select
+            variant="sm"
+            value={filterRatingMode}
+            onChange={(e) => setRatingMode(e.target.value as RatingMode)}
+            title="評価の比較方法"
+          >
+            <option value="gte">{t("filters.ratingModeGte")}</option>
+            <option value="lte">{t("filters.ratingModeLte")}</option>
+            <option value="eq">{t("filters.ratingModeEq")}</option>
+          </Select>
+        )}
 
         <Select
           variant="sm"

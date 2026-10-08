@@ -54,11 +54,14 @@
     "tagClear": "Clear",
     "ratingAll": "Rating: all",
     "ratingUnrated": "Unrated only",
-    "ratingAbove1": "★1+",
-    "ratingAbove2": "★2+",
-    "ratingAbove3": "★3+",
-    "ratingAbove4": "★4+",
-    "ratingOnly5": "★5 only",
+    "rating1": "★1",
+    "rating2": "★2",
+    "rating3": "★3",
+    "rating4": "★4",
+    "rating5": "★5",
+    "ratingModeGte": "or more",
+    "ratingModeLte": "or less",
+    "ratingModeEq": "only",
     "audioAll": "Audio: all",
     "audioYes": "Has audio",
     "audioNo": "No audio",
@@ -82,7 +85,8 @@
     "delete": "Delete",
     "rescan": "Rescan",
     "setRating": "Set Rating",
-    "deselect": "Deselect"
+    "deselect": "Deselect",
+    "moveDir": "Move to Folder"
   },
   "pagination": {
     "prev": "← Prev",
@@ -540,6 +544,8 @@
     "filterCategory": "Category filter applied",
     "filterTags": "Tags: {{count}}",
     "filterRating": "Rating: {{rating}}★+",
+    "filterRatingLte": "Rating: {{rating}}★ or less",
+    "filterRatingEq": "Rating: {{rating}}★ only",
     "filterAudioYes": "Audio: yes",
     "filterAudioNo": "Audio: no",
     "filterMinDuration": "Min: {{seconds}}s",
@@ -603,5 +609,17 @@
     "version": "Version",
     "description": "A desktop application for managing and playing media files. Features a powerful mpv-based player, AI tag suggestions, smart playlists, and duplicate detection.",
     "license": "License: MIT"
+  },
+  "bulkMoveDir": {
+    "title": "Move Between Folders",
+    "desc": "Select a destination folder for {{count}} videos",
+    "empty": "No folders registered",
+    "applying": "Moving...",
+    "apply": "Move",
+    "cancel": "Cancel",
+    "running": "Moving... {{done}} / {{total}}",
+    "failed": "Failed to move {{count}} file(s)",
+    "syncModeNote": "Sync mode: the category directory will be created in the destination if missing",
+    "virtualModeNote": "Virtual mode: files are moved directly into the selected folder"
   }
 }

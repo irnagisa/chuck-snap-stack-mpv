@@ -54,11 +54,14 @@
     "tagClear": "クリア",
     "ratingAll": "評価: すべて",
     "ratingUnrated": "未評価のみ",
-    "ratingAbove1": "★1以上",
-    "ratingAbove2": "★2以上",
-    "ratingAbove3": "★3以上",
-    "ratingAbove4": "★4以上",
-    "ratingOnly5": "★5のみ",
+    "rating1": "★1",
+    "rating2": "★2",
+    "rating3": "★3",
+    "rating4": "★4",
+    "rating5": "★5",
+    "ratingModeGte": "以上",
+    "ratingModeLte": "以下",
+    "ratingModeEq": "のみ",
     "audioAll": "音声: すべて",
     "audioYes": "音声あり",
     "audioNo": "音声なし",
@@ -82,7 +85,8 @@
     "delete": "削除",
     "rescan": "再スキャン",
     "setRating": "評価設定",
-    "deselect": "選択解除"
+    "deselect": "選択解除",
+    "moveDir": "他のディレクトリへ移動"
   },
   "pagination": {
     "prev": "← 前",
@@ -540,6 +544,8 @@
     "filterCategory": "カテゴリフィルター適用",
     "filterTags": "タグ: {{count}}件",
     "filterRating": "評価: {{rating}}★以上",
+    "filterRatingLte": "評価: {{rating}}★以下",
+    "filterRatingEq": "評価: {{rating}}★のみ",
     "filterAudioYes": "音声: あり",
     "filterAudioNo": "音声: なし",
     "filterMinDuration": "最短: {{seconds}}秒",
@@ -603,5 +609,17 @@
     "version": "バージョン",
     "description": "メディアファイルを管理・再生するデスクトップアプリです。mpv を搭載した高機能プレイヤーと、AI タグ提案・スマートプレイリスト・重複検出などの機能を備えています。",
     "license": "ライセンス: MIT"
+  },
+  "bulkMoveDir": {
+    "title": "ディレクトリ間移動",
+    "desc": "{{count}} 件の動画の移動先フォルダを選択",
+    "empty": "登録されているフォルダがありません",
+    "applying": "移動中...",
+    "apply": "移動",
+    "cancel": "キャンセル",
+    "running": "移動中... {{done}} / {{total}}",
+    "failed": "{{count}} 件のファイル移動に失敗しました",
+    "syncModeNote": "Sync モード: カテゴリのディレクトリが移動先になければ作成して格納します",
+    "virtualModeNote": "Virtual モード: 選択したフォルダの直下に移動します"
   }
 }
