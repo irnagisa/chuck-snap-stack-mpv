@@ -57,7 +57,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
           ai_new_suggestions TEXT,
           ai_analyzed_at TEXT,
           phash TEXT,
-          last_viewed_at TEXT
+          last_viewed_at TEXT,
+          file_size INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS playlists (
@@ -125,6 +126,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE videos ADD COLUMN ai_analyzed_at TEXT",
         "ALTER TABLE videos ADD COLUMN phash TEXT",
         "ALTER TABLE videos ADD COLUMN last_viewed_at TEXT",
+        "ALTER TABLE videos ADD COLUMN file_size INTEGER",
     ];
     for stmt in &alter_stmts {
         let _ = conn.execute_batch(stmt); // ignore "duplicate column" errors
@@ -134,7 +136,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_videos_last_viewed_at ON videos(last_viewed_at);
          CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
-         CREATE INDEX IF NOT EXISTS idx_videos_media_type ON videos(media_type);",
+         CREATE INDEX IF NOT EXISTS idx_videos_media_type ON videos(media_type);
+         CREATE INDEX IF NOT EXISTS idx_videos_file_size ON videos(file_size);",
     )?;
 
     Ok(())

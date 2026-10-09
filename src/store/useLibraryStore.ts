@@ -32,7 +32,7 @@ async function recordRecentFolder(dir: string): Promise<void> {
   });
 }
 
-export type SortBy = 'created_at' | 'duration' | 'rating';
+export type SortBy = 'created_at' | 'duration' | 'rating' | 'file_size';
 export type SortOrder = 'desc' | 'asc';
 export type WatchedStatus = 'all' | 'watched' | 'unwatched';
 export type TagFilterMode = 'and' | 'or';

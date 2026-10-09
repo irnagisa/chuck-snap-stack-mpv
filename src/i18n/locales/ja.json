@@ -47,6 +47,7 @@
     "sortByCreatedAt": "追加日",
     "sortByDuration": "長さ",
     "sortByRating": "評価",
+    "sortByFileSize": "ファイルサイズ",
     "sortDescTitle": "降順 (クリックで昇順)",
     "sortAscTitle": "昇順 (クリックで降順)",
     "tagFilterAnd": "AND: 選択タグをすべて含む動画 (クリックで OR に切替)",

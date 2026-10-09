@@ -22,7 +22,7 @@ function makeTag(id: number, name: string): Tag {
 const defaultLibraryState = {
   filterTagIds: [] as number[],
   filterTagMode: 'and' as 'and' | 'or',
-  filterSortBy: 'created_at' as 'created_at' | 'duration' | 'rating',
+  filterSortBy: 'created_at' as 'created_at' | 'duration' | 'rating' | 'file_size',
   filterSortOrder: 'desc' as 'asc' | 'desc',
   filterMinRating: 0,
   filterRatingMode: 'gte' as 'gte' | 'lte' | 'eq',

@@ -124,7 +124,8 @@ CREATE TABLE videos (
   ai_new_suggestions  TEXT,                  -- JSON (未マッチの新規提案)
   ai_analyzed_at      TEXT,
   phash               TEXT,                  -- 知覚的ハッシュ (重複検出用)
-  last_viewed_at      TEXT                   -- 最終視聴日時
+  last_viewed_at      TEXT,                  -- 最終視聴日時
+  file_size           INTEGER                -- ファイルサイズ (bytes, ソート用キャッシュ)
 );
 
 -- カテゴリ (階層構造対応)

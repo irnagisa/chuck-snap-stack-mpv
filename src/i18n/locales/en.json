@@ -47,6 +47,7 @@
     "sortByCreatedAt": "Date added",
     "sortByDuration": "Duration",
     "sortByRating": "Rating",
+    "sortByFileSize": "File size",
     "sortDescTitle": "Descending (click for ascending)",
     "sortAscTitle": "Ascending (click for descending)",
     "tagFilterAnd": "AND: videos with all selected tags (click for OR)",

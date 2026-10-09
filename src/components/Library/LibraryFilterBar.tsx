@@ -187,6 +187,7 @@ export function LibraryFilterBar() {
             <option value="created_at">{t("filters.sortByCreatedAt")}</option>
             <option value="duration">{t("filters.sortByDuration")}</option>
             <option value="rating">{t("filters.sortByRating")}</option>
+            <option value="file_size">{t("filters.sortByFileSize")}</option>
           </Select>
           <button
             type="button"

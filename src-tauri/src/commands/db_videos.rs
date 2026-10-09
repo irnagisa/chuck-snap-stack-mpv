@@ -298,11 +298,81 @@ pub(crate) fn media_type_for_path(path: &str) -> &'static str {
 
 // ── fetch videos ──────────────────────────────────────────────────────────────
 
+/// ソートキー文字列を ORDER BY 句の式に変換する (ホワイトリスト方式)。
+fn sort_column(sort_by: &str) -> &'static str {
+    match sort_by {
+        "duration" => "COALESCE(v.duration, -1)",
+        "rating" => "v.rating",
+        "file_size" => "COALESCE(v.file_size, -1)",
+        _ => "v.created_at",
+    }
+}
+
+/// file_size が未取得 (NULL) のレコードについてファイルサイズを取得して保存する。
+/// ファイルサイズ順ソート時のみ呼ばれる。stat は DB ロック外で行う。
+/// 取得に失敗したファイル (存在しない等) は NULL のまま残し、次回再試行する。
+fn fill_missing_file_sizes(state: &DbState) -> Result<(), String> {
+    let targets: Vec<(i64, String)> = {
+        let conn = state.conn_read()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path FROM videos
+                 WHERE file_size IS NULL
+                   AND COALESCE(media_type, 'video') != 'link'
+                   AND COALESCE(status, '') != 'missing'",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?
+    };
+    if targets.is_empty() {
+        return Ok(());
+    }
+
+    let sizes: Vec<(i64, i64)> = targets
+        .into_iter()
+        .filter_map(|(id, path)| {
+            std::fs::metadata(&path)
+                .ok()
+                .filter(|m| m.is_file())
+                .map(|m| (id, m.len() as i64))
+        })
+        .collect();
+    if sizes.is_empty() {
+        return Ok(());
+    }
+
+    let conn = state.conn()?;
+    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+    let result: Result<(), String> = (|| {
+        let mut stmt = conn
+            .prepare("UPDATE videos SET file_size = ?1 WHERE id = ?2 AND file_size IS NULL")
+            .map_err(|e| e.to_string())?;
+        for (id, size) in &sizes {
+            stmt.execute(rusqlite::params![size, id]).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })();
+    if result.is_ok() {
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    } else if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
+        log::error!("[fill_missing_file_sizes] ROLLBACK 失敗: {rb_err}");
+    }
+    result
+}
+
 #[tauri::command]
 pub async fn db_fetch_videos(
     state: State<'_, DbState>,
     filter: VideoFilter,
 ) -> Result<FetchVideosResult, String> {
+    if filter.filter_sort_by == "file_size" {
+        if let Err(e) = fill_missing_file_sizes(&state) {
+            log::warn!("[fill_missing_file_sizes] {e}");
+        }
+    }
     let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
 
@@ -317,11 +387,7 @@ pub async fn db_fetch_videos(
     let page = filter.current_page.min(max_page);
     let offset = (page - 1) * filter.page_size;
 
-    let sort_col = match filter.filter_sort_by.as_str() {
-        "duration" => "COALESCE(v.duration, -1)",
-        "rating" => "v.rating",
-        _ => "v.created_at",
-    };
+    let sort_col = sort_column(&filter.filter_sort_by);
     let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
 
     let sql = format!(
@@ -381,14 +447,15 @@ pub async fn db_fetch_all_for_shuffle(
     state: State<'_, DbState>,
     filter: VideoFilter,
 ) -> Result<Vec<Video>, String> {
+    if filter.filter_sort_by == "file_size" {
+        if let Err(e) = fill_missing_file_sizes(&state) {
+            log::warn!("[fill_missing_file_sizes] {e}");
+        }
+    }
     let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
 
-    let sort_col = match filter.filter_sort_by.as_str() {
-        "duration" => "COALESCE(v.duration, -1)",
-        "rating" => "v.rating",
-        _ => "v.created_at",
-    };
+    let sort_col = sort_column(&filter.filter_sort_by);
     let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
 
     let sql = format!(
@@ -841,7 +908,7 @@ pub async fn db_update_video_path(
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
     let result: Result<(), String> = (|| {
         remove_conflicting_videos(&conn, &new_path, video_id)?;
-        conn.execute("UPDATE videos SET path = ?1 WHERE id = ?2", rusqlite::params![new_path, video_id])
+        conn.execute("UPDATE videos SET path = ?1, file_size = NULL WHERE id = ?2", rusqlite::params![new_path, video_id])
             .map_err(|e| e.to_string())?;
         Ok(())
     })();
@@ -869,7 +936,7 @@ pub async fn db_rename_video_file(
         remove_conflicting_videos(&conn, &new_path, video_id)?;
         // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
         conn.execute(
-            "UPDATE videos SET path = ?1, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
+            "UPDATE videos SET path = ?1, file_size = NULL, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
             rusqlite::params![new_path, video_id],
         )
         .map_err(|e| e.to_string())?;
@@ -900,7 +967,7 @@ pub async fn db_move_video_file_db(
     // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
     let rows_affected = conn
         .execute(
-            "UPDATE videos SET path = ?1, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
+            "UPDATE videos SET path = ?1, file_size = NULL, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
             rusqlite::params![new_path, video_id],
         )
         .map_err(|e| e.to_string())?;
@@ -1185,14 +1252,15 @@ pub async fn db_find_video_page(
     video_id: i64,
     filter: VideoFilter,
 ) -> Result<Option<i64>, String> {
+    if filter.filter_sort_by == "file_size" {
+        if let Err(e) = fill_missing_file_sizes(&state) {
+            log::warn!("[fill_missing_file_sizes] {e}");
+        }
+    }
     let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
 
-    let sort_col = match filter.filter_sort_by.as_str() {
-        "duration" => "COALESCE(v.duration, -1)",
-        "rating" => "v.rating",
-        _ => "v.created_at",
-    };
+    let sort_col = sort_column(&filter.filter_sort_by);
     let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
 
     // ウィンドウ関数 ROW_NUMBER() でフィルタ済み結果内の行番号を取得
@@ -1521,5 +1589,51 @@ mod tests {
         conn.execute(sql, ["/media/videos"]).unwrap();
         assert_eq!(count_rows(&conn, "watch_dirs"), 1);
     }
-}
 
+    // ── fill_missing_file_sizes / sort_column ─────────────────────────────────
+
+    #[test]
+    fn sort_column_maps_file_size_and_falls_back_to_created_at() {
+        assert_eq!(super::sort_column("file_size"), "COALESCE(v.file_size, -1)");
+        assert_eq!(super::sort_column("unknown; DROP TABLE videos"), "v.created_at");
+    }
+
+    #[test]
+    fn fill_missing_file_sizes_stores_size_and_skips_missing_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "css-filesize-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let media = dir.join("a.mp4");
+        std::fs::write(&media, vec![0u8; 1234]).unwrap();
+
+        let writer = Connection::open(&db_path).unwrap();
+        init_db(&writer).unwrap();
+        let existing = insert_video(&writer, media.to_str().unwrap());
+        let missing = insert_video(&writer, dir.join("nope.mp4").to_str().unwrap());
+        let reader = Connection::open(&db_path).unwrap();
+        let state = crate::db::DbState {
+            writer: std::sync::Mutex::new(writer),
+            reader: std::sync::Mutex::new(reader),
+        };
+
+        super::fill_missing_file_sizes(&state).unwrap();
+
+        let conn = state.conn().unwrap();
+        let size_of = |id: i64| -> Option<i64> {
+            conn.query_row("SELECT file_size FROM videos WHERE id = ?1", [id], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(size_of(existing), Some(1234));
+        assert_eq!(size_of(missing), None);
+        drop(conn);
+        drop(state);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

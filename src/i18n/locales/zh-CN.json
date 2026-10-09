@@ -47,6 +47,7 @@
     "sortByCreatedAt": "添加日期",
     "sortByDuration": "时长",
     "sortByRating": "评分",
+    "sortByFileSize": "文件大小",
     "sortDescTitle": "降序（点击切换升序）",
     "sortAscTitle": "升序（点击切换降序）",
     "tagFilterAnd": "AND: 包含所有选中标签的视频（点击切换为 OR）",
