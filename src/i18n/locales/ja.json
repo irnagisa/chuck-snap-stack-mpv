@@ -36,7 +36,12 @@
     "watchDirRemoved": "フォルダが見つかりません",
     "watchDirRemovedAction": "Missing にする",
     "watchDirRemovedDismiss": "無視",
-    "watchDirRenamed": "フォルダが移動されました: {{old}} → {{new}}"
+    "watchDirRenamed": "フォルダが移動されました: {{old}} → {{new}}",
+    "transcodeQueued": "待機中 {{count}} 件",
+    "transcodeCancelAll": "すべてキャンセル",
+    "transcodeRemoveFromQueue": "キューから外す",
+    "transcodeBatchSuccess": "変換完了: {{total}} 件",
+    "transcodeBatchPartial": "変換終了: {{total}} 件中 {{failed}} 件失敗"
   },
   "sidebar": {
     "categoryTab": "カテゴリ",
@@ -476,7 +481,6 @@
   },
   "transcode": {
     "title": "AV1 変換",
-    "busy": "別の動画が変換中です。完了後に再度お試しください。",
     "encoder": "エンコーダー:",
     "encoderValue": "SVT-AV1 + Opus 128k",
     "inputSize": "元ファイルサイズ:",
@@ -508,7 +512,12 @@
     "trashOriginalDone": "元ファイルをゴミ箱に移動しました",
     "trashOriginalQuarantined": "ゴミ箱を使用できなかったため、元ファイルを退避しました（不要なら手動で削除してください）: {{location}}",
     "trashOriginalFailed": "元ファイルは削除せずに残しました: {{error}}",
-    "trashOriginalSkipped": "変換後ファイルをライブラリに登録できなかったため、元ファイルは削除せずに残しました"
+    "trashOriginalSkipped": "変換後ファイルをライブラリに登録できなかったため、元ファイルは削除せずに残しました",
+    "addToQueue": "キューに追加",
+    "queueNote": "別の動画を変換中です。キューに追加すると、前の変換が終わった後に順番に処理します（{{count}} 番目に待機）。キューはアプリを終了すると消えます。",
+    "queued": "変換キューに追加しました（{{count}} 番目に待機）",
+    "alreadyQueued": "この動画は変換中、またはキューで待機中です。",
+    "sourceMissing": "元ファイルが見つかりません（待機中に移動・削除された可能性があります）"
   },
   "export": {
     "title": "エクスポート / インポート",
