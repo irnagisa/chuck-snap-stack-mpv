@@ -48,6 +48,19 @@ pub fn run() {
             let reader = rusqlite::Connection::open(&db_path)?;
             reader.execute_batch("PRAGMA journal_mode=WAL; PRAGMA query_only=ON;")?;
             app.manage(DbState { writer: Mutex::new(writer), reader: Mutex::new(reader) });
+            // 前回の強制終了・クラッシュで残った AV1 変換の一時ファイルを掃除する
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let removed = commands::transcode::cleanup_stale_tmp_files(
+                        &handle.state::<DbState>(),
+                        &handle.state::<TranscodeState>(),
+                    );
+                    if removed > 0 {
+                        log::info!("[transcode] 残っていた一時ファイルを {removed} 件削除しました");
+                    }
+                });
+            }
             // ONNX Runtime 初期化 (OS ごとの dylib ロード)
             // バックグラウンドスレッドで実行: CoreML dlopen が UI イベントループを必要とするため
             // setup hook 内でブロックするとウィンドウが表示されない
@@ -240,6 +253,7 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 let state = app.state::<commands::mpv::SharedMpvState>();
                 commands::mpv::kill_on_exit(&state);
+                commands::transcode::kill_on_exit(&app.state::<TranscodeState>());
             }
         });
 }
