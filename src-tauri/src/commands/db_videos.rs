@@ -52,6 +52,9 @@ pub struct VideoFilter {
     pub filter_watched_status: String,
     pub filter_watch_dir: Option<String>,
     pub filter_media_type: String,
+    /// "all" | "only" | "exclude" — AV1 変換済み (`*.av1.mkv`) の絞り込み
+    #[serde(default = "default_av1_filter")]
+    pub filter_av1: String,
     pub filter_sort_by: String,
     pub filter_sort_order: String,
     pub current_page: i64,
@@ -61,6 +64,14 @@ pub struct VideoFilter {
 fn default_rating_mode() -> String {
     "gte".to_string()
 }
+
+fn default_av1_filter() -> String {
+    "all".to_string()
+}
+
+/// transcode_to_av1 の出力名 (`{stem}.av1.mkv` / 重複回避時 `{stem}.av1_{n}.mkv`) に一致する条件
+const AV1_PATH_CONDITION: &str =
+    "(LOWER(v.path) GLOB '*.av1.mkv' OR LOWER(v.path) GLOB '*.av1_[0-9]*.mkv')";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -272,6 +283,12 @@ fn build_where_clause(
     if filter.filter_media_type != "all" {
         conditions.push("v.media_type = ?".to_string());
         params.push(Value::Text(filter.filter_media_type.clone()));
+    }
+
+    match filter.filter_av1.as_str() {
+        "only" => conditions.push(AV1_PATH_CONDITION.to_string()),
+        "exclude" => conditions.push(format!("NOT {AV1_PATH_CONDITION}")),
+        _ => {}
     }
 
     let where_clause = if conditions.is_empty() {
@@ -1635,5 +1652,52 @@ mod tests {
         drop(conn);
         drop(state);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── filter_av1 ───────────────────────────────────────────────────────────
+
+    fn filtered_paths(conn: &Connection, av1: &str) -> Vec<String> {
+        let filter: super::VideoFilter = serde_json::from_value(serde_json::json!({
+            "filterSearch": "", "filterCategoryId": null, "filterTagIds": [],
+            "filterTagMode": "and", "filterMinRating": 0, "filterHasAudio": null,
+            "filterMinDuration": 0.0, "filterMaxDuration": null, "filterWatchedStatus": "all",
+            "filterWatchDir": null, "filterMediaType": "all", "filterAv1": av1,
+            "filterSortBy": "created_at", "filterSortOrder": "asc",
+            "currentPage": 1, "pageSize": 100,
+        }))
+        .unwrap();
+        let (where_clause, params) = super::build_where_clause(conn, &filter);
+        let mut stmt = conn
+            .prepare(&format!("SELECT v.path FROM videos v {where_clause} ORDER BY v.id"))
+            .unwrap();
+        stmt.query_map(rusqlite::params_from_iter(params), |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn filter_av1_matches_transcode_output_names() {
+        let conn = setup();
+        for p in ["/v/a.mp4", "/v/a.av1.mkv", "/v/b.av1_2.mkv", "/v/C.AV1.MKV", "/v/av1.mkv", "/v/x.av1.mkv.part"] {
+            insert_video(&conn, p);
+        }
+        assert_eq!(filtered_paths(&conn, "only"), ["/v/a.av1.mkv", "/v/b.av1_2.mkv", "/v/C.AV1.MKV"]);
+        assert_eq!(filtered_paths(&conn, "exclude"), ["/v/a.mp4", "/v/av1.mkv", "/v/x.av1.mkv.part"]);
+        assert_eq!(filtered_paths(&conn, "all").len(), 6);
+    }
+
+    #[test]
+    fn filter_av1_defaults_to_all_when_missing() {
+        let filter: super::VideoFilter = serde_json::from_value(serde_json::json!({
+            "filterSearch": "", "filterCategoryId": null, "filterTagIds": [],
+            "filterTagMode": "and", "filterMinRating": 0, "filterHasAudio": null,
+            "filterMinDuration": 0.0, "filterMaxDuration": null, "filterWatchedStatus": "all",
+            "filterWatchDir": null, "filterMediaType": "all",
+            "filterSortBy": "created_at", "filterSortOrder": "asc",
+            "currentPage": 1, "pageSize": 100,
+        }))
+        .unwrap();
+        assert_eq!(filter.filter_av1, "all");
     }
 }

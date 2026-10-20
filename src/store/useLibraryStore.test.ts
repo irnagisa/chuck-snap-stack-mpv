@@ -312,6 +312,15 @@ describe('setMediaType', () => {
   });
 });
 
+describe('setAv1Filter', () => {
+  it('updates filterAv1 and resets page', async () => {
+    useLibraryStore.setState({ currentPage: 3 });
+    await useLibraryStore.getState().setAv1Filter('only');
+    expect(useLibraryStore.getState().filterAv1).toBe('only');
+    expect(useLibraryStore.getState().currentPage).toBe(1);
+  });
+});
+
 // ── CRUD 操作 ──────────────────────────────────────────────────────────────────
 
 describe('updateProgress', () => {

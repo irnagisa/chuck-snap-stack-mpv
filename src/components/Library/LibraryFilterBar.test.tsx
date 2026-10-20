@@ -29,6 +29,7 @@ const defaultLibraryState = {
   filterHasAudio: null as null | number,
   filterWatchedStatus: 'all' as 'all' | 'watched' | 'unwatched',
   filterMediaType: 'all' as 'all' | 'video' | 'audio' | 'image',
+  filterAv1: 'all' as 'all' | 'only' | 'exclude',
   filterMinDuration: 0,
   filterMaxDuration: 0,
   totalCount: 0,
@@ -41,6 +42,7 @@ const defaultLibraryState = {
   setHasAudio: vi.fn(),
   setWatchedStatus: vi.fn(),
   setMediaType: vi.fn(),
+  setAv1Filter: vi.fn(),
   setMinDuration: vi.fn(),
   setMaxDuration: vi.fn(),
 };
@@ -175,6 +177,17 @@ describe('LibraryFilterBar — メディアタイプフィルター', () => {
     const select = screen.getByTitle('メディアタイプフィルタ');
     fireEvent.change(select, { target: { value: 'audio' } });
     expect(setMediaType).toHaveBeenCalledWith('audio');
+  });
+});
+
+describe('LibraryFilterBar — AV1 フィルター', () => {
+  it('calls setAv1Filter when selection changes', () => {
+    const setAv1Filter = vi.fn();
+    setupMocks({ filterAv1: 'all', setAv1Filter });
+    render(<LibraryFilterBar />);
+    const select = screen.getByTitle('AV1 変換済みフィルタ');
+    fireEvent.change(select, { target: { value: 'exclude' } });
+    expect(setAv1Filter).toHaveBeenCalledWith('exclude');
   });
 });
 

@@ -37,6 +37,7 @@ export type SortOrder = 'desc' | 'asc';
 export type WatchedStatus = 'all' | 'watched' | 'unwatched';
 export type TagFilterMode = 'and' | 'or';
 export type MediaTypeFilter = 'all' | 'video' | 'audio' | 'image';
+export type Av1Filter = 'all' | 'only' | 'exclude';
 export type RatingMode = 'gte' | 'lte' | 'eq';
 
 interface ScanResult {
@@ -64,6 +65,7 @@ interface LibraryState {
   filterWatchedStatus: WatchedStatus;
   filterWatchDir: string | null;
   filterMediaType: MediaTypeFilter;
+  filterAv1: Av1Filter;
   filterSortBy: SortBy;
   filterSortOrder: SortOrder;
   watchDirs: string[];
@@ -94,6 +96,7 @@ interface LibraryActions {
   setWatchedStatus: (status: WatchedStatus) => Promise<void>;
   setWatchDirFilter: (dir: string | null) => Promise<void>;
   setMediaType: (mediaType: MediaTypeFilter) => Promise<void>;
+  setAv1Filter: (av1: Av1Filter) => Promise<void>;
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
@@ -171,6 +174,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterWatchedStatus: 'all',
   filterWatchDir: null,
   filterMediaType: 'all',
+  filterAv1: 'all',
   filterSortBy: 'created_at',
   filterSortOrder: 'desc',
   watchDirs: [],
@@ -218,7 +222,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       currentPage, pageSize, filterSortBy, filterSortOrder,
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-      filterWatchedStatus, filterWatchDir, filterMediaType,
+      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1,
     } = get();
 
     const result = await invoke<{
@@ -239,6 +243,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterWatchedStatus,
         filterWatchDir,
         filterMediaType,
+        filterAv1,
         filterSortBy,
         filterSortOrder,
         currentPage,
@@ -291,6 +296,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterWatchedStatus: get().filterWatchedStatus,
         filterWatchDir: get().filterWatchDir,
         filterMediaType: get().filterMediaType,
+        filterAv1: get().filterAv1,
         filterSortBy,
         filterSortOrder,
         currentPage: 1,
@@ -370,6 +376,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setMediaType: async (mediaType: MediaTypeFilter) => {
     set({ filterMediaType: mediaType, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setAv1Filter: async (av1: Av1Filter) => {
+    set({ filterAv1: av1, currentPage: 1 });
     await get().fetchVideos();
   },
 

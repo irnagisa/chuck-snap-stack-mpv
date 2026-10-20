@@ -78,6 +78,9 @@
     "mediaVideo": "動画",
     "mediaAudio": "音声",
     "mediaImage": "画像",
+    "av1All": "AV1: すべて",
+    "av1Only": "AV1 変換済みのみ",
+    "av1Exclude": "AV1 変換済みを除外",
     "minDurationPlaceholder": "最短秒数",
     "maxDurationPlaceholder": "最長秒数",
     "durationSuffix": "秒"

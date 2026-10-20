@@ -78,6 +78,9 @@
     "mediaVideo": "Video",
     "mediaAudio": "Audio",
     "mediaImage": "Image",
+    "av1All": "AV1: all",
+    "av1Only": "AV1 only",
+    "av1Exclude": "Exclude AV1",
     "minDurationPlaceholder": "min secs",
     "maxDurationPlaceholder": "max secs",
     "durationSuffix": "sec"

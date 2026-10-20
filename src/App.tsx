@@ -44,7 +44,7 @@ function App() {
     videos, totalCount, currentPage, pageSize,
     filterSearch, filterCategoryId, filterTagIds, filterTagMode,
     filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-    filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
+    filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterSortBy, filterSortOrder,
     isThumbnailGenerating, isDbReady, dbError,
   } = useLibraryStore(useShallow((s) => ({
     videos: s.videos,
@@ -63,6 +63,7 @@ function App() {
     filterWatchedStatus: s.filterWatchedStatus,
     filterWatchDir: s.filterWatchDir,
     filterMediaType: s.filterMediaType,
+    filterAv1: s.filterAv1,
     filterSortBy: s.filterSortBy,
     filterSortOrder: s.filterSortOrder,
     isThumbnailGenerating: s.isThumbnailGenerating,
@@ -187,7 +188,7 @@ function App() {
     const {
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-      filterWatchedStatus, filterWatchDir, filterMediaType, filterSortBy, filterSortOrder,
+      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterSortBy, filterSortOrder,
     } = useLibraryStore.getState();
     invoke<number | null>('db_find_video_page', {
       videoId: targetId,
@@ -195,7 +196,7 @@ function App() {
         filterSearch, filterCategoryId, filterTagIds, filterTagMode,
         filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration,
         filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
-        filterWatchedStatus, filterWatchDir, filterMediaType,
+        filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1,
         filterSortBy, filterSortOrder,
         currentPage: 1, pageSize,
       },
@@ -247,13 +248,13 @@ function App() {
       [
         filterSearch, filterCategoryId, filterTagIds.join(","), filterTagMode,
         filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-        filterWatchedStatus, filterWatchDir, filterMediaType,
+        filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1,
         filterSortBy, filterSortOrder, currentPage,
       ].join("|"),
     [
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-      filterWatchedStatus, filterWatchDir, filterMediaType,
+      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1,
       filterSortBy, filterSortOrder, currentPage,
     ]
   );
