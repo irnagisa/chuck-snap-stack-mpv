@@ -36,7 +36,12 @@
     "watchDirRemoved": "找不到文件夹",
     "watchDirRemovedAction": "标记为缺失",
     "watchDirRemovedDismiss": "忽略",
-    "watchDirRenamed": "文件夹已移动: {{old}} → {{new}}"
+    "watchDirRenamed": "文件夹已移动: {{old}} → {{new}}",
+    "transcodeQueued": "等待中 {{count}} 个",
+    "transcodeCancelAll": "全部取消",
+    "transcodeRemoveFromQueue": "从队列中移除",
+    "transcodeBatchSuccess": "转码完成: {{total}} 个",
+    "transcodeBatchPartial": "转码结束: {{total}} 个中 {{failed}} 个失败"
   },
   "sidebar": {
     "categoryTab": "分类",
@@ -73,6 +78,9 @@
     "mediaVideo": "视频",
     "mediaAudio": "音频",
     "mediaImage": "图片",
+    "av1All": "AV1: 全部",
+    "av1Only": "仅 AV1 已转换",
+    "av1Exclude": "排除 AV1 已转换",
     "minDurationPlaceholder": "最短秒数",
     "maxDurationPlaceholder": "最长秒数",
     "durationSuffix": "秒"
@@ -476,7 +484,6 @@
   },
   "transcode": {
     "title": "AV1 转码",
-    "busy": "另一个视频正在转码中，请等待完成后再试。",
     "encoder": "编码器:",
     "encoderValue": "SVT-AV1 + Opus 128k",
     "inputSize": "源文件大小:",
@@ -508,7 +515,12 @@
     "trashOriginalDone": "已将原文件移至废纸篓",
     "trashOriginalQuarantined": "无法使用废纸篓，已将原文件移至暂存位置（如不再需要请手动删除）：{{location}}",
     "trashOriginalFailed": "已保留原文件：{{error}}",
-    "trashOriginalSkipped": "转换后的文件未能添加到媒体库，已保留原文件"
+    "trashOriginalSkipped": "转换后的文件未能添加到媒体库，已保留原文件",
+    "addToQueue": "加入队列",
+    "queueNote": "另一个视频正在转码中。加入队列后，将在当前转码完成后按顺序处理（第 {{count}} 位）。退出应用后队列将被清空。",
+    "queued": "已加入转码队列（第 {{count}} 位）",
+    "alreadyQueued": "该视频正在转码或已在队列中等待。",
+    "sourceMissing": "找不到原文件（可能在等待期间被移动或删除）"
   },
   "export": {
     "title": "导出 / 导入",

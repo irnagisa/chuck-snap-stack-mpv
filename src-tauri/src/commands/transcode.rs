@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -50,6 +50,8 @@ struct CompletedTranscode {
 pub struct TranscodeState {
     cancel_flag: Arc<AtomicBool>,
     current_output: Arc<Mutex<Option<String>>>,
+    /// 実行中の ffmpeg プロセス。アプリ終了時に kill するため共有する
+    current_child: Arc<Mutex<Option<Child>>>,
     last_completed: Mutex<Option<CompletedTranscode>>,
 }
 
@@ -58,6 +60,7 @@ impl TranscodeState {
         Self {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             current_output: Arc::new(Mutex::new(None)),
+            current_child: Arc::new(Mutex::new(None)),
             last_completed: Mutex::new(None),
         }
     }
@@ -129,6 +132,7 @@ pub async fn transcode_video(
 
     let cancel_flag = state.cancel_flag.clone();
     let current_output = state.current_output.clone();
+    let current_child = state.current_child.clone();
 
     let result = tokio::task::spawn_blocking({
         let app = app.clone();
@@ -151,6 +155,10 @@ pub async fn transcode_video(
                             .to_string(),
                     );
                 }
+            }
+
+            if cancel_flag.load(Ordering::SeqCst) {
+                return Err("キャンセルされました".to_string());
             }
 
             // 一時ファイルが既に存在する場合は削除
@@ -198,6 +206,13 @@ pub async fn transcode_video(
                 s
             });
             let reader = BufReader::new(stdout);
+            if let Ok(mut slot) = current_child.lock() {
+                *slot = Some(child);
+            } else {
+                child.kill().ok();
+                child.wait().ok();
+                return Err("ffmpeg プロセスの登録に失敗しました".to_string());
+            }
 
             let start = std::time::Instant::now();
             let mut out_time_us: u64 = 0;
@@ -208,13 +223,25 @@ pub async fn transcode_video(
 
             for line in reader.lines() {
                 if cancel_flag.load(Ordering::SeqCst) {
-                    child.kill().ok();
-                    child.wait().ok();
+                    if let Some(mut child) = take_child(&current_child) {
+                        child.kill().ok();
+                        child.wait().ok();
+                    }
                     let _ = std::fs::remove_file(&tmp_output_str);
                     return Err("キャンセルされました".to_string());
                 }
 
-                let line = line.map_err(|e| e.to_string())?;
+                let line = match line {
+                    Ok(l) => l,
+                    Err(e) => {
+                        if let Some(mut child) = take_child(&current_child) {
+                            child.kill().ok();
+                            child.wait().ok();
+                        }
+                        let _ = std::fs::remove_file(&tmp_output_str);
+                        return Err(e.to_string());
+                    }
+                };
 
                 if let Some(val) = line.strip_prefix("out_time_us=") {
                     out_time_us = val.trim().parse().unwrap_or(0);
@@ -246,6 +273,10 @@ pub async fn transcode_video(
                 }
             }
 
+            // child が取り出し済みならアプリ終了処理 (kill_on_exit) で kill されている
+            let Some(mut child) = take_child(&current_child) else {
+                return Err("アプリ終了により中断されました".to_string());
+            };
             let status = child.wait().map_err(|e| e.to_string())?;
             let stderr_output = match stderr_handle.join() {
                 Ok(s) => s,
@@ -308,6 +339,87 @@ pub async fn transcode_video(
     }
 
     Ok(output_str)
+}
+
+fn take_child(slot: &Mutex<Option<Child>>) -> Option<Child> {
+    slot.lock().ok().and_then(|mut c| c.take())
+}
+
+/// アプリ終了時に実行中の ffmpeg を kill し、変換途中の一時ファイルを削除する。
+pub fn kill_on_exit(state: &TranscodeState) {
+    state.cancel_flag.store(true, Ordering::SeqCst);
+    // child を取り出せなかった場合は ffmpeg 未起動か、正常終了してリネーム処理中なので触らない
+    let Some(mut child) = take_child(&state.current_child) else { return };
+    let _ = child.kill();
+    let _ = child.wait();
+    let tmp = state.current_output.lock().ok().and_then(|p| p.clone());
+    if let Some(tmp) = tmp {
+        if let Err(e) = std::fs::remove_file(&tmp) {
+            log::warn!("[transcode] 終了時の一時ファイル削除に失敗しました ({tmp}): {e}");
+        }
+    }
+}
+
+/// 変換途中の一時ファイル名 (`._<名前>.av1[_N].mkv.tmp`) かどうか
+fn is_transcode_tmp_name(name: &str) -> bool {
+    name.starts_with("._") && name.ends_with(".mkv.tmp") && name.contains(".av1")
+}
+
+/// 他プロセス (別インスタンス) が書き込み中の可能性があるため、直近に更新された一時ファイルは残す
+const STALE_TMP_MIN_AGE: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// 強制終了・クラッシュで残った一時ファイルを、ライブラリ内メディアのあるディレクトリから削除する。
+/// 起動時にバックグラウンドで呼ぶ。戻り値は削除した件数。
+pub fn cleanup_stale_tmp_files(db: &DbState, state: &TranscodeState) -> usize {
+    let dirs: std::collections::HashSet<std::path::PathBuf> = {
+        let Ok(conn) = db.conn_read() else { return 0 };
+        let Ok(mut stmt) = conn.prepare("SELECT path FROM videos") else { return 0 };
+        stmt.query_map([], |r| r.get::<_, String>(0))
+            .map(|rows| {
+                rows.filter_map(|r| r.ok())
+                    .filter_map(|p| Path::new(&p).parent().map(Path::to_path_buf))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut removed = 0;
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            if !entry.file_name().to_str().is_some_and(is_transcode_tmp_name) {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            let is_stale = meta.is_file()
+                && meta
+                    .modified()
+                    .ok()
+                    .and_then(|m| m.elapsed().ok())
+                    .is_some_and(|age| age >= STALE_TMP_MIN_AGE);
+            if !is_stale {
+                continue;
+            }
+            let path = entry.path();
+            let path_str = path.to_string_lossy();
+            // このインスタンスで変換中のファイルは消さない
+            let in_use = state
+                .current_output
+                .lock()
+                .map(|p| p.as_deref() == Some(path_str.as_ref()))
+                .unwrap_or(true);
+            if in_use {
+                continue;
+            }
+            match std::fs::remove_file(&path) {
+                Ok(()) => {
+                    log::info!("[transcode] 残っていた一時ファイルを削除しました: {path_str}");
+                    removed += 1;
+                }
+                Err(e) => log::warn!("[transcode] 一時ファイルの削除に失敗しました ({path_str}): {e}"),
+            }
+        }
+    }
+    removed
 }
 
 #[tauri::command]
@@ -578,6 +690,16 @@ mod tests {
         assert_eq!(p, dir.join(QUARANTINE_DIR_NAME).join("動画.mp4.trashed"));
         // メディア拡張子ではない (スキャン・ウォッチャーの取り込み対象外)
         assert!(crate::commands::utils::validate_media_path(&p.to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn transcode_tmp_name_matches_only_tmp_outputs() {
+        assert!(is_transcode_tmp_name("._動画.av1.mkv.tmp"));
+        assert!(is_transcode_tmp_name("._動画.av1_2.mkv.tmp"));
+        assert!(!is_transcode_tmp_name("動画.av1.mkv.tmp"));
+        assert!(!is_transcode_tmp_name("._動画.av1.mkv"));
+        assert!(!is_transcode_tmp_name("._動画.mkv.tmp"));
+        assert!(!is_transcode_tmp_name("._link_abc.webp.tmp"));
     }
 
     #[test]

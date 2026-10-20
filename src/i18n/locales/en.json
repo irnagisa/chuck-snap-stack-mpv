@@ -36,7 +36,12 @@
     "watchDirRemoved": "Folder not found",
     "watchDirRemovedAction": "Mark as Missing",
     "watchDirRemovedDismiss": "Dismiss",
-    "watchDirRenamed": "Folder moved: {{old}} → {{new}}"
+    "watchDirRenamed": "Folder moved: {{old}} → {{new}}",
+    "transcodeQueued": "{{count}} queued",
+    "transcodeCancelAll": "Cancel all",
+    "transcodeRemoveFromQueue": "Remove from queue",
+    "transcodeBatchSuccess": "Transcode complete: {{total}} files",
+    "transcodeBatchPartial": "Transcode finished: {{failed}} of {{total}} failed"
   },
   "sidebar": {
     "categoryTab": "Category",
@@ -73,6 +78,9 @@
     "mediaVideo": "Video",
     "mediaAudio": "Audio",
     "mediaImage": "Image",
+    "av1All": "AV1: all",
+    "av1Only": "AV1 only",
+    "av1Exclude": "Exclude AV1",
     "minDurationPlaceholder": "min secs",
     "maxDurationPlaceholder": "max secs",
     "durationSuffix": "sec"
@@ -476,7 +484,6 @@
   },
   "transcode": {
     "title": "AV1 Transcode",
-    "busy": "Another video is being transcoded. Please try again after it finishes.",
     "encoder": "Encoder:",
     "encoderValue": "SVT-AV1 + Opus 128k",
     "inputSize": "Source size:",
@@ -508,7 +515,12 @@
     "trashOriginalDone": "Moved the original file to Trash",
     "trashOriginalQuarantined": "Trash was unavailable, so the original file was moved aside (delete it manually if no longer needed): {{location}}",
     "trashOriginalFailed": "Kept the original file: {{error}}",
-    "trashOriginalSkipped": "Kept the original file because the converted file could not be added to the library"
+    "trashOriginalSkipped": "Kept the original file because the converted file could not be added to the library",
+    "addToQueue": "Add to queue",
+    "queueNote": "Another video is being transcoded. Queued videos are processed in order after the current one finishes (position {{count}}). The queue is cleared when the app quits.",
+    "queued": "Added to the transcode queue (position {{count}})",
+    "alreadyQueued": "This video is already being transcoded or waiting in the queue.",
+    "sourceMissing": "Source file not found (it may have been moved or deleted while queued)"
   },
   "export": {
     "title": "Export / Import",

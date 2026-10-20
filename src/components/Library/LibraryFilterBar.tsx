@@ -10,6 +10,7 @@ import { useModalStore } from "../../store/useModalStore";
 import type {
   WatchedStatus,
   MediaTypeFilter,
+  Av1Filter,
   SortBy,
   RatingMode,
 } from "../../store/useLibraryStore";
@@ -19,10 +20,10 @@ export function LibraryFilterBar() {
 
   const {
     filterTagIds, filterTagMode, filterSortBy, filterSortOrder,
-    filterMinRating, filterRatingMode, filterHasAudio, filterWatchedStatus, filterMediaType,
+    filterMinRating, filterRatingMode, filterHasAudio, filterWatchedStatus, filterMediaType, filterAv1,
     filterMinDuration, filterMaxDuration, totalCount,
     toggleTagFilter, clearTagFilters, setTagMode, setSort,
-    setMinRating, setRatingMode, setHasAudio, setWatchedStatus, setMediaType,
+    setMinRating, setRatingMode, setHasAudio, setWatchedStatus, setMediaType, setAv1Filter,
     setMinDuration, setMaxDuration,
   } = useLibraryStore(useShallow((s) => ({
     filterTagIds: s.filterTagIds,
@@ -34,6 +35,7 @@ export function LibraryFilterBar() {
     filterHasAudio: s.filterHasAudio,
     filterWatchedStatus: s.filterWatchedStatus,
     filterMediaType: s.filterMediaType,
+    filterAv1: s.filterAv1,
     filterMinDuration: s.filterMinDuration,
     filterMaxDuration: s.filterMaxDuration,
     totalCount: s.totalCount,
@@ -46,6 +48,7 @@ export function LibraryFilterBar() {
     setHasAudio: s.setHasAudio,
     setWatchedStatus: s.setWatchedStatus,
     setMediaType: s.setMediaType,
+    setAv1Filter: s.setAv1Filter,
     setMinDuration: s.setMinDuration,
     setMaxDuration: s.setMaxDuration,
   })));
@@ -119,6 +122,12 @@ export function LibraryFilterBar() {
             <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
               {filterMediaType === 'video' ? t('filters.mediaVideo') : filterMediaType === 'audio' ? t('filters.mediaAudio') : t('filters.mediaImage')}
               <button type="button" onClick={() => setMediaType('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
+            </span>
+          )}
+          {filterAv1 !== 'all' && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              {filterAv1 === 'only' ? t('filters.av1Only') : t('filters.av1Exclude')}
+              <button type="button" onClick={() => setAv1Filter('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
             </span>
           )}
           {filterMinDuration > 0 && (
@@ -291,6 +300,17 @@ export function LibraryFilterBar() {
           <option value="video">{t("filters.mediaVideo")}</option>
           <option value="audio">{t("filters.mediaAudio")}</option>
           <option value="image">{t("filters.mediaImage")}</option>
+        </Select>
+
+        <Select
+          variant="sm"
+          value={filterAv1}
+          onChange={(e) => setAv1Filter(e.target.value as Av1Filter)}
+          title="AV1 変換済みフィルタ"
+        >
+          <option value="all">{t("filters.av1All")}</option>
+          <option value="only">{t("filters.av1Only")}</option>
+          <option value="exclude">{t("filters.av1Exclude")}</option>
         </Select>
 
         <div className="flex items-center gap-1">

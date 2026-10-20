@@ -43,7 +43,12 @@ export function TranscodeModal({ video, onClose }: Props) {
   const { t } = useTranslation();
   const { addVideoFromPath, updateVideo, fetchVideos, removeVideo } = useLibraryStore();
   const { addTagToVideo, setVideoCategory, videoTags } = useTagStore();
-  const { isRunning, start } = useTranscodeStore();
+  const enqueue = useTranscodeStore((s) => s.enqueue);
+  const isBusy = useTranscodeStore((s) => s.current != null);
+  const pendingCount = useTranscodeStore((s) => s.queue.length);
+  const isQueued = useTranscodeStore((s) =>
+    s.current?.videoPath === video.path || s.queue.some((j) => j.videoPath === video.path),
+  );
 
   const [inputSizeBytes, setInputSizeBytes] = useState<number | null>(null);
   const [crf, setCrf] = useState<number>(32);
@@ -85,11 +90,10 @@ export function TranscodeModal({ video, onClose }: Props) {
     const originalPath = video.path;
     const shouldTrashOriginal = trashOriginal;
 
-    start({
+    const added = enqueue({
       videoPath: video.path,
       videoName: displayName,
       durationSecs: video.duration ?? 0,
-      inputSizeBytes,
       crf,
       preset,
       onSuccess: async (outputPath) => {
@@ -138,6 +142,11 @@ export function TranscodeModal({ video, onClose }: Props) {
         }
       },
     });
+    if (!added) {
+      toast.info(t('transcode.alreadyQueued'));
+      return;
+    }
+    if (isBusy) toast.success(t('transcode.queued', { count: pendingCount + 1 }));
     onClose();
   };
 
@@ -166,9 +175,9 @@ export function TranscodeModal({ video, onClose }: Props) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
-          {isRunning ? (
+          {isQueued ? (
             <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-4 py-3">
-              {t('transcode.busy')}
+              {t('transcode.alreadyQueued')}
             </div>
           ) : (
             <>
@@ -278,6 +287,12 @@ export function TranscodeModal({ video, onClose }: Props) {
               <p className="text-xs text-yellow-600 dark:text-yellow-400">
                 {t('transcode.timeEstimate')}
               </p>
+
+              {isBusy && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg px-3 py-2">
+                  {t('transcode.queueNote', { count: pendingCount + 1 })}
+                </p>
+              )}
             </>
           )}
 
@@ -289,13 +304,13 @@ export function TranscodeModal({ video, onClose }: Props) {
             >
               {t('transcode.close')}
             </button>
-            {!isRunning && (
+            {!isQueued && (
               <button
                 type="button"
                 className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded font-medium"
                 onClick={handleStart}
               >
-                {t('transcode.start')}
+                {isBusy ? t('transcode.addToQueue') : t('transcode.start')}
               </button>
             )}
           </div>
