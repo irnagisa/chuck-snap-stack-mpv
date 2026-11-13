@@ -82,9 +82,10 @@ export function TranscodeModal({ video, onClose }: Props) {
 
   const handleStart = async () => {
     const stem = previewOutput.split('/').pop()?.replace(/\.av1\.mkv$/, '') ?? previewOutput;
-    // onSuccess 実行時点での category_id・評価・タグを確定しておく
+    // onSuccess 実行時点での category_id・評価・タグ・追加日を確定しておく
     const originalCategoryId = video.category_id;
     const originalRating = video.rating;
+    const originalCreatedAt = video.created_at;
     const originalTags = [...(videoTags[video.id] ?? [])];
     const originalId = video.id;
     const originalPath = video.path;
@@ -106,17 +107,16 @@ export function TranscodeModal({ video, onClose }: Props) {
         if (originalCategoryId != null) {
           await setVideoCategory(newId, originalCategoryId);
         }
-        // 評価をコピー
-        if (originalRating > 0) {
-          await updateVideo(newId, { rating: originalRating });
-        }
+        // 評価・追加日をコピー
+        await updateVideo(newId, {
+          ...(originalRating > 0 ? { rating: originalRating } : {}),
+          ...(originalCreatedAt ? { created_at: originalCreatedAt } : {}),
+        });
         // タグをコピー
         for (const tag of originalTags) {
           await addTagToVideo(newId, tag.id);
         }
-        if (originalCategoryId != null || originalRating > 0 || originalTags.length > 0) {
-          await fetchVideos();
-        }
+        await fetchVideos();
         // 元ファイルをゴミ箱へ移動 (メタデータのコピー完了後のみ)。
         // 変換結果の検証はバックエンドで行い、失敗時は元ファイルを残す。
         if (shouldTrashOriginal) {

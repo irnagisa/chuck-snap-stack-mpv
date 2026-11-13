@@ -530,6 +530,7 @@ pub async fn db_update_video(
     path: Option<String>,
     media_type: Option<String>,
     source_url: Option<String>,
+    created_at: Option<String>,
 ) -> Result<(), String> {
     let conn = state.conn()?;
     // Build SET clause dynamically
@@ -556,6 +557,10 @@ pub async fn db_update_video(
     }
     if let Some(v) = source_url {
         set_parts.push("source_url = ?");
+        params.push(rusqlite::types::Value::Text(v));
+    }
+    if let Some(v) = created_at {
+        set_parts.push("created_at = ?");
         params.push(rusqlite::types::Value::Text(v));
     }
 

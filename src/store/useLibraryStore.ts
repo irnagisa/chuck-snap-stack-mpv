@@ -108,7 +108,7 @@ interface LibraryActions {
   pauseThumbnails: () => void;
   resumeThumbnails: () => void;
   updateProgress: (videoId: number, progress: number) => Promise<void>;
-  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url'>>) => Promise<void>;
+  updateVideo: (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url' | 'created_at'>>) => Promise<void>;
   deleteVideo: (videoId: number) => Promise<void>;
   removeVideo: (videoId: number) => Promise<void>;
   removeMultiple: (videoIds: number[]) => Promise<void>;
@@ -532,7 +532,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     }));
   },
 
-  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url'>>) => {
+  updateVideo: async (videoId: number, updates: Partial<Pick<Video, 'title' | 'rating' | 'path' | 'media_type' | 'source_url' | 'created_at'>>) => {
     await invoke('db_update_video', {
       videoId,
       title: updates.title ?? null,
@@ -540,6 +540,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       path: updates.path ?? null,
       mediaType: updates.media_type ?? null,
       sourceUrl: updates.source_url ?? null,
+      createdAt: updates.created_at ?? null,
     });
     set((state) => ({
       videos: state.videos.map((v) => v.id === videoId ? { ...v, ...updates } : v),
