@@ -1,6 +1,6 @@
 [package]
 name = "chuck-snap-stack"
-version = "1.0.1"
+version = "1.0.3"
 description = "Chuck Snap Stack - Media Manager & Viewer"
 authors = ["irnagisa"]
 edition = "2021"
