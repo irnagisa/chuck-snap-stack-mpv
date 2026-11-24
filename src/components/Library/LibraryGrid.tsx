@@ -298,6 +298,8 @@ interface Props {
 
 const ITEM_MIN_WIDTH = 160;
 const GAP = 16; // gap-4
+/** 選択・再生中の輪郭 (box-shadow) がスクロール領域の上端で切れないための余白 */
+const OUTLINE_SPACE = 8;
 
 export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function LibraryGrid({
   videos,
@@ -369,7 +371,10 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
     const el = scrollRef.current;
     if (!el) return;
     const measure = () => {
-      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (gridItemMinWidth + GAP)));
+      // clientWidth には輪郭用の左右 padding (.scroller) が含まれるので差し引く
+      const cs = getComputedStyle(el);
+      const width = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const cols = Math.max(1, Math.floor((width + GAP) / (gridItemMinWidth + GAP)));
       setColumns(cols);
     };
     measure();
@@ -406,6 +411,8 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
     getScrollElement: () => scrollRef.current,
     estimateSize: useCallback(() => 180, []),
     overscan: 3,
+    // 1 行目の輪郭が上端で切れないための余白
+    paddingStart: OUTLINE_SPACE,
   });
 
   useImperativeHandle(ref, () => ({
@@ -446,7 +453,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
 
   return (
     <>
-      <div ref={scrollRef} className="h-full overflow-y-auto select-none">
+      <div ref={scrollRef} className={styles.scroller}>
         {videos.length === 0 ? (
           <p className="text-gray-400 mt-4 text-sm dark:text-gray-500">
             動画が見つかりません。ディレクトリをスキャンしてください。

@@ -4,6 +4,21 @@
  * 状態 (選択中・再生中・詳細表示中・ファイルなし) は data-* 属性で切り替える。
  */
 @layer ui {
+  /*
+   * グリッド / リストのスクロール領域。
+   * overflow で選択・再生中の輪郭 (box-shadow) が左右で切れないよう内側に余白を取り、
+   * 同じ量の負マージンで打ち消して見た目の位置は変えない。
+   * 上の余白は仮想スクロールの paddingStart で取る (CSS の padding-top だと位置計算がずれる)。
+   */
+  .scroller {
+    --bleed: var(--space-2);
+    height: 100%;
+    margin-inline: calc(-1 * var(--bleed));
+    padding-inline: var(--bleed);
+    overflow-y: auto;
+    user-select: none;
+  }
+
   .card {
     position: relative;
     display: flex;
@@ -52,9 +67,15 @@
   }
 
   /* ---- thumbnail ---- */
+  /*
+   * サムネイル比率は 4:3。16:9 だとカードの中で横長・平たく見えるため、
+   * 少し背の高い比率にして写真アプリ / Dribbble 風の柔らかい印象にする。
+   * 動画は object-fit: cover で左右を少し切り落とす。
+   */
   .thumb {
+    --thumb-aspect: 4 / 3;
     position: relative;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: var(--thumb-aspect);
     border-radius: var(--radius-lg);
     background: var(--color-bg-active);
     overflow: hidden;
@@ -472,7 +493,9 @@
     }
   }
 
+  /* リスト行は行の高さを抑えたいので 16:9 のまま */
   .rowThumb {
+    --thumb-aspect: 16 / 9;
     flex-shrink: 0;
   }
   .rowThumb[data-size="S"] {

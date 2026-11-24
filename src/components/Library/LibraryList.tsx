@@ -340,6 +340,8 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
     getScrollElement: () => scrollRef.current,
     estimateSize: estimateHeight,
     overscan: 5,
+    // 1 行目の輪郭が上端で切れないための余白
+    paddingStart: 4,
   });
 
   useImperativeHandle(ref, () => ({
@@ -378,7 +380,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
 
   return (
     <>
-      <div ref={scrollRef} className="h-full overflow-y-auto select-none">
+      <div ref={scrollRef} className={styles.scroller}>
         {videos.length === 0 ? (
           <p className="text-gray-400 mt-4 text-sm dark:text-gray-500">
             動画が見つかりません。ディレクトリをスキャンしてください。
