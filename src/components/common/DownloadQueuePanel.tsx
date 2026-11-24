@@ -1,4 +1,6 @@
 import { useTranslation } from "react-i18next";
+import { X } from 'lucide-react';
+import { Button } from '../ui';
 import { useDownloadStore, type DownloadJob } from '../../store/useDownloadStore';
 
 function formatBytes(n: number): string {
@@ -35,22 +37,14 @@ function JobCard({ job, onCancel, onDismiss }: {
         </span>
         <span className="flex-1 truncate font-medium" title={label}>{shortLabel}</span>
         {(job.phase === 'done' || job.phase === 'error' || job.phase === 'cancelled') && (
-          <button
-            type="button"
-            className="shrink-0 opacity-70 hover:opacity-100"
-            onClick={() => onDismiss(job.id)}
-          >
-            ✕
-          </button>
+          <Button size="icon-sm" variant="inherit" aria-label="閉じる" onClick={() => onDismiss(job.id)}>
+            <X aria-hidden />
+          </Button>
         )}
         {job.phase === 'downloading' && (
-          <button
-            type="button"
-            className="shrink-0 text-red-300 hover:text-red-100"
-            onClick={onCancel}
-          >
+          <Button size="xs" variant="inherit" className="text-red-300 hover:text-red-100" onClick={onCancel}>
             {t('downloadQueue.cancel')}
-          </button>
+          </Button>
         )}
       </div>
 

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import {
   DndContext,
@@ -19,6 +18,11 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Playlist, Video } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
+import { GripVertical, Play, X } from "lucide-react";
+import { Button, Dialog, useDialogClose } from "../ui";
+import { ThumbImage } from "./MediaThumb";
+import { formatTime } from "../../utils/time";
+import styles from "./LibraryModal.module.css";
 
 interface SortableItemProps {
   video: Video;
@@ -39,68 +43,46 @@ function SortableItem({ video, index, onPlay, onRemove }: SortableItemProps) {
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const title = video.title ?? video.path.split('/').pop();
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 group"
-    >
+    <div ref={setNodeRef} style={style} className={styles.sortRow} data-dragging={isDragging || undefined}>
       {/* ドラッグハンドル */}
       <button
         type="button"
-        className="text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 touch-none"
+        className={styles.dragHandle}
         {...attributes}
         {...listeners}
         title={t('playlist.dragToReorder')}
+        aria-label={t('playlist.dragToReorder')}
       >
-        ⠿
+        <GripVertical aria-hidden />
       </button>
 
-      {/* 番号 */}
-      <span className="text-xs text-gray-400 dark:text-gray-500 w-5 text-right shrink-0">
-        {index + 1}
-      </span>
+      <span className={styles.sortIndex}>{index + 1}</span>
 
-      {/* サムネイル */}
-      <div
-        className="w-16 h-9 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0 cursor-pointer"
-        onClick={() => onPlay(index)}
-      >
-        {video.thumbnail ? (
-          <img
-            src={convertFileSrc(video.thumbnail)}
-            alt={video.title ?? ''}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">▶</div>
-        )}
-      </div>
-
-      {/* タイトル */}
-      <span
-        className="flex-1 text-sm text-gray-800 dark:text-gray-200 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400"
-        onClick={() => onPlay(index)}
-      >
-        {video.title ?? video.path.split('/').pop()}
-      </span>
-
-      {/* 時間 */}
-      {video.duration != null && (
-        <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-          {Math.floor(video.duration / 60)}:{String(Math.floor(video.duration % 60)).padStart(2, '0')}
+      {/* サムネイルとタイトルはクリックでここから再生 */}
+      <button type="button" className={styles.sortMain} onClick={() => onPlay(index)} title={title}>
+        <span className={`${styles.miniThumb} ${styles.thumbBox}`}>
+          {video.thumbnail && <ThumbImage src={video.thumbnail} alt="" />}
         </span>
+        <span className={styles.sortTitle}>{title}</span>
+      </button>
+
+      {video.duration != null && (
+        <span className={styles.sortMeta}>{formatTime(video.duration)}</span>
       )}
 
-      {/* 削除ボタン */}
-      <button
-        type="button"
-        className="opacity-0 group-hover:opacity-100 text-xs text-red-500 hover:text-red-400 shrink-0 transition-opacity"
+      <Button
+        variant="danger-soft"
+        size="icon-sm"
+        className={styles.sortRemove}
+        aria-label={t('playlist.removeFromPlaylist')}
         onClick={() => onRemove(video.id)}
         title={t('playlist.removeFromPlaylist')}
       >
-        ×
-      </button>
+        <X aria-hidden />
+      </Button>
     </div>
   );
 }
@@ -116,6 +98,7 @@ export function PlaylistModal({ playlist, onClose }: Props) {
   const { playWithQueue } = usePlayerStore();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
+  const dialog = useDialogClose(onClose);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -135,12 +118,12 @@ export function PlaylistModal({ playlist, onClose }: Props) {
   const handlePlayAll = async () => {
     if (videos.length === 0) return;
     await playWithQueue(videos, 0);
-    onClose();
+    dialog.close();
   };
 
   const handlePlayOne = async (_video: Video, index: number) => {
     await playWithQueue(videos, index);
-    onClose();
+    dialog.close();
   };
 
   const handleRemove = async (videoId: number) => {
@@ -160,75 +143,43 @@ export function PlaylistModal({ playlist, onClose }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-[480px] max-h-[80vh] flex flex-col overflow-hidden">
-        {/* ヘッダー */}
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
-          <h2 className="flex-1 text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-            {playlist.name}
-          </h2>
-          <button
-            type="button"
-            disabled={videos.length === 0}
-            className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded shrink-0"
-            onClick={handlePlayAll}
-          >
-            {t('playlist.playAll')}
-          </button>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* 動画リスト */}
-        <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 p-4">{t('playlist.loading')}</p>
-          )}
-          {!loading && videos.length === 0 && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 p-4">
-              {t('playlist.noVideos')}
-            </p>
-          )}
-          {!loading && videos.length > 0 && (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={videos.map((v) => v.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {videos.map((v, idx) => (
-                  <SortableItem
-                    key={v.id}
-                    video={v}
-                    index={idx}
-                    onPlay={(index) => handlePlayOne(v, index)}
-                    onRemove={handleRemove}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-          )}
-        </div>
-
-        {!loading && (
-          <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500">
+    <Dialog
+      {...dialog.props}
+      size="md"
+      title={playlist.name}
+      closeLabel={t('confirm.close')}
+      flush
+      headerActions={
+        <Button variant="primary" size="sm" disabled={videos.length === 0} onClick={handlePlayAll}>
+          <Play aria-hidden fill="currentColor" />
+          {t('playlist.playAll')}
+        </Button>
+      }
+      footer={
+        !loading ? (
+          <span className={`${styles.note} ${styles.footerLead}`}>
             {videos.length} {t('playlist.countSuffix')}
-          </div>
-        )}
-      </div>
-    </div>
+          </span>
+        ) : undefined
+      }
+    >
+      {loading && <p className={styles.flushNote}>{t('playlist.loading')}</p>}
+      {!loading && videos.length === 0 && <p className={styles.flushNote}>{t('playlist.noVideos')}</p>}
+      {!loading && videos.length > 0 && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={videos.map((v) => v.id)} strategy={verticalListSortingStrategy}>
+            {videos.map((v, idx) => (
+              <SortableItem
+                key={v.id}
+                video={v}
+                index={idx}
+                onPlay={(index) => handlePlayOne(v, index)}
+                onRemove={handleRemove}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+      )}
+    </Dialog>
   );
 }

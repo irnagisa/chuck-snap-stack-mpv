@@ -1,6 +1,6 @@
-import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
@@ -8,11 +8,16 @@ import { useTagStore } from '../../store/useTagStore';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useShallow } from 'zustand/shallow';
-import { TagBadge } from './TagBadge';
 import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
+import { Check, ExternalLink, FileX, Film, Image as ImageIcon, Link2, ListPlus, Music, Play, Star, Trash2, VolumeX } from 'lucide-react';
+import { Button } from '../ui';
+import { formatTime } from '../../utils/time';
+import { AudioWave, ThumbImage } from './MediaThumb';
+import styles from './VideoCard.module.css';
+import { TagBadge } from './TagBadge';
 
 interface VideoCardProps {
   video: Video;
@@ -93,162 +98,172 @@ const VideoCard = memo(function VideoCard({
     });
   }, [v.path, onRegisterObserver, isLink]);
 
+  const title =
+    v.title ??
+    (isLink
+      ? (() => {
+          try {
+            return new URL(v.path).hostname;
+          } catch {
+            return v.path;
+          }
+        })()
+      : v.path.split('/').pop());
+  const showDuration = !isImage && !isLink && v.duration != null && v.duration > 0;
+  const progressWidth =
+    progressPercent !== null && progressPercent > 0 ? progressPercent : v.progress > 0 && progressPercent === null ? 100 : 0;
+
   return (
     <div
       ref={cardRef}
+      className={styles.card}
+      data-selected={isSelected || undefined}
+      data-playing={isPlaying || undefined}
+      data-detail={isDetailVideo || undefined}
+      data-missing={fileMissing || undefined}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, v); }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:shadow-md dark:hover:shadow-black/40 ${
-        fileMissing
-          ? 'border-red-500/60 opacity-60'
-          : isSelected
-            ? 'border-blue-400 dark:border-blue-500'
-            : isPlaying
-              ? 'border-blue-500'
-              : isDetailVideo
-                ? 'border-sky-400 dark:border-sky-500'
-                : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'
-      }`}
+      onClick={handlePrimaryClick}
+      onDoubleClick={(e) => { e.stopPropagation(); handlePlay(); }}
+      // キーボード: Tab でカードに移動、Enter で詳細、Shift+Enter で再生
+      tabIndex={0}
+      aria-label={title}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
+        e.preventDefault();
+        if (e.shiftKey) handlePlay();
+        else handlePrimaryClick();
+      }}
     >
-      {fileMissing && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-          <span className="bg-red-600/80 text-white text-xs font-semibold px-2 py-0.5 rounded shadow">
-            {t('library.noFile')}
-          </span>
-        </div>
-      )}
-      {category && (
-        <div className="h-1 shrink-0" style={{ backgroundColor: category.color }} />
-      )}
-
-      <div
-        className="relative bg-gray-200 dark:bg-gray-700 aspect-video"
-        onClick={handlePrimaryClick}
-        onDoubleClick={(e) => { e.stopPropagation(); handlePlay(); }}
-      >
+      <div className={styles.thumb}>
         {v.thumbnail ? (
-          <img
-            src={convertFileSrc(v.thumbnail)}
-            alt={v.title ?? ''}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <ThumbImage src={v.thumbnail} alt={v.title ?? ''} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-2xl">
-            {isLink ? '🔗' : isImage ? '🖼' : isAudio ? '♪' : '▶'}
-          </div>
-        )}
-        {/* メディアタイプバッジ */}
-        {(isImage || isAudio || isLink) && (
-          <div className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded pointer-events-none">
-            {isImage ? t('library.imageType') : isAudio ? t('library.audioType') : t('library.linkType')}
+          <div className={styles.placeholder}>
+            {isLink ? <Link2 aria-hidden /> : isImage ? <ImageIcon aria-hidden /> : isAudio ? <Music aria-hidden /> : <Film aria-hidden />}
           </div>
         )}
 
-        <div
-          className={`absolute top-1 left-1 transition-opacity ${
-            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
-          onClick={(e) => onCheckbox(e, v, idx)}
-        >
-          <div
-            className={`w-5 h-5 rounded border-2 flex items-center justify-center text-white text-xs font-bold transition-colors ${
-              isSelected
-                ? 'bg-blue-500 border-blue-500'
-                : 'bg-black/40 border-white/70 hover:bg-black/60'
-            }`}
-          >
-            {isSelected && '✓'}
-          </div>
-        </div>
-
-        {v.has_audio === 0 && !isImage && !isAudio && (
-          <div className="absolute top-1 left-1 pointer-events-none group-hover:opacity-0 transition-opacity">
-            <div className="bg-black/60 rounded p-0.5">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
-                <path d="M9.547 3.062A.75.75 0 0 1 10 3.75v12.5a.75.75 0 0 1-1.264.546L4.703 13H3.167a.75.75 0 0 1-.7-.48A6.985 6.985 0 0 1 2 10c0-.887.165-1.737.468-2.52a.75.75 0 0 1 .699-.48h1.536l4.033-3.296a.75.75 0 0 1 .811-.142ZM13.28 7.22a.75.75 0 1 0-1.06 1.06L13.44 9.5l-1.22 1.22a.75.75 0 1 0 1.06 1.06l1.22-1.22 1.22 1.22a.75.75 0 1 0 1.06-1.06L15.56 9.5l1.22-1.22a.75.75 0 0 0-1.06-1.06L14.5 8.44l-1.22-1.22Z" />
-              </svg>
-            </div>
-          </div>
-        )}
-
-        {isPlaying && (
-          <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">
-            {t('library.playing')}
-          </div>
-        )}
         {isVideo && (
           <video
             ref={videoRef}
             muted
             playsInline
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 pointer-events-none ${
-              isVideoPreviewPlaying ? 'opacity-100' : 'opacity-0'
-            }`}
+            className={styles.preview}
+            data-active={isVideoPreviewPlaying || undefined}
           />
         )}
-        {isAudio && isAudioPreviewPlaying && (
-          <div className="absolute inset-0 bg-black/20 flex items-end justify-center gap-0.5 pb-1.5 pointer-events-none">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="w-1 bg-green-400 rounded-full audio-wave-bar"
-                style={{ height: `${8 + (i % 3) * 5}px`, animation: 'audioWave 0.5s ease-in-out infinite alternate', animationDelay: `${i * 0.1}s` }}
-              />
-            ))}
+        {isAudio && isAudioPreviewPlaying && <AudioWave />}
+
+        {/* 左上: 選択チェック (hover か選択中に表示) */}
+        <div className={styles.topLeft}>
+          <button
+            type="button"
+            className={`${styles.check} ${styles.hoverOnly}`}
+            data-checked={isSelected || undefined}
+            aria-label={t('library.select')}
+            aria-pressed={isSelected}
+            onClick={(e) => { e.stopPropagation(); onCheckbox(e, v, idx); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            {isSelected && <Check aria-hidden />}
+          </button>
+        </div>
+
+        {/* 右上: 状態バッジ / hover 時は操作ボタン */}
+        <div className={styles.topRight}>
+          {isPlaying && (
+            <span className={styles.pill} data-tone="accent">
+              <span className={styles.eq} aria-hidden><span /><span /><span /></span>
+              {t('library.playing')}
+            </span>
+          )}
+          <div className={`${styles.actions} ${styles.hoverOnly}`}>
+            {onAddToPlaylist && (
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                title={t('library.addToPlaylist')}
+                aria-label={t('library.addToPlaylist')}
+              >
+                <ListPlus aria-hidden />
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              className={styles.danger}
+              onClick={(e) => { e.stopPropagation(); onDelete(v); }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              title={t('library.deleteVideo')}
+              aria-label={t('library.deleteVideo')}
+            >
+              <Trash2 aria-hidden />
+            </Button>
+          </div>
+        </div>
+
+        {/* 中央: 再生ボタン */}
+        <button
+          type="button"
+          className={`${styles.playButton} ${styles.hoverOnly}`}
+          onClick={(e) => { e.stopPropagation(); handlePlay(); }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          title={isLink ? t('library.openUrl') : t('library.play')}
+          aria-label={isLink ? t('library.openUrl') : t('library.play')}
+        >
+          {isLink ? <ExternalLink aria-hidden /> : <Play aria-hidden fill="currentColor" />}
+        </button>
+
+        {/* 左下: 再生時間・種別・音声なし */}
+        <div className={styles.bottomLeft}>
+          {showDuration && <span className={styles.pill}>{formatTime(v.duration!)}</span>}
+          {isImage && <span className={styles.pill}><ImageIcon aria-hidden />{t('library.imageType')}</span>}
+          {isAudio && <span className={styles.pill}><Music aria-hidden />{t('library.audioType')}</span>}
+          {isLink && <span className={styles.pill}><Link2 aria-hidden />{t('library.linkType')}</span>}
+          {v.has_audio === 0 && !isImage && !isAudio && (
+            <span className={styles.pill} title={t('filters.audioNo')}><VolumeX aria-hidden /></span>
+          )}
+        </div>
+
+        {progressWidth > 0 && (
+          <div className={styles.progress}>
+            <div className={styles.progressBar} style={{ width: `${progressWidth}%` }} />
           </div>
         )}
-        <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-          {onAddToPlaylist && (
-            <button
-              type="button"
-              className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
-              onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
-              title={t('library.addToPlaylist')}
-            >
-              +
-            </button>
-          )}
-          <button
-            type="button"
-            className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
-            onClick={(e) => { e.stopPropagation(); handlePlay(); }}
-            title={isLink ? t('library.openUrl') : t('library.play')}
-          >
-            {isLink ? '↗' : '▶'}
-          </button>
-          <button
-            type="button"
-            className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
-            onClick={(e) => { e.stopPropagation(); onDelete(v); }}
-            title={t('library.deleteVideo')}
-          >
-            削除
-          </button>
-        </div>
+
+        {fileMissing && (
+          <div className={styles.center}>
+            <span className={styles.pill} data-tone="danger">
+              <FileX aria-hidden />
+              {t('library.noFile')}
+            </span>
+          </div>
+        )}
       </div>
 
-      {progressPercent !== null && progressPercent > 0 ? (
-        <div className="h-1 bg-gray-200 dark:bg-gray-700">
-          <div className="h-full bg-blue-500" style={{ width: `${progressPercent}%` }} />
-        </div>
-      ) : v.progress > 0 && progressPercent === null ? (
-        <div className="h-1 bg-blue-500" />
-      ) : null}
-
-      <div className="p-1.5 bg-white dark:bg-gray-800" onClick={handlePrimaryClick} onDoubleClick={(e) => { e.stopPropagation(); handlePlay(); }}>
-        <p className="text-xs truncate text-gray-800 dark:text-gray-200 mb-1">
-          {v.title ?? (isLink ? (() => { try { return new URL(v.path).hostname; } catch { return v.path; } })() : v.path.split('/').pop())}
-        </p>
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-0.5">
-            {tags.slice(0, 3).map((tag) => (
-              <TagBadge key={tag.id} tag={tag} />
+      <div className={styles.body}>
+        <p className={styles.title} title={title}>{title}</p>
+        {/* 情報が無くても行の高さは確保し、カードの高さを揃える */}
+        {(
+          <div className={styles.meta}>
+            {category && (
+              <span className={styles.category}>
+                <span className={styles.dot} style={{ backgroundColor: category.color }} />
+                {category.name}
+              </span>
+            )}
+            {tags.slice(0, 2).map((tag) => (
+              <TagBadge key={tag.id} tag={tag} size="sm" />
             ))}
-            {tags.length > 3 && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                +{tags.length - 3}
+            {tags.length > 2 && <span className={styles.more}>+{tags.length - 2}</span>}
+            {v.rating > 0 && (
+              <span className={styles.rating} aria-label={`★${v.rating}`}>
+                <Star aria-hidden fill="currentColor" />
+                {v.rating}
               </span>
             )}
           </div>
@@ -275,10 +290,14 @@ interface Props {
   onMoveDir?: (video: Video) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
+  /** 一覧が空のときに表示する内容 */
+  emptyState?: ReactNode;
 }
 
 const ITEM_MIN_WIDTH = 160;
 const GAP = 16; // gap-4
+/** 選択・再生中の輪郭 (box-shadow) がスクロール領域の上端で切れないための余白 */
+const OUTLINE_SPACE = 8;
 
 export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function LibraryGrid({
   videos,
@@ -293,6 +312,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
   onMoveDir,
   selectedIds,
   onSelectionChange,
+  emptyState,
 }: Props, ref: React.Ref<LibraryViewHandle>) {
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
@@ -350,7 +370,10 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
     const el = scrollRef.current;
     if (!el) return;
     const measure = () => {
-      const cols = Math.max(1, Math.floor((el.clientWidth + GAP) / (gridItemMinWidth + GAP)));
+      // clientWidth には輪郭用の左右 padding (.scroller) が含まれるので差し引く
+      const cs = getComputedStyle(el);
+      const width = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const cols = Math.max(1, Math.floor((width + GAP) / (gridItemMinWidth + GAP)));
       setColumns(cols);
     };
     measure();
@@ -387,6 +410,8 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
     getScrollElement: () => scrollRef.current,
     estimateSize: useCallback(() => 180, []),
     overscan: 3,
+    // 1 行目の輪郭が上端で切れないための余白
+    paddingStart: OUTLINE_SPACE,
   });
 
   useImperativeHandle(ref, () => ({
@@ -427,11 +452,9 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
 
   return (
     <>
-      <div ref={scrollRef} className="h-full overflow-y-auto select-none">
+      <div ref={scrollRef} className={styles.scroller}>
         {videos.length === 0 ? (
-          <p className="text-gray-400 mt-4 text-sm dark:text-gray-500">
-            動画が見つかりません。ディレクトリをスキャンしてください。
-          </p>
+          emptyState
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {

@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useTagStore, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { Folder } from "lucide-react";
+import { toast } from '../../store/useToastStore';
+import { Button, Dialog, RadioGroup, RadioGroupItem, useDialogClose } from "../ui";
+import styles from "./LibraryModal.module.css";
 
 interface Props {
   videoIds: number[];
@@ -22,6 +26,7 @@ export function BulkMoveDirModal({ videoIds, onClose, onDone }: Props) {
   const [targetDir, setTargetDir] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(0);
+  const dialog = useDialogClose(onClose, { locked: loading });
 
   const handleApply = async () => {
     if (!targetDir) return;
@@ -47,81 +52,64 @@ export function BulkMoveDirModal({ videoIds, onClose, onDone }: Props) {
     }
 
     if (failCount > 0) {
-      alert(t('bulkMoveDir.failed', { count: failCount }));
+      toast.error(t('bulkMoveDir.failed', { count: failCount }));
     }
 
     await fetchVideos();
     setLoading(false);
-    onDone();
+    dialog.close(onDone);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={loading ? undefined : onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-80 max-w-[90vw]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-          {t('bulkMoveDir.title')}
-        </h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          {t('bulkMoveDir.desc', { count: videoIds.length })}
-        </p>
-
+    <Dialog
+      {...dialog.props}
+      size="sm"
+      title={t('bulkMoveDir.title')}
+      description={t('bulkMoveDir.desc', { count: videoIds.length })}
+      showClose={false}
+      footer={
+        <>
+          <Button variant="secondary" disabled={loading} onClick={() => dialog.close()}>
+            {t('bulkMoveDir.cancel')}
+          </Button>
+          <Button variant="primary" disabled={loading || !targetDir} onClick={handleApply}>
+            {loading ? t('bulkMoveDir.applying') : t('bulkMoveDir.apply')}
+          </Button>
+        </>
+      }
+    >
+      <div className={styles.stackTight}>
         {watchDirs.length === 0 ? (
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{t('bulkMoveDir.empty')}</p>
+          <p className={styles.note}>{t('bulkMoveDir.empty')}</p>
         ) : (
-          <div className="flex flex-col gap-0.5 mb-4 max-h-60 overflow-y-auto">
+          <RadioGroup
+            className={styles.optionList}
+            aria-label={t('bulkMoveDir.title')}
+            value={targetDir ?? ''}
+            onValueChange={setTargetDir}
+          >
             {watchDirs.map((dir) => (
-              <label
-                key={dir}
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1.5 rounded"
-                title={dir}
-              >
-                <input
-                  type="radio"
-                  name="bulk-move-dir"
-                  checked={targetDir === dir}
-                  onChange={() => setTargetDir(dir)}
-                />
-                <span className="text-gray-400 dark:text-gray-500 shrink-0">📁</span>
-                <span className="text-sm text-gray-800 dark:text-gray-200 truncate">{basename(dir)}</span>
+              <label key={dir} className={styles.option} title={dir}>
+                <RadioGroupItem value={dir} />
+                <Folder className={styles.optionIcon} aria-hidden />
+                <span className={styles.optionText}>{basename(dir)}</span>
               </label>
             ))}
-          </div>
+          </RadioGroup>
         )}
 
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+        <p className={styles.note}>
           {categoryMode === 'sync'
             ? t('bulkMoveDir.syncModeNote')
             : t('bulkMoveDir.virtualModeNote')}
         </p>
 
         {loading && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          <p className={styles.callout}>
             {t('bulkMoveDir.running', { done, total: videoIds.length })}
           </p>
         )}
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={loading || !targetDir}
-            className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
-            onClick={handleApply}
-          >
-            {loading ? t('bulkMoveDir.applying') : t('bulkMoveDir.apply')}
-          </button>
-          <button
-            type="button"
-            disabled={loading}
-            className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-            onClick={onClose}
-          >
-            {t('bulkMoveDir.cancel')}
-          </button>
-        </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -21,11 +21,10 @@ describe('TagBadge', () => {
     expect(screen.getByText('Hello Tag')).toBeDefined();
   });
 
-  it('sets the backgroundColor style from tag.color', () => {
+  it('passes tag.color to the chip as the --tag-color variable', () => {
     const { container } = render(<TagBadge tag={makeTag({ color: '#123456' })} />);
     const span = container.querySelector('span') as HTMLSpanElement;
-    // jsdom converts hex color to rgb
-    expect(span.style.backgroundColor).not.toBe('');
+    expect(span.style.getPropertyValue('--tag-color')).toBe('#123456');
   });
 
   it('does not render a remove button when onRemove is omitted', () => {

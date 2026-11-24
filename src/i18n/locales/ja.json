@@ -2,9 +2,9 @@
   "app": {
     "title": "Chuck Snap Stack",
     "scanning": "スキャン中...",
-    "addFolder": "+ フォルダ追加",
+    "addFolder": "フォルダ追加",
     "useDirAsCategory": "フォルダ名をカテゴリに",
-    "downloadUrl": "↓ URL",
+    "downloadUrl": "URL",
     "searchPlaceholder": "ファイルを検索...",
     "statsTitle": "統計ダッシュボード",
     "exportTitle": "エクスポート / インポート",
@@ -25,13 +25,14 @@
     "transcodeStarting": "開始中...",
     "transcodeCancel": "キャンセル",
     "transcodeDismiss": "✕",
-    "shuffleAll": "⇄ 全件",
+    "shuffleAll": "全件",
     "shuffleAllTitle": "現在のフィルター全 {{count}} 件をシャッフル再生",
-    "saveSmartPlaylist": "💾 保存",
+    "saveSmartPlaylist": "保存",
     "saveSmartPlaylistTitle": "現在のフィルター条件をスマートプレイリストとして保存",
     "dropImport": "動画をドロップしてインポート",
     "dropFormats": "mp4 / mkv / webm / avi / mov などに対応",
     "confirmImport": "{{count}} 件のファイルが見つかりました。\nすべて追加しますか？",
+    "confirmImportTitle": "フォルダの中身を追加しますか？",
     "confirmImportButton": "追加",
     "watchDirRemoved": "フォルダが見つかりません",
     "watchDirRemovedAction": "Missing にする",
@@ -44,11 +45,15 @@
     "transcodeBatchPartial": "変換終了: {{total}} 件中 {{failed}} 件失敗"
   },
   "sidebar": {
-    "categoryTab": "カテゴリ",
-    "folderTab": "フォルダ",
-    "playlistTab": "リスト"
+    "label": "ライブラリのナビゲーション",
+    "searchPlaceholder": "絞り込み...",
+    "filtering": "このセクションで絞り込み中",
+    "moreActions": "{{name}} の操作",
+    "allHint": "カテゴリ・フォルダ・タグの絞り込みをすべて解除",
+    "tagHint": "クリックで絞り込みに追加・解除。F2 で編集、Delete で削除"
   },
   "filters": {
+    "sortBy": "並び順",
     "sortByCreatedAt": "追加日",
     "sortByDuration": "長さ",
     "sortByRating": "評価",
@@ -83,7 +88,21 @@
     "av1Exclude": "AV1 変換済みを除外",
     "minDurationPlaceholder": "最短秒数",
     "maxDurationPlaceholder": "最長秒数",
-    "durationSuffix": "秒"
+    "durationSuffix": "秒",
+    "title": "絞り込み",
+    "reset": "リセット",
+    "rating": "評価",
+    "audio": "音声",
+    "watchedStatus": "視聴状態",
+    "mediaType": "種別",
+    "av1": "AV1 変換",
+    "duration": "長さ",
+    "all": "すべて",
+    "unrated": "未評価",
+    "audioYesShort": "あり",
+    "audioNoShort": "なし",
+    "av1OnlyShort": "変換済み",
+    "av1ExcludeShort": "除外"
   },
   "batch": {
     "selectedCount": "{{count}} 件選択中",
@@ -98,8 +117,8 @@
     "moveDir": "他のディレクトリへ移動"
   },
   "pagination": {
-    "prev": "← 前",
-    "next": "次 →",
+    "prev": "前",
+    "next": "次",
     "count": "({{count}}件)"
   },
   "settings": {
@@ -137,7 +156,7 @@
     "sectionScanPaths": "スキャンパス",
     "noScanPaths": "スキャン対象フォルダがありません",
     "removePath": "このパスを削除",
-    "addFolder": "+ フォルダを追加",
+    "addFolder": "フォルダを追加",
     "sectionWebServer": "ウェブサーバー",
     "webServerDesc": "LAN 内の他デバイス（スマホ・PC）からブラウザでライブラリを閲覧・再生できます。",
     "port": "ポート",
@@ -150,6 +169,8 @@
     "keybindingCapture": "「{{action}}」に割り当てるキーを押してください...",
     "keybindingCancel": "キャンセル",
     "keybindingReset": "すべてデフォルトに戻す",
+    "keybindingChange": "変更",
+    "keybindingResetOne": "デフォルトに戻す",
     "sectionCategoryMode": "カテゴリモード",
     "categoryModeVirtual": "Virtual モード",
     "categoryModeVirtualDesc": "カテゴリは DB にのみ記録し、ファイルは移動しません。読み取り専用・ネットワークドライブでも使用可能。",
@@ -194,12 +215,17 @@
     "play": "再生",
     "openUrl": "URLを開く",
     "deleteVideo": "動画を削除",
-    "playing": "再生中"
+    "playing": "再生中",
+    "select": "選択",
+    "emptyTitle": "メディアがまだありません",
+    "emptyDescription": "フォルダを追加すると、中の動画・音声・画像がここに並びます。",
+    "noMatchTitle": "条件に合うメディアがありません",
+    "noMatchDescription": "検索キーワードや絞り込み、サイドバーの選択を変えてみてください。"
   },
   "detail": {
     "title": "詳細",
     "viewImage": "🔍 拡大表示",
-    "play": "▶ 再生",
+    "play": "再生",
     "openInBrowser": "ブラウザで開く",
     "viewer": "ビューア",
     "rescan": "再スキャン",
@@ -258,7 +284,34 @@
     "similarRedetect": "再検索",
     "similarNotRun": "類似動画の検索はまだ実行されていません",
     "similarDetect": "類似動画を検索する",
-    "aiNsfwWarning": "⚠ AIタグ提案には性的な内容を示すタグが含まれる場合があります。"
+    "aiNsfwWarning": "⚠ AIタグ提案には性的な内容を示すタグが含まれる場合があります。",
+    "aiTitle": "AI タグ提案",
+    "aiEnable": "AI タグ機能を有効にする ({{size}})",
+    "aiDownloading": "ダウンロード中… {{percent}}%",
+    "aiAnalyze": "タグを分析する",
+    "aiAnalyzing": "分析中…",
+    "aiNeedThumbnail": "サムネイルが必要です",
+    "aiMatched": "既存タグ候補",
+    "aiNew": "新規タグ候補",
+    "aiScore": "スコア: {{score}}%",
+    "newTagTitle": "新しいタグを作成",
+    "newTagDesc": "タグ名を確認して作成してください。",
+    "newTagCreate": "作成して追加",
+    "newTagCancel": "キャンセル",
+    "close": "閉じる",
+    "similarFailed": "類似検索に失敗しました: {{error}}",
+    "renameFailed": "ファイルのリネームに失敗しました: {{error}}",
+    "captureFailed": "サムネイルの取得に失敗しました: {{error}}",
+    "subtitleFailed": "字幕の読み込みに失敗しました: {{error}}",
+    "revealFailed": "Finder での表示に失敗しました: {{error}}",
+    "openUrlFailed": "URL を開けませんでした: {{error}}",
+    "categoryClear": "カテゴリを解除して Inbox に戻す",
+    "tagUsage": "{{count}}件",
+    "newTagColor": "色",
+    "newTagIcon": "アイコン",
+    "removeTag": "{{name}} を外す",
+    "ratingStar": "★{{count}}",
+    "categoryPick": "カテゴリを選択"
   },
   "download": {
     "title": "URL からダウンロード",
@@ -285,7 +338,9 @@
     "all": "すべて",
     "empty": "フォルダ未登録",
     "rescan": "再スキャン",
-    "unwatch": "監視解除"
+    "unwatch": "監視解除",
+    "unwatchConfirmTitle": "「{{name}}」の監視を解除しますか？",
+    "unwatchConfirmDescription": "このフォルダ内のメディアはライブラリから外れます。ファイル自体は削除されません。"
   },
   "category": {
     "title": "カテゴリ",
@@ -304,12 +359,34 @@
     "cancel": "キャンセル",
     "namePlaceholder": "カテゴリ名",
     "tagsTitle": "タグ",
-    "addGroup": "+ グループ",
+    "addGroup": "グループ",
     "groupNamePlaceholder": "グループ名",
     "deleteGroup": "グループを削除",
     "editGroup": "グループ名を編集",
     "others": "その他",
-    "noTags": "タグなし"
+    "noTags": "タグなし",
+    "save": "保存",
+    "color": "色",
+    "icon": "アイコン",
+    "parent": "親カテゴリ",
+    "group": "グループ",
+    "name": "名前",
+    "empty": "カテゴリなし",
+    "addChildTitle": "「{{name}}」に子カテゴリを追加",
+    "editTitle": "カテゴリを編集",
+    "editTagTitle": "タグを編集",
+    "addGroupLong": "タググループを追加",
+    "deleteConfirmTitle": "カテゴリ「{{name}}」を削除しますか？",
+    "deleteConfirmDescription": "このカテゴリの動画は未設定に戻り、Inbox に移ります。子カテゴリは最上位に移動します。",
+    "deleteTagConfirmTitle": "タグ「{{name}}」を削除しますか？",
+    "deleteTagConfirmDescription": "すべての動画からこのタグが外れます。",
+    "deleteGroupConfirmTitle": "グループ「{{name}}」を削除しますか？",
+    "deleteGroupConfirmDescription": "グループ内のタグは削除されず、「その他」に移ります。",
+    "editTags": "タグを編集",
+    "finishEditingTags": "編集を終了",
+    "editTagsHint": "押すと編集、× で削除",
+    "editNamed": "{{name}} を編集",
+    "deleteNamed": "{{name}} を削除"
   },
   "playlist": {
     "title": "プレイリスト",
@@ -319,12 +396,15 @@
     "delete": "削除",
     "smart": "スマート",
     "applyFilter": "このフィルター条件を適用",
-    "playAll": "▶ すべて再生",
+    "playAll": "すべて再生",
     "loading": "読み込み中...",
     "noVideos": "動画がありません。ライブラリから追加してください。",
     "removeFromPlaylist": "プレイリストから削除",
     "dragToReorder": "ドラッグして並び替え",
-    "countSuffix": "件"
+    "countSuffix": "件",
+    "smartLoadError": "スマートプレイリストの読み込みに失敗しました: {{error}}",
+    "deleteConfirmTitle": "「{{name}}」を削除しますか？",
+    "deleteConfirmDescription": "プレイリストだけが削除され、メディアはライブラリに残ります。"
   },
   "addToPlaylist": {
     "title": "プレイリストに追加",
@@ -399,7 +479,10 @@
     "resultSkipped": "{{count}} 件はウォッチディレクトリ外でスキップ",
     "resultFailed": "{{count}} 件の移動に失敗しました",
     "closeButton": "閉じる",
-    "switchConfirm": "Sync モードに切り替えます。\nカテゴリを変更するたびにファイルが自動移動されます。\nよろしいですか？"
+    "switchConfirm": "Sync モードに切り替えます。\nカテゴリを変更するたびにファイルが自動移動されます。\nよろしいですか？",
+    "targetCount": "{{count}} 件のファイルを移動します",
+    "noTargets": "移動が必要なファイルはありません",
+    "switchOnly": "Sync モードに切り替え"
   },
   "categoryModeChange": {
     "toVirtualTitle": "Virtual モードに切り替え",
@@ -440,7 +523,11 @@
     "cancel": "キャンセル",
     "close": "閉じる",
     "rename": "{{count}} 件リネーム",
-    "renaming": "リネーム中..."
+    "renaming": "リネーム中...",
+    "skippedDuplicate": "{{name}} → 重複のためスキップ",
+    "resultDone": "{{count}} 件リネーム完了",
+    "resultFailed": "、{{count}} 件失敗",
+    "modeLabel": "リネーム方法"
   },
   "duplicates": {
     "title": "重複動画の検出",
@@ -525,8 +612,8 @@
   "export": {
     "title": "エクスポート / インポート",
     "desc": "ライブラリのデータ（動画情報・タグ・プレイリスト）を JSON ファイルに保存/復元します。",
-    "exportButton": "📤 バックアップをエクスポート",
-    "importButton": "📥 バックアップからインポート",
+    "exportButton": "バックアップをエクスポート",
+    "importButton": "バックアップからインポート",
     "importWarning": "⚠ インポートすると現在のデータが上書きされます",
     "exporting": "エクスポート中...",
     "importing": "インポート中...",
@@ -551,7 +638,9 @@
     "topRated": "高評価 Top5",
     "recentWatched": "最近視聴",
     "topPlayed": "再生回数 Top5",
-    "playCountUnit": "回"
+    "playCountUnit": "回",
+    "durationHours": "{{hours}}時間{{minutes}}分",
+    "durationMinutes": "{{minutes}}分"
   },
   "smartPlaylist": {
     "title": "スマートプレイリストを保存",
@@ -596,10 +685,10 @@
     "playbackSettings": "再生設定",
     "shuffleOff": "シャッフル解除",
     "shuffleOn": "シャッフル再生",
-    "shuffleLabel": "⇄ シャッフル",
+    "shuffleLabel": "シャッフル",
     "loopOff": "ループ解除",
     "loopOn": "ループ再生",
-    "loopLabel": "↻ ループ",
+    "loopLabel": "ループ",
     "abSetA": "A点を設定",
     "abSetB": "B点を設定",
     "abLooping": "A-Bループ中",
@@ -608,7 +697,8 @@
     "screenshot": "スクリーンショット",
     "showQueue": "キューを表示",
     "miniPlayer": "ミニプレイヤーに切替",
-    "exit": "終了"
+    "exit": "終了",
+    "seek": "再生位置"
   },
   "queue": {
     "title": "キュー ({{count}}件)",
@@ -621,7 +711,8 @@
     "cancel": "キャンセル"
   },
   "confirm": {
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "close": "閉じる"
   },
   "about": {
     "sectionTitle": "このアプリについて",
@@ -640,5 +731,10 @@
     "failed": "{{count}} 件のファイル移動に失敗しました",
     "syncModeNote": "Sync モード: カテゴリのディレクトリが移動先になければ作成して格納します",
     "virtualModeNote": "Virtual モード: 選択したフォルダの直下に移動します"
+  },
+  "dndDestDir": {
+    "title": "コピー先フォルダを選択",
+    "desc": "{{count}} 件のファイルを、選んだフォルダの Unsorted サブフォルダにコピーして登録します。",
+    "cancel": "キャンセル"
   }
 }

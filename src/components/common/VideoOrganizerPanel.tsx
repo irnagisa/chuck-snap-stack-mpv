@@ -4,14 +4,14 @@ import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } 
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useInboxStore } from '../../store/useInboxStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { TagBadge } from '../Library/TagBadge';
+import { toast } from '../../store/useToastStore';
+import { TagBadge, tagColorStyle } from '../Library/TagBadge';
+import { ColorSwatches, TAXONOMY_COLORS } from '../Library/ColorSwatches';
 import { IconPicker, MediaIcon } from '../../lib/mediaIcons';
 import type { Video, Tag } from '../../types';
-
-const COLORS = [
-  '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280',
-];
+import { ChevronDown, Plus, Search, Star, X } from "lucide-react";
+import { Button, Input } from "../ui";
+import styles from './VideoOrganizerPanel.module.css';
 
 function findWatchDir(filePath: string, watchDirs: string[]): string | null {
   const normalized = filePath.replace(/\\/g, '/');
@@ -35,10 +35,11 @@ export function VideoOrganizerPanel({ video }: Props) {
   const { categoryMode } = useSettingsStore();
 
   const [localRating, setLocalRating] = useState(video.rating ?? 0);
+  const [hoverRating, setHoverRating] = useState(0);
   const [categoryId, setCategoryId] = useState<string>(video.category_id?.toString() ?? '');
   const moveFile = categoryMode === 'sync';
   const [tagInput, setTagInput] = useState('');
-  const [newTagColor, setNewTagColor] = useState(COLORS[5]);
+  const [newTagColor, setNewTagColor] = useState(TAXONOMY_COLORS[5]);
   const [newTagIcon, setNewTagIcon] = useState<string | null>('tag');
   const [tagInputFocused, setTagInputFocused] = useState(false);
   const [categoryInput, setCategoryInput] = useState('');
@@ -126,7 +127,7 @@ export function VideoOrganizerPanel({ video }: Props) {
         const destDir = catPath ? `${watchDir}/${catPath}` : `${watchDir}/Unsorted`;
         const result = await moveVideoFile(video.id, destDir);
         if (result === null) {
-          alert(t('syncMode.moveFileFailed'));
+          toast.error(t('syncMode.moveFileFailed'));
         }
       }
     }
@@ -135,115 +136,107 @@ export function VideoOrganizerPanel({ video }: Props) {
     fetchInbox().catch(() => {});
   };
 
+  const shownRating = hoverRating || localRating;
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className={styles.root}>
       {/* 評価 */}
-      <div>
-        <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-          {t('detail.rating')}
-        </label>
-        <div className="flex gap-1">
+      <div className={styles.field}>
+        <span className={styles.label}>{t('detail.rating')}</span>
+        <div className={styles.stars} onMouseLeave={() => setHoverRating(0)}>
           {[1, 2, 3, 4, 5].map((star) => (
             <button
               key={star}
               type="button"
-              className={`text-xl leading-none transition-colors ${
-                star <= localRating
-                  ? 'text-yellow-400'
-                  : 'text-gray-300 dark:text-gray-600 hover:text-yellow-300'
-              }`}
+              className={styles.star}
+              data-active={star <= shownRating || undefined}
+              aria-label={t('detail.ratingStar', { count: star })}
+              aria-pressed={star <= localRating}
+              onMouseEnter={() => setHoverRating(star)}
               onClick={() => handleRatingClick(star)}
             >
-              ★
+              <Star aria-hidden fill="currentColor" />
             </button>
           ))}
         </div>
       </div>
 
       {/* カテゴリ */}
-      <div>
-        <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-          {t('detail.category')}
-        </label>
-        <div className="relative">
+      <div className={styles.field}>
+        <span className={styles.label}>{t('detail.category')}</span>
+        <div className={styles.combo}>
           <div
-            className={`w-full flex items-center gap-2 px-2.5 rounded-lg bg-white dark:bg-gray-800 cursor-pointer transition-colors ${
-              categoryInputFocused
-                ? 'border border-blue-500 dark:border-blue-400 ring-1 ring-blue-500/20 dark:ring-blue-400/20'
-                : 'border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-            }`}
+            className={styles.trigger}
+            data-focused={categoryInputFocused || undefined}
             onClick={() => setCategoryInputFocused(true)}
           >
-            {selectedCategory && (
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: selectedCategory.color }}
-              />
-            )}
             {selectedCategory && !categoryInputFocused ? (
-              <span className="flex-1 min-w-0 text-sm text-gray-900 dark:text-gray-100 py-1.5 truncate select-none">
-                {selectedCategory.name}
-              </span>
+              <>
+                <span className={styles.iconBadge} style={tagColorStyle(selectedCategory.color)}>
+                  <MediaIcon icon={selectedCategory.icon ?? 'folder'} className={styles.badgeIcon} />
+                </span>
+                <span className={styles.triggerText}>{selectedCategory.name}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title={t('detail.categoryClear')}
+                  aria-label={t('detail.categoryClear')}
+                  onClick={(e) => { e.stopPropagation(); handleCategoryChange(''); }}
+                >
+                  <X aria-hidden />
+                </Button>
+              </>
             ) : (
-              <input
-                ref={categoryInputRef}
-                className="flex-1 min-w-0 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 bg-transparent outline-none py-1.5"
-                placeholder={t('detail.categorySearchPlaceholder')}
-                value={categoryInput}
-                onChange={(e) => setCategoryInput(e.target.value)}
-                onFocus={() => setCategoryInputFocused(true)}
-                onBlur={() => setTimeout(() => { setCategoryInputFocused(false); setCategoryInput(''); }, 150)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') { setCategoryInput(''); setCategoryInputFocused(false); }
-                }}
-              />
+              <>
+                <Search className={styles.triggerIcon} aria-hidden />
+                <input
+                  ref={categoryInputRef}
+                  className={styles.triggerInput}
+                  placeholder={t('detail.categorySearchPlaceholder')}
+                  aria-label={t('detail.categoryPick')}
+                  value={categoryInput}
+                  onChange={(e) => setCategoryInput(e.target.value)}
+                  onFocus={() => setCategoryInputFocused(true)}
+                  onBlur={() => setTimeout(() => { setCategoryInputFocused(false); setCategoryInput(''); }, 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') { setCategoryInput(''); setCategoryInputFocused(false); }
+                  }}
+                />
+              </>
             )}
-            {selectedCategory && !categoryInputFocused && (
-              <button
-                type="button"
-                className="shrink-0 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 p-0.5 leading-none"
-                title="カテゴリを解除して Inbox に戻す"
-                onClick={(e) => { e.stopPropagation(); handleCategoryChange(''); }}
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-            <span className="pointer-events-none shrink-0 text-gray-400 dark:text-gray-500">
-              <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-                <path d="M1 1l4 4 4-4" />
-              </svg>
-            </span>
+            <ChevronDown className={styles.chevron} aria-hidden />
           </div>
           {showCategorySuggestions && (
-            <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto">
+            <div className={styles.menu} role="listbox">
               {filteredCategories.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">{t('detail.noCategoryOptions')}</p>
+                <p className={styles.menuEmpty}>{t('detail.noCategoryOptions')}</p>
               ) : (
                 filteredCategories.map(({ category: cat, depth }) => (
                   <button
                     key={cat.id}
                     type="button"
-                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
-                    style={{ paddingLeft: `${12 + depth * 16}px` }}
+                    role="option"
+                    aria-selected={selectedCategory?.id === cat.id}
+                    className={styles.menuItem}
+                    data-selected={selectedCategory?.id === cat.id || undefined}
+                    style={{ paddingInlineStart: `calc(var(--space-2) + ${depth * 14}px)` }}
                     onClick={() => {
                       handleCategoryChange(cat.id.toString());
                       setCategoryInput('');
                       setCategoryInputFocused(false);
                     }}
                   >
-                    <span className="shrink-0" style={{ color: cat.color }}>
-                      <MediaIcon icon={cat.icon ?? 'folder'} className="w-3.5 h-3.5" />
+                    <span className={styles.iconBadge} style={tagColorStyle(cat.color)}>
+                      <MediaIcon icon={cat.icon ?? 'folder'} className={styles.badgeIcon} />
                     </span>
-                    <span className="flex-1">{cat.name}</span>
+                    <span className={styles.menuText}>{cat.name}</span>
                   </button>
                 ))
               )}
             </div>
           )}
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+        <p className={styles.help}>
           {categoryMode === 'sync'
             ? t('bulkCategory.syncModeNote')
             : t('bulkCategory.virtualModeNote')}
@@ -251,22 +244,28 @@ export function VideoOrganizerPanel({ video }: Props) {
       </div>
 
       {/* タグ */}
-      <div>
-        <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-          {t('detail.tags')}
-        </label>
-        <div className="flex flex-wrap gap-1.5 mb-2.5 min-h-6">
+      <div className={styles.field}>
+        <span className={styles.label}>{t('detail.tags')}</span>
+        <div className={styles.chips}>
           {currentTags.length > 0 ? (
             currentTags.map((tag) => (
-              <TagBadge key={tag.id} tag={tag} onRemove={() => handleRemoveTag(tag.id)} />
+              <TagBadge
+                key={tag.id}
+                tag={tag}
+                showIcon
+                onRemove={() => handleRemoveTag(tag.id)}
+                removeLabel={t('detail.removeTag', { name: tag.name })}
+              />
             ))
           ) : (
-            <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.noTags')}</span>
+            <span className={styles.help}>{t('detail.noTags')}</span>
           )}
         </div>
-        <div className="relative">
-          <input
-            className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
+        <div className={styles.combo}>
+          <Input
+            size="md"
+            className={styles.fullWidth}
+            icon={<Plus />}
             placeholder={t('detail.tagSearchPlaceholder')}
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
@@ -278,57 +277,45 @@ export function VideoOrganizerPanel({ video }: Props) {
             }}
           />
           {showSuggestions && (
-            <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto">
+            <div className={styles.menu} role="listbox">
               {filteredSuggestions.length === 0 && !tagInput && (
-                <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">{t('detail.noTagsAvailable')}</p>
+                <p className={styles.menuEmpty}>{t('detail.noTagsAvailable')}</p>
               )}
               {filteredSuggestions.map((tag) => (
                 <button
                   key={tag.id}
                   type="button"
-                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                  role="option"
+                  aria-selected={false}
+                  className={styles.menuItem}
                   onClick={() => handleAddTag(tag)}
                 >
-                  <span className="shrink-0" style={{ color: tag.color }}>
-                    <MediaIcon icon={tag.icon ?? 'tag'} className="w-3.5 h-3.5" />
+                  <span className={styles.iconBadge} style={tagColorStyle(tag.color)}>
+                    <MediaIcon icon={tag.icon ?? 'tag'} className={styles.badgeIcon} />
                   </span>
-                  <span className="flex-1">{tag.name}</span>
+                  <span className={styles.menuText}>{tag.name}</span>
                   {(tagUsageCounts[tag.id] ?? 0) > 0 && (
-                    <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-                      {tagUsageCounts[tag.id]}件
-                    </span>
+                    <span className={styles.count}>{t('detail.tagUsage', { count: tagUsageCounts[tag.id] })}</span>
                   )}
                 </button>
               ))}
               {tagInput && !exactMatch && (
-                <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">色:</span>
-                    {COLORS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={`w-4 h-4 rounded-full transition-transform ${
-                          newTagColor === c
-                            ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800'
-                            : ''
-                        }`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => setNewTagColor(c)}
-                      />
-                    ))}
+                // 新規作成: 色とアイコンを選んで作る (input の blur で閉じないよう mousedown を止める)
+                <div className={styles.create} onMouseDown={(e) => e.preventDefault()}>
+                  <div className={styles.createRow}>
+                    <span className={styles.createLabel}>{t('detail.newTagColor')}</span>
+                    <ColorSwatches value={newTagColor} onChange={setNewTagColor} label={t('detail.newTagColor')} />
                   </div>
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">アイコン:</span>
+                  <div className={styles.createRow}>
+                    <span className={styles.createLabel}>{t('detail.newTagIcon')}</span>
                     <IconPicker value={newTagIcon} onChange={setNewTagIcon} />
                   </div>
-                  <button
-                    type="button"
-                    className="w-full text-left text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                    onClick={handleCreateAndAdd}
-                  >
+                  <Button variant="soft" size="sm" fullWidth onClick={handleCreateAndAdd}>
+                    <span className={styles.createPreview} style={tagColorStyle(newTagColor)}>
+                      <MediaIcon icon={newTagIcon ?? 'tag'} className={styles.badgeIcon} />
+                    </span>
                     {t('detail.createTag', { tag: tagInput })}
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>

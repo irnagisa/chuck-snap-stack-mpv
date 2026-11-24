@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
+import type { ReactElement } from 'react';
 
 vi.mock('../store/useLibraryStore', () => ({
   useLibraryStore: vi.fn(),
@@ -12,6 +13,10 @@ import { AppHeader } from './AppHeader';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useModalStore } from '../store/useModalStore';
 import '../i18n';
+import { TooltipProvider } from './ui';
+
+// ヘッダーのアイコンボタンは Tooltip を使うので Provider で包んで描画する
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: TooltipProvider });
 
 const mockOpenSettings = vi.fn();
 const mockOpenDownload = vi.fn();
@@ -88,7 +93,7 @@ describe('AppHeader', () => {
   it('add folder button is disabled when isDbReady is false', () => {
     setupLibraryStore({ isDbReady: false });
     render(<AppHeader {...defaultProps()} />);
-    expect(screen.getByText('+ フォルダ追加').closest('button')).toBeDisabled();
+    expect(screen.getByText('フォルダ追加').closest('button')).toBeDisabled();
   });
 
   it('add folder button is disabled while scanning', () => {
@@ -100,7 +105,7 @@ describe('AppHeader', () => {
   it('clicking add folder button calls onPickDir', () => {
     const onPickDir = vi.fn();
     render(<AppHeader {...defaultProps({ onPickDir })} />);
-    fireEvent.click(screen.getByText('+ フォルダ追加'));
+    fireEvent.click(screen.getByText('フォルダ追加'));
     expect(onPickDir).toHaveBeenCalledOnce();
   });
 
@@ -133,33 +138,33 @@ describe('AppHeader', () => {
         {...defaultProps({ useDirAsCategory: false, onUseDirAsCategoryChange })}
       />
     );
-    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-    expect(checkbox.checked).toBe(false);
+    const checkbox = screen.getByRole('checkbox', { name: 'フォルダ名をカテゴリに' });
+    expect(checkbox).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(checkbox);
     expect(onUseDirAsCategoryChange).toHaveBeenCalledWith(true);
   });
 
   it('clicking the settings button calls openSettings', () => {
     render(<AppHeader {...defaultProps()} />);
-    fireEvent.click(screen.getByTitle('設定'));
+    fireEvent.click(screen.getByRole('button', { name: '設定' }));
     expect(mockOpenSettings).toHaveBeenCalledOnce();
   });
 
   it('clicking the stats button calls openStats', () => {
     render(<AppHeader {...defaultProps()} />);
-    fireEvent.click(screen.getByTitle('統計ダッシュボード'));
+    fireEvent.click(screen.getByRole('button', { name: '統計ダッシュボード' }));
     expect(mockOpenStats).toHaveBeenCalledOnce();
   });
 
   it('clicking the download button calls openDownload', () => {
     render(<AppHeader {...defaultProps()} />);
-    fireEvent.click(screen.getByText('↓ URL'));
+    fireEvent.click(screen.getByRole('button', { name: 'URL' }));
     expect(mockOpenDownload).toHaveBeenCalledOnce();
   });
 
   it('clicking the duplicates button calls openDuplicates', () => {
     render(<AppHeader {...defaultProps()} />);
-    fireEvent.click(screen.getByTitle('重複動画を検出'));
+    fireEvent.click(screen.getByRole('button', { name: '重複動画を検出' }));
     expect(mockOpenDuplicates).toHaveBeenCalledOnce();
   });
 });

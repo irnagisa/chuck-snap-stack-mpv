@@ -1,0 +1,682 @@
+/*
+ * ライブラリのグリッドカード (カジュアルテーマ)
+ * 白いカードの中に角丸のサムネイルを額縁のように収める。hover ではカードは動かさず、影とサムネイルの拡大で反応する。
+ * 状態 (選択中・再生中・詳細表示中・ファイルなし) は data-* 属性で切り替える。
+ */
+@layer ui {
+  /*
+   * グリッド / リストのスクロール領域。
+   * overflow で選択・再生中の輪郭 (box-shadow) が左右で切れないよう内側に余白を取り、
+   * 同じ量の負マージンで打ち消して見た目の位置は変えない。
+   * 上の余白は仮想スクロールの paddingStart で取る (CSS の padding-top だと位置計算がずれる)。
+   */
+  .scroller {
+    --bleed: var(--space-2);
+    height: 100%;
+    margin-inline: calc(-1 * var(--bleed));
+    padding-inline: var(--bleed);
+    overflow-y: auto;
+    user-select: none;
+  }
+
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-1-5) var(--space-1-5) var(--space-2-5);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-card);
+    box-shadow: var(--shadow-card);
+    cursor: pointer;
+    transition:
+      box-shadow var(--duration-normal) ease,
+      background-color var(--duration-normal) ease;
+
+    &:hover {
+      box-shadow:
+        0 0 0 1px var(--color-border),
+        var(--shadow-lg);
+    }
+
+    /* 詳細表示中: 淡いアクセントの輪郭 */
+    &[data-detail] {
+      box-shadow:
+        0 0 0 2px var(--color-accent-line),
+        var(--shadow-md);
+    }
+    /* 再生中: しっかりしたアクセントの輪郭 */
+    &[data-playing] {
+      box-shadow:
+        0 0 0 2px var(--color-accent),
+        var(--shadow-md);
+    }
+    /* 選択中: 輪郭 + 背景をほんのりアクセント色に */
+    &[data-selected] {
+      background: color-mix(in oklch, var(--color-accent) 10%, var(--color-bg-card));
+      box-shadow:
+        0 0 0 2px var(--color-accent),
+        var(--shadow-md);
+    }
+    &[data-missing] {
+      opacity: 0.6;
+    }
+    /* キーボード操作時の輪郭 (outline だと角丸・他の状態の輪郭と重なるので box-shadow で描く) */
+    &:focus-visible {
+      outline: none;
+      box-shadow:
+        0 0 0 2px var(--color-focus-ring),
+        var(--shadow-md);
+    }
+    &[data-missing] .thumb img {
+      filter: grayscale(1);
+    }
+  }
+
+  /* ---- thumbnail ---- */
+  /*
+   * サムネイル比率は 4:3。16:9 だとカードの中で横長・平たく見えるため、
+   * 少し背の高い比率にして写真アプリ / Dribbble 風の柔らかい印象にする。
+   * 動画は object-fit: cover で左右を少し切り落とす。
+   */
+  .thumb {
+    --thumb-aspect: 4 / 3;
+    position: relative;
+    aspect-ratio: var(--thumb-aspect);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-active);
+    overflow: hidden;
+    isolation: isolate;
+
+    & img,
+    & video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    & img {
+      opacity: 0;
+      transition:
+        opacity var(--duration-normal) ease,
+        scale var(--duration-slow) var(--ease-out);
+    }
+    /* 読み込みが終わるまでは背景 (プレースホルダー色) を見せ、終わったらフェードイン */
+    & img[data-loaded] {
+      opacity: 1;
+    }
+  }
+  .card:hover .thumb img {
+    scale: 1.05;
+  }
+
+  .placeholder {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    color: var(--color-fg-subtle);
+    background: linear-gradient(135deg, var(--color-bg-active), var(--color-bg-hover));
+
+    & svg {
+      width: 2rem;
+      height: 2rem;
+      opacity: 0.7;
+    }
+  }
+
+  .preview {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-normal) ease;
+
+    &[data-active] {
+      opacity: 1;
+    }
+  }
+
+  /* hover で浮かぶ要素は下から少し持ち上がるようにフェードイン */
+  .hoverOnly {
+    opacity: 0;
+    translate: 0 4px;
+    transition:
+      opacity var(--duration-fast) ease,
+      translate var(--duration-normal) var(--ease-out);
+  }
+  .card:hover .hoverOnly,
+  .card:focus-within .hoverOnly {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  /* 中央の大きな再生ボタン */
+  .playButton {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin: -1.375rem 0 0 -1.375rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-full);
+    background: oklch(100% 0 0 / 0.92);
+    color: var(--palette-accent-600);
+    box-shadow: 0 6px 20px -4px oklch(0% 0 0 / 0.45);
+    cursor: pointer;
+    transition:
+      opacity var(--duration-fast) ease,
+      translate var(--duration-normal) var(--ease-out),
+      scale var(--duration-fast) ease;
+
+    &:hover {
+      scale: 1.08;
+    }
+    &:active {
+      scale: 0.95;
+    }
+    & svg {
+      width: 1.15rem;
+      height: 1.15rem;
+      margin-left: 2px;
+    }
+  }
+
+  /* サムネイル上の小さなピル (時間・種別・音声なし・再生中) */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 1.25rem;
+    padding-inline: var(--space-1-5);
+    border-radius: var(--radius-full);
+    background: oklch(15% 0.01 60 / 0.6);
+    backdrop-filter: blur(6px);
+    color: var(--palette-white);
+    font-size: 0.6875rem;
+    font-weight: var(--weight-semibold);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    pointer-events: none;
+
+    & svg {
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+  }
+  .pill[data-tone="accent"] {
+    background: var(--palette-accent-600);
+  }
+  .pill[data-tone="danger"] {
+    background: var(--palette-red-600);
+  }
+
+  .topLeft,
+  .topRight,
+  .bottomLeft {
+    position: absolute;
+    z-index: 2;
+    display: flex;
+    gap: var(--space-1);
+  }
+  .topLeft {
+    top: var(--space-1-5);
+    left: var(--space-1-5);
+  }
+  .topRight {
+    top: var(--space-1-5);
+    right: var(--space-1-5);
+  }
+  .bottomLeft {
+    bottom: var(--space-2);
+    left: var(--space-1-5);
+  }
+
+  /* 右上の hover 操作ボタン群 */
+  .actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+  .actions .danger {
+    color: var(--color-danger-fg);
+  }
+
+  /* 音声プレビュー中の波形 */
+  .wave {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    padding-bottom: var(--space-2);
+    background: oklch(0% 0 0 / 0.2);
+    pointer-events: none;
+
+    & span {
+      width: 3px;
+      height: 0.5rem;
+      border-radius: var(--radius-full);
+      background: var(--palette-accent-300);
+      transform-origin: bottom;
+      animation: eq 0.5s ease-in-out infinite alternate;
+    }
+    & span:nth-child(3n + 2) {
+      height: 0.8rem;
+    }
+    & span:nth-child(3n) {
+      height: 1.1rem;
+    }
+    & span:nth-child(2) { animation-delay: -0.1s; }
+    & span:nth-child(3) { animation-delay: -0.2s; }
+    & span:nth-child(4) { animation-delay: -0.3s; }
+    & span:nth-child(5) { animation-delay: -0.4s; }
+  }
+  .thumb[data-compact] .wave {
+    gap: 1px;
+    padding-bottom: 3px;
+
+    & span {
+      width: 2px;
+      height: 5px;
+    }
+    & span:nth-child(3n + 2) {
+      height: 8px;
+    }
+    & span:nth-child(3n) {
+      height: 11px;
+    }
+  }
+
+  .center {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+  }
+
+  /* ---- 選択チェック ---- */
+  .check {
+    display: grid;
+    place-items: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    padding: 0;
+    border: 2px solid oklch(100% 0 0 / 0.9);
+    border-radius: var(--radius-full);
+    background: oklch(0% 0 0 / 0.25);
+    color: var(--palette-white);
+    cursor: pointer;
+    transition:
+      background-color var(--duration-fast) ease,
+      border-color var(--duration-fast) ease,
+      opacity var(--duration-fast) ease,
+      translate var(--duration-normal) var(--ease-out);
+
+    &:hover {
+      background: oklch(0% 0 0 / 0.45);
+    }
+    &[data-checked] {
+      opacity: 1;
+      translate: 0 0;
+      border-color: var(--palette-white);
+      background: var(--color-accent);
+    }
+    & svg {
+      width: 0.8rem;
+      height: 0.8rem;
+      stroke-width: 3.5;
+    }
+  }
+
+  /* ---- 視聴進捗 (サムネイル下端) ---- */
+  .progress {
+    position: absolute;
+    inset-inline: var(--space-1-5);
+    bottom: var(--space-1);
+    z-index: 2;
+    height: 3px;
+    border-radius: var(--radius-full);
+    background: oklch(100% 0 0 / 0.35);
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .progressBar {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--palette-accent-400);
+  }
+
+  /* ---- 再生中のイコライザー ---- */
+  .eq {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 1.5px;
+    height: 0.625rem;
+
+    & span {
+      width: 2px;
+      height: 100%;
+      border-radius: 1px;
+      background: currentColor;
+      transform-origin: bottom;
+      animation: eq 0.9s ease-in-out infinite alternate;
+    }
+    & span:nth-child(2) {
+      animation-delay: -0.3s;
+    }
+    & span:nth-child(3) {
+      animation-delay: -0.6s;
+    }
+  }
+  @keyframes eq {
+    from {
+      scale: 1 0.3;
+    }
+    to {
+      scale: 1 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .eq span,
+    .wave span {
+      animation: none;
+    }
+  }
+
+  /* ---- footer ---- */
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+    padding-inline: var(--space-1);
+  }
+
+  .title {
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-fg);
+    font-size: 0.8125rem;
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 1.125rem;
+    font-size: 0.6875rem;
+  }
+
+  .category {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--color-fg-muted);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .dot {
+    flex-shrink: 0;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-full);
+  }
+
+  .rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-inline-start: auto;
+    color: var(--palette-amber-500);
+    font-weight: var(--weight-bold);
+
+    & svg {
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+  }
+
+  .more {
+    color: var(--color-fg-subtle);
+    font-weight: var(--weight-semibold);
+  }
+
+  /* ---- 小さいサムネイル (リスト行・横並びのプレビュー) ---- */
+  .thumb[data-compact] {
+    border-radius: var(--radius-md);
+
+    & .pill {
+      height: 1rem;
+      padding-inline: 4px;
+      font-size: 0.625rem;
+    }
+    & .progress {
+      inset-inline: 3px;
+      bottom: 3px;
+      height: 2px;
+    }
+    & .placeholder svg {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+  }
+  .thumb[data-compact] .bottomLeft {
+    bottom: 4px;
+    left: 4px;
+  }
+
+  /* hover 演出は .card / .row / .tile のどれの中でも効くようにする */
+  .row:hover .hoverOnly,
+  .row:focus-within .hoverOnly,
+  .tile:hover .hoverOnly,
+  .tile:focus-within .hoverOnly {
+    opacity: 1;
+    translate: 0 0;
+  }
+  .row:hover .thumb img,
+  .tile:hover .thumb img {
+    scale: 1.05;
+  }
+
+  /* ---- リスト行 ---- */
+  .row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2-5);
+    min-width: 0;
+    padding: var(--space-1-5) var(--space-2-5) var(--space-1-5) var(--space-1-5);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition:
+      background-color var(--duration-fast) ease,
+      box-shadow var(--duration-fast) ease;
+
+    &:hover {
+      background: var(--color-bg-card);
+      box-shadow: var(--shadow-card);
+    }
+    &[data-detail] {
+      background: var(--color-bg-card);
+      box-shadow: 0 0 0 1.5px var(--color-accent-line);
+    }
+    &[data-playing] {
+      background: color-mix(in oklch, var(--color-accent) 6%, var(--color-bg-card));
+      box-shadow: 0 0 0 1.5px var(--color-accent);
+    }
+    &[data-selected] {
+      background: color-mix(in oklch, var(--color-accent) 10%, var(--color-bg-card));
+      box-shadow: 0 0 0 1.5px var(--color-accent);
+    }
+    &[data-missing] {
+      opacity: 0.6;
+    }
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--color-focus-ring);
+    }
+  }
+  .row[data-compact] {
+    gap: var(--space-2);
+    padding-block: 3px;
+  }
+
+  /* 行のチェックはサムネイルの外 (明るい面) に置くので配色を変える */
+  .rowCheck {
+    border-color: var(--color-border-strong);
+    background: var(--color-bg-input);
+    color: var(--color-fg-on-accent);
+    width: 1.125rem;
+    height: 1.125rem;
+    border-width: 1.5px;
+
+    &:hover {
+      background: var(--color-bg-hover);
+    }
+    &[data-checked] {
+      border-color: var(--color-accent);
+    }
+    & svg {
+      width: 0.7rem;
+      height: 0.7rem;
+    }
+  }
+
+  /* リスト行は行の高さを抑えたいので 16:9 のまま */
+  .rowThumb {
+    --thumb-aspect: 16 / 9;
+    flex-shrink: 0;
+  }
+  .rowThumb[data-size="S"] {
+    width: 2.75rem;
+  }
+  .rowThumb[data-size="M"] {
+    width: 4.75rem;
+  }
+  .rowThumb[data-size="L"] {
+    width: 6.75rem;
+  }
+  .rowThumb[data-size="XL"] {
+    width: 9rem;
+  }
+
+  .rowBody {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .sub {
+    overflow: hidden;
+    color: var(--color-fg-subtle);
+    font-size: 0.6875rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .duration {
+    flex-shrink: 0;
+    width: 3.25rem;
+    color: var(--color-fg-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .rowActions {
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--space-1);
+  }
+
+  /* 行内のバッジ (サムネイル外に置くピル) */
+  .softPill {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 3px;
+    height: 1.25rem;
+    padding-inline: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--color-bg-active);
+    color: var(--color-fg-muted);
+    font-size: 0.6875rem;
+    font-weight: var(--weight-semibold);
+
+    & svg {
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+  }
+  .softPill[data-tone="accent"] {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-fg);
+  }
+  .softPill[data-tone="danger"] {
+    background: oklch(63.7% 0.237 25.331 / 0.14);
+    color: var(--color-danger-fg);
+  }
+
+  /* ---- 横並びの小さなカード (ホーム・Inbox) ---- */
+  .tile {
+    position: relative;
+    flex-shrink: 0;
+    width: 9rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    & .thumb {
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow var(--duration-fast) ease;
+    }
+    &:hover .thumb {
+      box-shadow: var(--shadow-md);
+    }
+    &[data-selected] .thumb {
+      box-shadow: 0 0 0 2px var(--color-accent);
+    }
+  }
+  .tileTitle {
+    margin: var(--space-1-5) 0 0;
+    padding-inline: 2px;
+    overflow: hidden;
+    color: var(--color-fg);
+    font-size: 0.75rem;
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .playButton[data-size="sm"] {
+    width: 2rem;
+    height: 2rem;
+    margin: -1rem 0 0 -1rem;
+
+    & svg {
+      width: 0.85rem;
+      height: 0.85rem;
+    }
+  }
+}

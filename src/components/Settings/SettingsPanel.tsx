@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
@@ -9,8 +9,12 @@ import {
   type AiModelType, KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
 } from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { toast } from "../../store/useToastStore";
 import { LANGUAGE_LABELS, type Language } from "../../i18n";
 import { CategoryMigrationModal } from "../Library/CategoryMigrationModal";
+import { FolderPlus, Keyboard, Moon, RotateCw, Sun, SunMoon, X } from "lucide-react";
+import { Button, ConfirmDialog, Dialog, Input, RadioGroup, RadioGroupItem, SegmentedControl, Switch, useDialogClose } from "../ui";
+import styles from "./SettingsPanel.module.css";
 
 interface Props {
   onClose: () => void;
@@ -24,6 +28,40 @@ function formatKey(key: string): string {
   if (key === 'ArrowDown') return '↓';
   if (key === 'Escape') return 'Esc';
   return key;
+}
+
+/** 見出し付きのまとまり */
+function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return (
+    <section className={styles.section}>
+      <h3 className={styles.sectionTitle}>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** 左に名前と説明、右に操作 (スイッチなど) を置く行 */
+function SettingRow({ title, description, children }: { title: ReactNode; description?: ReactNode; children: ReactNode }) {
+  return (
+    <div className={styles.settingRow}>
+      <div className={styles.settingText}>
+        <p className={styles.settingTitle}>{title}</p>
+        {description && <p className={styles.help}>{description}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** 名前 + 入力欄 (+ 補足) */
+function Field({ label, htmlFor, help, children }: { label: ReactNode; htmlFor?: string; help?: ReactNode; children: ReactNode }) {
+  return (
+    <div className={styles.field}>
+      <label className={styles.fieldLabel} htmlFor={htmlFor}>{label}</label>
+      {children}
+      {help && <p className={styles.help}>{help}</p>}
+    </div>
+  );
 }
 
 const KEY_ACTION_ORDER: KeyAction[] = [
@@ -40,6 +78,8 @@ export function SettingsPanel({ onClose }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
+  // キー割り当ての入力待ちの間は Esc などで設定画面を閉じない (Esc 自体も割り当てられるように)
+  const dialog = useDialogClose(onClose, { locked: capturingAction !== null });
 
   // カテゴリモード変更
   const [showMigrationModal, setShowMigrationModal] = useState(false);
@@ -125,7 +165,7 @@ export function SettingsPanel({ onClose }: Props) {
       await invoke('download_ai_model', { modelType: aiModelType });
       setAiModelDownloaded(true);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
       setAiModelDownloading(false);
     }
   };
@@ -137,7 +177,7 @@ export function SettingsPanel({ onClose }: Props) {
       await invoke('uninstall_ai_model', { modelType: aiModelType });
       setAiModelDownloaded(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setAiModelUninstalling(false);
     }
@@ -150,7 +190,7 @@ export function SettingsPanel({ onClose }: Props) {
       setWsPort(actualPort);
       setWsRunning(true);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setWsLoading(false);
     }
@@ -162,7 +202,7 @@ export function SettingsPanel({ onClose }: Props) {
       await invoke('stop_web_server');
       setWsRunning(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setWsLoading(false);
     }
@@ -194,7 +234,7 @@ export function SettingsPanel({ onClose }: Props) {
       const detected = await invoke<string>("detect_ytdlp_path");
       setLocal((prev) => ({ ...prev, ytdlpPath: detected }));
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -240,717 +280,433 @@ export function SettingsPanel({ onClose }: Props) {
     try {
       await saveSettings(local);
       await saveKeybindings(local.keybindings);
-      onClose();
+      dialog.close();
     } finally {
       setIsSaving(false);
     }
   };
 
+  const setPath = (key: 'mpvPath' | 'ffmpegPath' | 'ffprobePath' | 'ytdlpPath') =>
+    (e: React.ChangeEvent<HTMLInputElement>) => setLocal((prev) => ({ ...prev, [key]: e.target.value }));
+
   return (
     <>
-    {showMigrationModal && (
-      <CategoryMigrationModal
-        onDone={handleMigrationDone}
-        onCancel={() => setShowMigrationModal(false)}
+      {showMigrationModal && (
+        <CategoryMigrationModal
+          onDone={handleMigrationDone}
+          onCancel={() => setShowMigrationModal(false)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmUninstall}
+        onOpenChange={setConfirmUninstall}
+        title={t('settings.aiModelUninstallConfirmTitle')}
+        description={t('settings.aiModelUninstallConfirmDesc')}
+        confirmLabel={t('settings.aiModelUninstallConfirm')}
+        cancelLabel={t('confirm.cancel')}
+        onConfirm={handleUninstallModel}
+        danger
       />
-    )}
 
-    {confirmUninstall && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" onClick={() => setConfirmUninstall(false)}>
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-80 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            {t('settings.aiModelUninstallConfirmTitle')}
-          </h3>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-            {t('settings.aiModelUninstallConfirmDesc')}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="flex-1 px-3 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded"
-              onClick={handleUninstallModel}
-            >
-              {t('settings.aiModelUninstallConfirm')}
-            </button>
-            <button
-              type="button"
-              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-              onClick={() => setConfirmUninstall(false)}
-            >
+      <ConfirmDialog
+        open={showVirtualConfirm}
+        onOpenChange={setShowVirtualConfirm}
+        title={t('categoryModeChange.toVirtualTitle')}
+        description={t('categoryModeChange.toVirtualDesc')}
+        confirmLabel={t('categoryModeChange.toVirtualConfirm')}
+        cancelLabel={t('categoryModeChange.cancel')}
+        onConfirm={handleVirtualConfirm}
+      />
+
+      <Dialog
+        {...dialog.props}
+        size="md"
+        title={t('settings.title')}
+        closeLabel={t('confirm.close')}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => dialog.close()}>
               {t('confirm.cancel')}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {showVirtualConfirm && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" onClick={() => setShowVirtualConfirm(false)}>
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-80 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            {t('categoryModeChange.toVirtualTitle')}
-          </h3>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-            {t('categoryModeChange.toVirtualDesc')}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
-              onClick={handleVirtualConfirm}
-            >
-              {t('categoryModeChange.toVirtualConfirm')}
-            </button>
-            <button
-              type="button"
-              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-              onClick={() => setShowVirtualConfirm(false)}
-            >
-              {t('categoryModeChange.cancel')}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('settings.title')}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* 本体 - スクロール可能 */}
-        <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
+            </Button>
+            <Button variant="primary" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? t('smartPlaylist.saving') : t('smartPlaylist.save')}
+            </Button>
+          </>
+        }
+      >
+        <div className={styles.root}>
           {/* 外観 */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionAppearance')}
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              {t('settings.theme')}
-            </label>
-            <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
-              {([['light', t('settings.themeLight')], ['dark', t('settings.themeDark')], ['auto', t('settings.themeAuto')]] as [Theme, string][]).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`px-4 py-1 rounded-md text-sm font-medium transition-all ${
-                    local.theme === value
-                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                  onClick={() => setLocal((prev) => ({ ...prev, theme: value }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 言語 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              {t('settings.language')}
-            </label>
-            <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
-              {(Object.entries(LANGUAGE_LABELS) as [Language, string][]).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`px-4 py-1 rounded-md text-sm font-medium transition-all ${
-                    local.language === value
-                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                  onClick={() => setLocal((prev) => ({ ...prev, language: value }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+          <Section title={t('settings.sectionAppearance')}>
+            <Field label={t('settings.theme')}>
+              <SegmentedControl<Theme>
+                size="md"
+                aria-label={t('settings.theme')}
+                value={local.theme}
+                onValueChange={(v) => setLocal((prev) => ({ ...prev, theme: v }))}
+                options={[
+                  { value: 'light', label: <><Sun aria-hidden />{t('settings.themeLight')}</> },
+                  { value: 'dark', label: <><Moon aria-hidden />{t('settings.themeDark')}</> },
+                  { value: 'auto', label: <><SunMoon aria-hidden />{t('settings.themeAuto')}</> },
+                ]}
+              />
+            </Field>
+            <Field label={t('settings.language')}>
+              <SegmentedControl<Language>
+                size="md"
+                aria-label={t('settings.language')}
+                value={local.language}
+                onValueChange={(v) => setLocal((prev) => ({ ...prev, language: v }))}
+                options={(Object.entries(LANGUAGE_LABELS) as [Language, string][]).map(([value, label]) => ({ value, label }))}
+              />
+            </Field>
+          </Section>
 
           {/* 再生 */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionPlayback')}
-          </p>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.autoPlayNext')}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                {t('settings.autoPlayNextDesc')}
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={local.autoPlayNext}
-              onClick={() => setLocal((prev) => ({ ...prev, autoPlayNext: !prev.autoPlayNext }))}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                local.autoPlayNext ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${
-                  local.autoPlayNext ? 'translate-x-5' : 'translate-x-0'
-                }`}
+          <Section title={t('settings.sectionPlayback')}>
+            <SettingRow title={t('settings.autoPlayNext')} description={t('settings.autoPlayNextDesc')}>
+              <Switch
+                checked={local.autoPlayNext}
+                onCheckedChange={(v) => setLocal((prev) => ({ ...prev, autoPlayNext: v }))}
+                aria-label={t('settings.autoPlayNext')}
               />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.hoverPreview')}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                {t('settings.hoverPreviewDesc')}
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={local.hoverPreviewEnabled}
-              onClick={() => setLocal((prev) => ({ ...prev, hoverPreviewEnabled: !prev.hoverPreviewEnabled }))}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                local.hoverPreviewEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${
-                  local.hoverPreviewEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
+            </SettingRow>
+            <SettingRow title={t('settings.hoverPreview')} description={t('settings.hoverPreviewDesc')}>
+              <Switch
+                checked={local.hoverPreviewEnabled}
+                onCheckedChange={(v) => setLocal((prev) => ({ ...prev, hoverPreviewEnabled: v }))}
+                aria-label={t('settings.hoverPreview')}
               />
-            </button>
-          </div>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+            </SettingRow>
+          </Section>
 
           {/* カテゴリモード */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionCategoryMode')}
-          </p>
-
-          <div className="space-y-2">
-            {(['virtual', 'sync'] as CategoryMode[]).map((mode) => (
-              <label
-                key={mode}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                  categoryMode === mode
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="category-mode"
-                  checked={categoryMode === mode}
-                  onChange={() => handleCategoryModeSelect(mode)}
-                  className="mt-0.5 accent-blue-600"
-                />
-                <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                    {t(`settings.categoryMode${mode.charAt(0).toUpperCase() + mode.slice(1)}`)}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {t(`settings.categoryMode${mode.charAt(0).toUpperCase() + mode.slice(1)}Desc`)}
-                  </p>
-                </div>
-              </label>
-            ))}
-          </div>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+          <Section title={t('settings.sectionCategoryMode')}>
+            <RadioGroup
+              className={styles.choiceList}
+              aria-label={t('settings.sectionCategoryMode')}
+              value={categoryMode}
+              onValueChange={(v) => handleCategoryModeSelect(v as CategoryMode)}
+            >
+              {(['virtual', 'sync'] as CategoryMode[]).map((mode) => {
+                const key = `settings.categoryMode${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+                return (
+                  <label key={mode} className={styles.choice} data-selected={categoryMode === mode || undefined}>
+                    <RadioGroupItem value={mode} className={styles.choiceRadio} />
+                    <div className={styles.settingText}>
+                      <p className={styles.settingTitle}>{t(key)}</p>
+                      <p className={styles.help}>{t(`${key}Desc`)}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </RadioGroup>
+          </Section>
 
           {/* AI 機能 */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionAi')}
-          </p>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.aiEnabled')}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                {t('settings.aiEnabledDesc')}
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={local.aiEnabled}
-              onClick={() => setLocal((prev) => ({ ...prev, aiEnabled: !prev.aiEnabled }))}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                local.aiEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${
-                  local.aiEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
+          <Section title={t('settings.sectionAi')}>
+            <SettingRow title={t('settings.aiEnabled')} description={t('settings.aiEnabledDesc')}>
+              <Switch
+                checked={local.aiEnabled}
+                onCheckedChange={(v) => setLocal((prev) => ({ ...prev, aiEnabled: v }))}
+                aria-label={t('settings.aiEnabled')}
               />
-            </button>
-          </div>
+            </SettingRow>
+            <p className={styles.warning}>{t('settings.aiNsfwWarning')}</p>
 
-          <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
-            {t('settings.aiNsfwWarning')}
-          </p>
-
-          {/* AIモデル選択・インストール/アンインストール */}
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.aiModelType')}</p>
-            {([
-              ['wd-tagger', t('settings.aiModelWdTagger'), t('settings.aiModelWdTaggerDesc')],
-              ['joytag',    t('settings.aiModelJoyTag'),   t('settings.aiModelJoyTagDesc')],
-            ] as [AiModelType, string, string][]).map(([value, label, desc]) => (
-              <label
-                key={value}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                  aiModelType === value
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
+            <Field label={t('settings.aiModelType')}>
+              <RadioGroup
+                className={styles.choiceList}
+                aria-label={t('settings.aiModelType')}
+                value={aiModelType}
+                onValueChange={(v) => setAiModelType(v as AiModelType)}
               >
-                <input
-                  type="radio"
-                  name="ai-model-type"
-                  checked={aiModelType === value}
-                  onChange={() => setAiModelType(value)}
-                  className="mt-0.5 accent-blue-600"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{desc}</p>
-                  {aiModelType === value && aiModelDownloading && (
-                    <div className="mt-2">
-                      <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 transition-all duration-300"
-                          style={{ width: `${Math.round(aiModelProgress * 100)}%` }}
-                        />
+                {([
+                  ['wd-tagger', t('settings.aiModelWdTagger'), t('settings.aiModelWdTaggerDesc')],
+                  ['joytag', t('settings.aiModelJoyTag'), t('settings.aiModelJoyTagDesc')],
+                ] as [AiModelType, string, string][]).map(([value, label, desc]) => {
+                  const selected = aiModelType === value;
+                  return (
+                    <label key={value} className={styles.choice} data-selected={selected || undefined}>
+                      <RadioGroupItem value={value} className={styles.choiceRadio} />
+                      <div className={styles.settingText}>
+                        <p className={styles.settingTitle}>{label}</p>
+                        <p className={styles.help}>{desc}</p>
+                        {selected && aiModelDownloading && (
+                          <div className={styles.download}>
+                            <div className={styles.meter}>
+                              <div className={styles.meterBar} style={{ width: `${Math.round(aiModelProgress * 100)}%` }} />
+                            </div>
+                            <p className={styles.help}>
+                              {t('settings.aiModelDownloading')} {Math.round(aiModelProgress * 100)}%
+                            </p>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {t('settings.aiModelDownloading')} {Math.round(aiModelProgress * 100)}%
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {aiModelType === value && (
-                  <div className="shrink-0 flex flex-col items-end gap-1.5">
-                    {aiModelDownloaded && !aiModelDownloading ? (
-                      <>
-                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">
-                          {t('settings.aiModelInstalled')}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={aiModelUninstalling}
-                          onClick={(e) => { e.preventDefault(); setConfirmUninstall(true); }}
-                          className="text-xs px-2 py-0.5 text-red-500 hover:text-red-700 dark:hover:text-red-400 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition-colors"
-                        >
-                          {aiModelUninstalling ? t('settings.aiModelUninstalling') : t('settings.aiModelUninstall')}
-                        </button>
-                      </>
-                    ) : !aiModelDownloading ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); handleInstallModel(); }}
-                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                      >
-                        {t('settings.aiModelInstall')}
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-              </label>
-            ))}
-          </div>
+                      {selected && (
+                        <div className={styles.choiceActions}>
+                          {aiModelDownloaded && !aiModelDownloading ? (
+                            <>
+                              <span className={styles.installed}>{t('settings.aiModelInstalled')}</span>
+                              <Button
+                                variant="danger-soft"
+                                size="xs"
+                                disabled={aiModelUninstalling}
+                                onClick={(e) => { e.preventDefault(); setConfirmUninstall(true); }}
+                              >
+                                {aiModelUninstalling ? t('settings.aiModelUninstalling') : t('settings.aiModelUninstall')}
+                              </Button>
+                            </>
+                          ) : !aiModelDownloading ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={(e) => { e.preventDefault(); handleInstallModel(); }}
+                            >
+                              {t('settings.aiModelInstall')}
+                            </Button>
+                          ) : null}
+                        </div>
+                      )}
+                    </label>
+                  );
+                })}
+              </RadioGroup>
+            </Field>
+          </Section>
 
-          <hr className="border-gray-200 dark:border-gray-700" />
-
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionExecutable')}
-          </p>
-
-          {/* mpv パス */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {t('settings.mpvPath')}
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={local.mpvPath}
-                onChange={(e) => setLocal((prev) => ({ ...prev, mpvPath: e.target.value }))}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-                placeholder={t('settings.mpvPathPlaceholder')}
+          {/* 実行ファイル */}
+          <Section title={t('settings.sectionExecutable')}>
+            <Field label={t('settings.mpvPath')} htmlFor="settings-mpv">
+              <div className={styles.inputRow}>
+                <Input
+                  id="settings-mpv"
+                  size="md"
+                  className={styles.grow}
+                  inputClassName={styles.mono}
+                  value={local.mpvPath}
+                  onChange={setPath('mpvPath')}
+                  placeholder={t('settings.mpvPathPlaceholder')}
+                />
+                <Button variant="secondary" size="md" onClick={handlePickMpv}>
+                  {t('settings.browse')}
+                </Button>
+              </div>
+            </Field>
+            <Field label={t('settings.ffmpegPath')} htmlFor="settings-ffmpeg" help={t('settings.ffmpegHelp')}>
+              <Input
+                id="settings-ffmpeg"
+                size="md"
+                className={styles.fullWidth}
+                inputClassName={styles.mono}
+                value={local.ffmpegPath}
+                onChange={setPath('ffmpegPath')}
+                placeholder={t('settings.ffmpegPlaceholder')}
               />
-              <button
-                type="button"
-                onClick={handlePickMpv}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
-              >
-                {t('settings.browse')}
-              </button>
-            </div>
-          </div>
-
-          {/* ffmpeg パス */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {t('settings.ffmpegPath')}
-            </label>
-            <input
-              type="text"
-              value={local.ffmpegPath}
-              onChange={(e) => setLocal((prev) => ({ ...prev, ffmpegPath: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-              placeholder={t('settings.ffmpegPlaceholder')}
-            />
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              {t('settings.ffmpegHelp')}
-            </p>
-          </div>
-
-          {/* ffprobe パス */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {t('settings.ffprobePath')}
-            </label>
-            <input
-              type="text"
-              value={local.ffprobePath}
-              onChange={(e) => setLocal((prev) => ({ ...prev, ffprobePath: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-              placeholder={t('settings.ffprobePlaceholder')}
-            />
-          </div>
-
-          {/* yt-dlp パス */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {t('settings.ytdlpPath')}
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={local.ytdlpPath}
-                onChange={(e) => setLocal((prev) => ({ ...prev, ytdlpPath: e.target.value }))}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-                placeholder={t('settings.ytdlpPlaceholder')}
+            </Field>
+            <Field label={t('settings.ffprobePath')} htmlFor="settings-ffprobe">
+              <Input
+                id="settings-ffprobe"
+                size="md"
+                className={styles.fullWidth}
+                inputClassName={styles.mono}
+                value={local.ffprobePath}
+                onChange={setPath('ffprobePath')}
+                placeholder={t('settings.ffprobePlaceholder')}
               />
-              <button
-                type="button"
-                onClick={handlePickYtdlp}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
-              >
-                {t('settings.browse')}
-              </button>
-              <button
-                type="button"
-                onClick={handleDetectYtdlp}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
-              >
-                {t('settings.autoDetect')}
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              {t('settings.ytdlpHelp')}
-            </p>
-          </div>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+            </Field>
+            <Field label={t('settings.ytdlpPath')} htmlFor="settings-ytdlp" help={t('settings.ytdlpHelp')}>
+              <div className={styles.inputRow}>
+                <Input
+                  id="settings-ytdlp"
+                  size="md"
+                  className={styles.grow}
+                  inputClassName={styles.mono}
+                  value={local.ytdlpPath}
+                  onChange={setPath('ytdlpPath')}
+                  placeholder={t('settings.ytdlpPlaceholder')}
+                />
+                <Button variant="secondary" size="md" onClick={handlePickYtdlp}>
+                  {t('settings.browse')}
+                </Button>
+                <Button variant="secondary" size="md" onClick={handleDetectYtdlp}>
+                  {t('settings.autoDetect')}
+                </Button>
+              </div>
+            </Field>
+          </Section>
 
           {/* ダウンロード / スクリーンショット */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionDownload')}
-          </p>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {t('settings.downloadDir')}
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                readOnly
-                value={local.downloadDir}
-                placeholder={t('settings.downloadDirPlaceholder')}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
-              />
-              <button
-                type="button"
-                onClick={handlePickDownloadDir}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
-              >
-                {t('settings.browse')}
-              </button>
-              {local.downloadDir && (
-                <button
-                  type="button"
-                  onClick={() => setLocal((prev) => ({ ...prev, downloadDir: "" }))}
-                  className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
-                  title={t('settings.reset')}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {t('settings.screenshotDir')}
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                readOnly
-                value={local.screenshotDir}
-                placeholder={t('settings.screenshotDirPlaceholder')}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
-              />
-              <button
-                type="button"
-                onClick={handlePickScreenshotDir}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
-              >
-                {t('settings.browse')}
-              </button>
-              {local.screenshotDir && (
-                <button
-                  type="button"
-                  onClick={() => setLocal((prev) => ({ ...prev, screenshotDir: "" }))}
-                  className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
-                  title={t('settings.reset')}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+          <Section title={t('settings.sectionDownload')}>
+            {([
+              ['downloadDir', t('settings.downloadDir'), t('settings.downloadDirPlaceholder'), handlePickDownloadDir],
+              ['screenshotDir', t('settings.screenshotDir'), t('settings.screenshotDirPlaceholder'), handlePickScreenshotDir],
+            ] as const).map(([key, label, placeholder, onPick]) => (
+              <Field key={key} label={label}>
+                <div className={styles.inputRow}>
+                  <Input
+                    size="md"
+                    className={styles.grow}
+                    inputClassName={styles.mono}
+                    readOnly
+                    value={local[key]}
+                    placeholder={placeholder}
+                    aria-label={label}
+                  />
+                  <Button variant="secondary" size="md" onClick={onPick}>
+                    {t('settings.browse')}
+                  </Button>
+                  {local[key] && (
+                    <Button
+                      variant="danger-soft"
+                      size="icon-sm"
+                      aria-label={t('settings.reset')}
+                      title={t('settings.reset')}
+                      onClick={() => setLocal((prev) => ({ ...prev, [key]: "" }))}
+                    >
+                      <X aria-hidden />
+                    </Button>
+                  )}
+                </div>
+              </Field>
+            ))}
+          </Section>
 
           {/* スキャンパス */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionScanPaths')}
-          </p>
-
-          <div className="space-y-1">
+          <Section title={t('settings.sectionScanPaths')}>
             {watchDirs.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-500 py-1">
-                {t('settings.noScanPaths')}
-              </p>
+              <p className={styles.help}>{t('settings.noScanPaths')}</p>
             ) : (
-              watchDirs.map((dir) => (
-                <div
-                  key={dir}
-                  className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded px-2 py-1.5"
-                >
-                  <span className="flex-1 text-xs font-mono text-gray-700 dark:text-gray-300 truncate" title={dir}>
-                    {dir}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={removingPath === dir}
-                    onClick={() => handleRemoveScanPath(dir)}
-                    className="shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-xs px-1 disabled:opacity-40"
-                    title={t('settings.removePath')}
-                  >
-                    {removingPath === dir ? "…" : "✕"}
-                  </button>
-                </div>
-              ))
+              <ul className={styles.pathList}>
+                {watchDirs.map((dir) => (
+                  <li key={dir} className={styles.pathItem}>
+                    <span className={styles.pathText} title={dir}>{dir}</span>
+                    <Button
+                      variant="danger-soft"
+                      size="icon-sm"
+                      disabled={removingPath === dir}
+                      onClick={() => handleRemoveScanPath(dir)}
+                      title={t('settings.removePath')}
+                      aria-label={t('settings.removePath')}
+                    >
+                      {removingPath === dir ? "…" : <X aria-hidden />}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
-
-          <button
-            type="button"
-            disabled={isScanning || isThumbnailGenerating}
-            onClick={handleAddScanPath}
-            className="w-full py-1.5 text-sm border border-dashed border-gray-300 dark:border-gray-600 rounded text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 disabled:opacity-40 transition-colors"
-          >
-            {isScanning || isThumbnailGenerating ? t('app.scanning') : t('settings.addFolder')}
-          </button>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+            <Button
+              variant="secondary"
+              size="md"
+              fullWidth
+              disabled={isScanning || isThumbnailGenerating}
+              onClick={handleAddScanPath}
+            >
+              <FolderPlus aria-hidden />
+              {isScanning || isThumbnailGenerating ? t('app.scanning') : t('settings.addFolder')}
+            </Button>
+          </Section>
 
           {/* ウェブサーバー */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionWebServer')}
-          </p>
-
-          <div className="space-y-3">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {t('settings.webServerDesc')}
-            </p>
-
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-700 dark:text-gray-300 shrink-0">{t('settings.port')}</label>
-              <input
+          <Section title={t('settings.sectionWebServer')}>
+            <p className={styles.help}>{t('settings.webServerDesc')}</p>
+            <div className={styles.inputRow}>
+              <label className={styles.inlineLabel} htmlFor="settings-port">{t('settings.port')}</label>
+              <Input
+                id="settings-port"
+                size="sm"
+                className={styles.portInput}
                 type="number"
                 min={1024}
                 max={65535}
                 value={wsPort}
                 disabled={wsRunning}
                 onChange={(e) => setWsPort(Number(e.target.value))}
-                className="w-24 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
               />
               {wsRunning ? (
-                <button
-                  type="button"
-                  disabled={wsLoading}
-                  onClick={handleStopWs}
-                  className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
-                >
+                <Button variant="danger" size="sm" disabled={wsLoading} onClick={handleStopWs}>
                   {wsLoading ? t('settings.serverStopping') : t('settings.serverStop')}
-                </button>
+                </Button>
               ) : (
-                <button
-                  type="button"
-                  disabled={wsLoading}
-                  onClick={handleStartWs}
-                  className="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
-                >
+                <Button variant="primary" size="sm" disabled={wsLoading} onClick={handleStartWs}>
                   {wsLoading ? t('settings.serverStarting') : t('settings.serverStart')}
-                </button>
+                </Button>
               )}
             </div>
-
             {wsRunning && (
-              <div className="rounded bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 px-3 py-2 text-xs space-y-1">
-                <p className="font-medium text-green-700 dark:text-green-400">{t('settings.serverRunning')}</p>
-                <p className="font-mono text-green-600 dark:text-green-500">
-                  http://{localIp ?? '???'}:{wsPort}
-                </p>
-                <p className="text-green-600 dark:text-green-600">
-                  /api/videos &nbsp;|&nbsp; /api/stream/:id &nbsp;|&nbsp; /api/thumbnails/:filename
-                </p>
+              <div className={styles.serverInfo}>
+                <p className={styles.settingTitle}>{t('settings.serverRunning')}</p>
+                <p className={styles.mono}>http://{localIp ?? '???'}:{wsPort}</p>
+                <p className={styles.mono}>/api/videos · /api/stream/:id · /api/thumbnails/:filename</p>
               </div>
             )}
-          </div>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+          </Section>
 
           {/* キーボードショートカット */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('settings.sectionKeybindings')}
-          </p>
-
-          {capturingAction && (
-            <div className="px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-300 dark:border-blue-700 rounded text-xs text-blue-700 dark:text-blue-300 text-center">
-              {t('settings.keybindingCapture', { action: t(KEY_ACTION_KEYS[capturingAction]) })}
-              <button
-                type="button"
-                className="ml-2 text-blue-500 hover:text-blue-700 dark:hover:text-blue-200 underline"
-                onClick={() => setCapturingAction(null)}
-              >
-                {t('settings.keybindingCancel')}
-              </button>
-            </div>
-          )}
-
-          <div className="space-y-1">
-            {KEY_ACTION_ORDER.map((action) => (
-              <div key={action} className="flex items-center gap-2 py-0.5">
-                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
-                  {t(KEY_ACTION_KEYS[action])}
-                </span>
-                <kbd className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-gray-700 dark:text-gray-300 min-w-14 text-center">
-                  {formatKey(local.keybindings[action])}
-                </kbd>
-                <button
-                  type="button"
-                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                    capturingAction === action
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:text-blue-400'
-                  }`}
-                  onClick={() => setCapturingAction(capturingAction === action ? null : action)}
-                >
-                  変更
-                </button>
-                {local.keybindings[action] !== DEFAULT_KEYBINDINGS[action] && (
-                  <button
-                    type="button"
-                    className="text-xs text-gray-400 hover:text-orange-500 dark:hover:text-orange-400"
-                    title="デフォルトに戻す"
-                    onClick={() => setLocal((prev) => ({
-                      ...prev,
-                      keybindings: { ...prev.keybindings, [action]: DEFAULT_KEYBINDINGS[action] },
-                    }))}
-                  >
-                    ↺
-                  </button>
-                )}
+          <Section title={t('settings.sectionKeybindings')}>
+            {capturingAction && (
+              <div className={styles.capture}>
+                {t('settings.keybindingCapture', { action: t(KEY_ACTION_KEYS[capturingAction]) })}
+                <Button variant="soft" size="sm" onClick={() => setCapturingAction(null)}>
+                  {t('settings.keybindingCancel')}
+                </Button>
               </div>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            className="text-xs text-gray-400 dark:text-gray-500 hover:text-orange-500 dark:hover:text-orange-400"
-            onClick={() => setLocal((prev) => ({ ...prev, keybindings: DEFAULT_KEYBINDINGS }))}
-          >
-            {t('settings.keybindingReset')}
-          </button>
-
-          <hr className="border-gray-200 dark:border-gray-700" />
+            )}
+            <ul className={styles.keyList}>
+              {KEY_ACTION_ORDER.map((action) => (
+                <li key={action} className={styles.keyRow}>
+                  <span className={styles.keyName}>{t(KEY_ACTION_KEYS[action])}</span>
+                  <kbd className={styles.kbd}>{formatKey(local.keybindings[action])}</kbd>
+                  <Button
+                    variant={capturingAction === action ? 'primary' : 'secondary'}
+                    size="xs"
+                    aria-pressed={capturingAction === action}
+                    onClick={() => setCapturingAction(capturingAction === action ? null : action)}
+                  >
+                    <Keyboard aria-hidden />
+                    {t('settings.keybindingChange')}
+                  </Button>
+                  <span className={styles.keyReset}>
+                    {local.keybindings[action] !== DEFAULT_KEYBINDINGS[action] && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t('settings.keybindingResetOne')}
+                        title={t('settings.keybindingResetOne')}
+                        onClick={() => setLocal((prev) => ({
+                          ...prev,
+                          keybindings: { ...prev.keybindings, [action]: DEFAULT_KEYBINDINGS[action] },
+                        }))}
+                      >
+                        <RotateCw aria-hidden />
+                      </Button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => setLocal((prev) => ({ ...prev, keybindings: DEFAULT_KEYBINDINGS }))}
+              >
+                {t('settings.keybindingReset')}
+              </Button>
+            </div>
+          </Section>
 
           {/* このアプリについて */}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {t('about.sectionTitle')}
-          </p>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Chuck Snap Stack</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t('about.version')} {appVersion}
-                </p>
-              </div>
+          <Section title={t('about.sectionTitle')}>
+            <div>
+              <p className={styles.settingTitle}>Chuck Snap Stack</p>
+              <p className={styles.help}>{t('about.version')} {appVersion}</p>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              {t('about.description')}
-            </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              {t('about.license')}
-            </p>
-          </div>
+            <p className={styles.help}>{t('about.description')}</p>
+            <p className={styles.help}>{t('about.license')}</p>
+          </Section>
         </div>
-
-        {/* フッター */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200 dark:border-gray-700 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-          >
-            {t('confirm.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded disabled:opacity-50"
-          >
-            {isSaving ? t('smartPlaylist.saving') : t('smartPlaylist.save')}
-          </button>
-        </div>
-      </div>
-    </div>
+      </Dialog>
     </>
   );
 }

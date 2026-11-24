@@ -87,6 +87,8 @@ interface LibraryActions {
   setCategoryFilter: (id: number | null) => Promise<void>;
   toggleTagFilter: (tagId: number) => Promise<void>;
   clearTagFilters: () => Promise<void>;
+  /** サイドバーで選べる絞り込み (カテゴリ・フォルダ・タグ) をまとめて解除する */
+  clearSidebarFilters: () => Promise<void>;
   setTagMode: (mode: TagFilterMode) => Promise<void>;
   setMinRating: (rating: number) => Promise<void>;
   setRatingMode: (mode: RatingMode) => Promise<void>;
@@ -326,6 +328,11 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   clearTagFilters: async () => {
     set({ filterTagIds: [], currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  clearSidebarFilters: async () => {
+    set({ filterCategoryId: null, filterWatchDir: null, filterTagIds: [], currentPage: 1 });
     await get().fetchVideos();
   },
 

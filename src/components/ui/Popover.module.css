@@ -1,0 +1,18 @@
+@layer ui {
+  .content {
+    z-index: var(--z-popover);
+    max-height: var(--radix-popover-content-available-height);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-raised);
+    color: var(--color-fg);
+    box-shadow: var(--shadow-xl);
+    overflow-y: auto;
+    transform-origin: var(--radix-popover-content-transform-origin);
+
+    &:focus {
+      outline: none;
+    }
+  }
+}

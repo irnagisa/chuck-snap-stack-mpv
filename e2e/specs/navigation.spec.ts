@@ -5,8 +5,8 @@ describe('Chuck Snap Stack - Navigation', () => {
   it('ライブラリビューに遷移するとフィルターバーが表示される', async () => {
     const libBtn = await $('button=ライブラリ')
     await libBtn.click()
-    // LibraryFilterBar の評価フィルターセレクト (title="評価フィルタ") はライブラリビューにのみ存在する
-    const ratingFilter = await $('select[title="評価フィルタ"]')
+    // LibraryFilterBar の「絞り込み」ボタンはライブラリビューにのみ存在する
+    const ratingFilter = await $('button[title="絞り込み"]')
     await expect(ratingFilter).toExist()
   })
 
@@ -17,7 +17,7 @@ describe('Chuck Snap Stack - Navigation', () => {
     const homeHeading = await $('h2=ライブラリ')
     await expect(homeHeading).toExist()
     // ライブラリのフィルターバーは表示されていない
-    const ratingFilter = await $('select[title="評価フィルタ"]')
+    const ratingFilter = await $('button[title="絞り込み"]')
     await expect(ratingFilter).not.toExist()
   })
 
@@ -33,7 +33,7 @@ describe('Chuck Snap Stack - Navigation', () => {
   it('ライブラリビューに戻ると Inbox ヘッダーが消える', async () => {
     const libBtn = await $('button=ライブラリ')
     await libBtn.click()
-    const ratingFilter = await $('select[title="評価フィルタ"]')
+    const ratingFilter = await $('button[title="絞り込み"]')
     await expect(ratingFilter).toExist()
     const inboxHeading = await $('h2=Inbox')
     await expect(inboxHeading).not.toExist()

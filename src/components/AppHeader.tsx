@@ -1,7 +1,26 @@
+import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { motion } from "motion/react";
+import {
+  ArrowLeftRight,
+  ChartColumn,
+  Copy,
+  Download,
+  FileQuestionMark,
+  FolderPlus,
+  House,
+  Inbox,
+  Layers,
+  Library,
+  LoaderCircle,
+  Search,
+  Settings,
+} from "lucide-react";
 import { useModalStore } from "../store/useModalStore";
 import { useLibraryStore } from "../store/useLibraryStore";
 import { useShallow } from "zustand/shallow";
+import { Button, Checkbox, Input, Tooltip, motionPresets } from "./ui";
+import styles from "./AppHeader.module.css";
 
 type MainView = "home" | "library" | "inbox";
 
@@ -17,6 +36,12 @@ interface Props {
   onUseDirAsCategoryChange: (v: boolean) => void;
 }
 
+const NAV_ITEMS: { view: MainView; label: string; icon: ReactNode }[] = [
+  { view: "home", label: "ホーム", icon: <House aria-hidden /> },
+  { view: "library", label: "ライブラリ", icon: <Library aria-hidden /> },
+  { view: "inbox", label: "Inbox", icon: <Inbox aria-hidden /> },
+];
+
 export function AppHeader({
   mainView,
   inboxCount,
@@ -29,6 +54,8 @@ export function AppHeader({
   onUseDirAsCategoryChange,
 }: Props) {
   const { t } = useTranslation();
+  const indicatorId = useId();
+  const checkboxId = useId();
   const { isDbReady, isScanning, isThumbnailGenerating } = useLibraryStore(
     useShallow((s) => ({
       isDbReady: s.isDbReady,
@@ -45,147 +72,103 @@ export function AppHeader({
     openMissingFiles,
   } = useModalStore();
 
+  const isBusy = isScanning || isThumbnailGenerating;
+
+  const tools: { label: string; icon: ReactNode; onClick: () => void; needsDb: boolean }[] = [
+    { label: t("app.statsTitle"), icon: <ChartColumn />, onClick: openStats, needsDb: true },
+    { label: t("app.exportTitle"), icon: <ArrowLeftRight />, onClick: openExport, needsDb: true },
+    { label: t("app.duplicatesTitle"), icon: <Copy />, onClick: openDuplicates, needsDb: true },
+    { label: t("app.missingTitle"), icon: <FileQuestionMark />, onClick: openMissingFiles, needsDb: true },
+    { label: t("app.settingsTitle"), icon: <Settings />, onClick: openSettings, needsDb: false },
+  ];
+
   return (
-    <div className="px-4 pt-4 pb-3 flex gap-2 items-center border-b border-gray-100 dark:border-gray-800">
-      <h1 className="text-lg font-bold mr-2 shrink-0">Chuck Snap Stack</h1>
+    <header className={styles.header}>
+      <div className={styles.brand}>
+        <span className={styles.logo} aria-hidden>
+          <Layers strokeWidth={2.25} />
+        </span>
+        <h1 className={styles.title}>Chuck Snap Stack</h1>
+      </div>
 
       {/* メインビュー切替 */}
-      <div className="flex gap-0.5 text-xs shrink-0 mr-1">
-        <button
-          type="button"
-          className={`px-2.5 py-1.5 rounded-l font-medium transition-colors ${
-            mainView === "home"
-              ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-          }`}
-          onClick={() => onMainViewChange("home")}
-        >
-          ホーム
-        </button>
-        <button
-          type="button"
-          className={`px-2.5 py-1.5 font-medium transition-colors ${
-            mainView === "library"
-              ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-          }`}
-          onClick={() => onMainViewChange("library")}
-        >
-          ライブラリ
-        </button>
-        <button
-          type="button"
-          className={`px-2.5 py-1.5 rounded-r font-medium transition-colors relative ${
-            mainView === "inbox"
-              ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-          }`}
-          onClick={() => onMainViewChange("inbox")}
-        >
-          Inbox
-          {inboxCount > 0 && (
-            <span className="ml-1 px-1.5 py-0 rounded-full bg-amber-500 text-white text-[10px] leading-4">
-              {inboxCount > 999 ? "999+" : inboxCount}
-            </span>
-          )}
-        </button>
+      <nav className={styles.nav} aria-label="メインビュー">
+        {NAV_ITEMS.map(({ view, label, icon }) => {
+          const active = mainView === view;
+          return (
+            <button
+              key={view}
+              type="button"
+              className={styles.navItem}
+              aria-current={active ? "page" : undefined}
+              onClick={() => onMainViewChange(view)}
+            >
+              {active && (
+                <motion.span
+                  layoutId={indicatorId}
+                  className={styles.navIndicator}
+                  transition={motionPresets.transitions.spring}
+                />
+              )}
+              <span className={styles.navLabel}>
+                {icon}
+                {label}
+                {view === "inbox" && inboxCount > 0 && (
+                  <span className={styles.badge}>{inboxCount > 999 ? "999+" : inboxCount}</span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <Input
+        size="md"
+        className={styles.search}
+        icon={<Search />}
+        value={searchInput}
+        onChange={(e) => onSearchChange(e.target.value)}
+        onClear={onSearchClear}
+        placeholder={t("app.searchPlaceholder")}
+        disabled={!isDbReady}
+      />
+
+      <div className={styles.actions}>
+        <Button variant="primary" disabled={!isDbReady || isBusy} onClick={onPickDir}>
+          {isBusy ? <LoaderCircle className="animate-spin" aria-hidden /> : <FolderPlus aria-hidden />}
+          {isBusy ? t("app.scanning") : t("app.addFolder")}
+        </Button>
+
+        <label className={styles.checkLabel} htmlFor={checkboxId} title={t("app.useDirAsCategory")}>
+          <Checkbox
+            id={checkboxId}
+            checked={useDirAsCategory}
+            onCheckedChange={(v) => onUseDirAsCategoryChange(v === true)}
+          />
+          <span className={styles.srOnlyNarrow}>{t("app.useDirAsCategory")}</span>
+        </label>
+
+        <Button variant="soft" disabled={!isDbReady} onClick={openDownload}>
+          <Download aria-hidden />
+          {t("app.downloadUrl")}
+        </Button>
       </div>
 
-      <button
-        type="button"
-        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 text-sm dark:bg-blue-500 dark:hover:bg-blue-600 shrink-0"
-        disabled={!isDbReady || isScanning || isThumbnailGenerating}
-        onClick={onPickDir}
-      >
-        {isScanning || isThumbnailGenerating
-          ? t("app.scanning")
-          : t("app.addFolder")}
-      </button>
-
-      <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={useDirAsCategory}
-          onChange={(e) => onUseDirAsCategoryChange(e.target.checked)}
-          className="accent-blue-600"
-        />
-        {t("app.useDirAsCategory")}
-      </label>
-
-      <button
-        type="button"
-        className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50 text-sm dark:bg-green-500 dark:hover:bg-green-600 shrink-0"
-        disabled={!isDbReady}
-        onClick={openDownload}
-      >
-        {t("app.downloadUrl")}
-      </button>
-
-      <div className="relative flex-1 min-w-0">
-        <input
-          className="w-full border border-gray-300 px-2 py-1.5 rounded text-sm bg-white text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 min-w-0 pr-7"
-          value={searchInput}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={t("app.searchPlaceholder")}
-          disabled={!isDbReady}
-        />
-        {searchInput && (
-          <button
-            type="button"
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 leading-none"
-            onClick={onSearchClear}
-            tabIndex={-1}
-            aria-label="クリア"
-          >
-            ✕
-          </button>
-        )}
+      <div className={styles.tools}>
+        {tools.map(({ label, icon, onClick, needsDb }) => (
+          <Tooltip key={label} content={label} side="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={label}
+              disabled={needsDb && !isDbReady}
+              onClick={onClick}
+            >
+              {icon}
+            </Button>
+          </Tooltip>
+        ))}
       </div>
-
-      <button
-        type="button"
-        title={t("app.statsTitle")}
-        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
-        disabled={!isDbReady}
-        onClick={openStats}
-      >
-        📊
-      </button>
-      <button
-        type="button"
-        title={t("app.exportTitle")}
-        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
-        disabled={!isDbReady}
-        onClick={openExport}
-      >
-        📤
-      </button>
-      <button
-        type="button"
-        title={t("app.duplicatesTitle")}
-        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
-        disabled={!isDbReady}
-        onClick={openDuplicates}
-      >
-        {t("app.duplicatesButton")}
-      </button>
-      <button
-        type="button"
-        title={t("app.missingTitle")}
-        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
-        disabled={!isDbReady}
-        onClick={openMissingFiles}
-      >
-        {t("app.missingButton")}
-      </button>
-      <button
-        type="button"
-        title={t("app.settingsTitle")}
-        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 shrink-0"
-        onClick={openSettings}
-      >
-        ⚙
-      </button>
-    </div>
+    </header>
   );
 }

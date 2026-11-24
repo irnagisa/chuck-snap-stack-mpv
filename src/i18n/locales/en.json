@@ -2,9 +2,9 @@
   "app": {
     "title": "Chuck Snap Stack",
     "scanning": "Scanning...",
-    "addFolder": "+ Add Folder",
+    "addFolder": "Add Folder",
     "useDirAsCategory": "Use folder name as category",
-    "downloadUrl": "↓ URL",
+    "downloadUrl": "URL",
     "searchPlaceholder": "Search files...",
     "statsTitle": "Stats Dashboard",
     "exportTitle": "Export / Import",
@@ -25,13 +25,14 @@
     "transcodeStarting": "Starting...",
     "transcodeCancel": "Cancel",
     "transcodeDismiss": "✕",
-    "shuffleAll": "⇄ All",
+    "shuffleAll": "All",
     "shuffleAllTitle": "Shuffle play all {{count}} results",
-    "saveSmartPlaylist": "💾 Save",
+    "saveSmartPlaylist": "Save",
     "saveSmartPlaylistTitle": "Save current filter as smart playlist",
     "dropImport": "Drop videos to import",
     "dropFormats": "Supports mp4 / mkv / webm / avi / mov and more",
     "confirmImport": "Found {{count}} files.\nAdd all?",
+    "confirmImportTitle": "Add this folder?",
     "confirmImportButton": "Add",
     "watchDirRemoved": "Folder not found",
     "watchDirRemovedAction": "Mark as Missing",
@@ -44,11 +45,15 @@
     "transcodeBatchPartial": "Transcode finished: {{failed}} of {{total}} failed"
   },
   "sidebar": {
-    "categoryTab": "Category",
-    "folderTab": "Folder",
-    "playlistTab": "Playlist"
+    "label": "Library navigation",
+    "searchPlaceholder": "Filter...",
+    "filtering": "Filtering by this section",
+    "moreActions": "Actions for {{name}}",
+    "allHint": "Clear all category, folder and tag filters",
+    "tagHint": "Click to add or remove from the filter. F2 to edit, Delete to remove"
   },
   "filters": {
+    "sortBy": "Sort by",
     "sortByCreatedAt": "Date added",
     "sortByDuration": "Duration",
     "sortByRating": "Rating",
@@ -83,7 +88,21 @@
     "av1Exclude": "Exclude AV1",
     "minDurationPlaceholder": "min secs",
     "maxDurationPlaceholder": "max secs",
-    "durationSuffix": "sec"
+    "durationSuffix": "sec",
+    "title": "Filters",
+    "reset": "Reset",
+    "rating": "Rating",
+    "audio": "Audio",
+    "watchedStatus": "Watched",
+    "mediaType": "Type",
+    "av1": "AV1",
+    "duration": "Length",
+    "all": "All",
+    "unrated": "Unrated",
+    "audioYesShort": "Yes",
+    "audioNoShort": "No",
+    "av1OnlyShort": "Converted",
+    "av1ExcludeShort": "Exclude"
   },
   "batch": {
     "selectedCount": "{{count}} selected",
@@ -98,8 +117,8 @@
     "moveDir": "Move to Folder"
   },
   "pagination": {
-    "prev": "← Prev",
-    "next": "Next →",
+    "prev": "Prev",
+    "next": "Next",
     "count": "({{count}} items)"
   },
   "settings": {
@@ -137,7 +156,7 @@
     "sectionScanPaths": "Scan Paths",
     "noScanPaths": "No scan folders configured",
     "removePath": "Remove this path",
-    "addFolder": "+ Add Folder",
+    "addFolder": "Add Folder",
     "sectionWebServer": "Web Server",
     "webServerDesc": "Browse and play your library from other devices on your LAN (phone, PC) via a browser.",
     "port": "Port",
@@ -150,6 +169,8 @@
     "keybindingCapture": "Press a key for \"{{action}}\"...",
     "keybindingCancel": "Cancel",
     "keybindingReset": "Reset all to defaults",
+    "keybindingChange": "Change",
+    "keybindingResetOne": "Reset to default",
     "sectionCategoryMode": "Category Mode",
     "categoryModeVirtual": "Virtual Mode",
     "categoryModeVirtualDesc": "Categories are stored in DB only. Files are not moved. Works with read-only and network drives.",
@@ -194,12 +215,17 @@
     "play": "Play",
     "openUrl": "Open URL",
     "deleteVideo": "Delete video",
-    "playing": "Playing"
+    "playing": "Playing",
+    "select": "Select",
+    "emptyTitle": "No media yet",
+    "emptyDescription": "Add a folder and its videos, audio and images will show up here.",
+    "noMatchTitle": "No media matches",
+    "noMatchDescription": "Try changing the search, filters or sidebar selection."
   },
   "detail": {
     "title": "Details",
     "viewImage": "🔍 Expand",
-    "play": "▶ Play",
+    "play": "Play",
     "openInBrowser": "Open in Browser",
     "viewer": "Viewer",
     "rescan": "Rescan",
@@ -258,7 +284,34 @@
     "similarRedetect": "Re-search",
     "similarNotRun": "Similar video search has not been run yet",
     "similarDetect": "Search for similar videos",
-    "aiNsfwWarning": "⚠ AI tag suggestions may include tags describing sexual content."
+    "aiNsfwWarning": "⚠ AI tag suggestions may include tags describing sexual content.",
+    "aiTitle": "AI tag suggestions",
+    "aiEnable": "Enable AI tagging ({{size}})",
+    "aiDownloading": "Downloading… {{percent}}%",
+    "aiAnalyze": "Analyze tags",
+    "aiAnalyzing": "Analyzing…",
+    "aiNeedThumbnail": "A thumbnail is required",
+    "aiMatched": "Matching tags",
+    "aiNew": "New tag ideas",
+    "aiScore": "Score: {{score}}%",
+    "newTagTitle": "Create a new tag",
+    "newTagDesc": "Check the tag name, then create it.",
+    "newTagCreate": "Create and add",
+    "newTagCancel": "Cancel",
+    "close": "Close",
+    "similarFailed": "Similar search failed: {{error}}",
+    "renameFailed": "Failed to rename the file: {{error}}",
+    "captureFailed": "Failed to capture the thumbnail: {{error}}",
+    "subtitleFailed": "Failed to load the subtitle: {{error}}",
+    "revealFailed": "Failed to show in Finder: {{error}}",
+    "openUrlFailed": "Could not open the URL: {{error}}",
+    "categoryClear": "Clear the category and send back to Inbox",
+    "tagUsage": "{{count}}",
+    "newTagColor": "Color",
+    "newTagIcon": "Icon",
+    "removeTag": "Remove {{name}}",
+    "ratingStar": "{{count}} stars",
+    "categoryPick": "Choose a category"
   },
   "download": {
     "title": "Download from URL",
@@ -285,7 +338,9 @@
     "all": "All",
     "empty": "No folders registered",
     "rescan": "Rescan",
-    "unwatch": "Unwatch"
+    "unwatch": "Unwatch",
+    "unwatchConfirmTitle": "Stop watching \"{{name}}\"?",
+    "unwatchConfirmDescription": "Media in this folder will be removed from the library. The files themselves are not deleted."
   },
   "category": {
     "title": "Category",
@@ -304,12 +359,34 @@
     "cancel": "Cancel",
     "namePlaceholder": "Category name",
     "tagsTitle": "Tags",
-    "addGroup": "+ Group",
+    "addGroup": "Group",
     "groupNamePlaceholder": "Group name",
     "deleteGroup": "Delete group",
     "editGroup": "Edit group name",
     "others": "Others",
-    "noTags": "No tags"
+    "noTags": "No tags",
+    "save": "Save",
+    "color": "Color",
+    "icon": "Icon",
+    "parent": "Parent",
+    "group": "Group",
+    "name": "Name",
+    "empty": "No categories",
+    "addChildTitle": "Add subcategory to \"{{name}}\"",
+    "editTitle": "Edit category",
+    "editTagTitle": "Edit tag",
+    "addGroupLong": "Add tag group",
+    "deleteConfirmTitle": "Delete category \"{{name}}\"?",
+    "deleteConfirmDescription": "Media in this category become uncategorized and move to the Inbox. Subcategories move to the top level.",
+    "deleteTagConfirmTitle": "Delete tag \"{{name}}\"?",
+    "deleteTagConfirmDescription": "This tag will be removed from all media.",
+    "deleteGroupConfirmTitle": "Delete group \"{{name}}\"?",
+    "deleteGroupConfirmDescription": "Tags in this group are kept and move to \"Others\".",
+    "editTags": "Edit tags",
+    "finishEditingTags": "Done editing",
+    "editTagsHint": "Click a tag to edit it, or × to delete it",
+    "editNamed": "Edit {{name}}",
+    "deleteNamed": "Delete {{name}}"
   },
   "playlist": {
     "title": "Playlists",
@@ -319,12 +396,15 @@
     "delete": "Delete",
     "smart": "Smart",
     "applyFilter": "Apply this filter",
-    "playAll": "▶ Play all",
+    "playAll": "Play all",
     "loading": "Loading...",
     "noVideos": "No videos. Add some from the library.",
     "removeFromPlaylist": "Remove from playlist",
     "dragToReorder": "Drag to reorder",
-    "countSuffix": " items"
+    "countSuffix": " items",
+    "smartLoadError": "Failed to load smart playlists: {{error}}",
+    "deleteConfirmTitle": "Delete \"{{name}}\"?",
+    "deleteConfirmDescription": "Only the playlist is deleted. Media stay in the library."
   },
   "addToPlaylist": {
     "title": "Add to Playlist",
@@ -399,7 +479,10 @@
     "resultSkipped": "{{count}} skipped (outside watch dir)",
     "resultFailed": "{{count}} failed to move",
     "closeButton": "Close",
-    "switchConfirm": "Switch to Sync mode.\nFiles will be automatically moved when categories change.\nProceed?"
+    "switchConfirm": "Switch to Sync mode.\nFiles will be automatically moved when categories change.\nProceed?",
+    "targetCount": "{{count}} files will be moved",
+    "noTargets": "No files need to be moved",
+    "switchOnly": "Switch to Sync mode"
   },
   "categoryModeChange": {
     "toVirtualTitle": "Switch to Virtual Mode",
@@ -440,7 +523,11 @@
     "cancel": "Cancel",
     "close": "Close",
     "rename": "Rename {{count}}",
-    "renaming": "Renaming..."
+    "renaming": "Renaming...",
+    "skippedDuplicate": "{{name}} → skipped (duplicate)",
+    "resultDone": "Renamed {{count}} files",
+    "resultFailed": ", {{count}} failed",
+    "modeLabel": "Rename method"
   },
   "duplicates": {
     "title": "Detect Duplicate Videos",
@@ -525,8 +612,8 @@
   "export": {
     "title": "Export / Import",
     "desc": "Save/restore your library data (videos, tags, playlists) to/from a JSON file.",
-    "exportButton": "📤 Export backup",
-    "importButton": "📥 Import backup",
+    "exportButton": "Export backup",
+    "importButton": "Import backup",
     "importWarning": "⚠ Importing will overwrite current data",
     "exporting": "Exporting...",
     "importing": "Importing...",
@@ -551,7 +638,9 @@
     "topRated": "Top 5 rated",
     "recentWatched": "Recently watched",
     "topPlayed": "Top 5 played",
-    "playCountUnit": " plays"
+    "playCountUnit": " plays",
+    "durationHours": "{{hours}}h {{minutes}}m",
+    "durationMinutes": "{{minutes}}m"
   },
   "smartPlaylist": {
     "title": "Save Smart Playlist",
@@ -596,10 +685,10 @@
     "playbackSettings": "Playback settings",
     "shuffleOff": "Shuffle off",
     "shuffleOn": "Shuffle on",
-    "shuffleLabel": "⇄ Shuffle",
+    "shuffleLabel": "Shuffle",
     "loopOff": "Loop off",
     "loopOn": "Loop on",
-    "loopLabel": "↻ Loop",
+    "loopLabel": "Loop",
     "abSetA": "Set A point",
     "abSetB": "Set B point",
     "abLooping": "A-B looping",
@@ -608,7 +697,8 @@
     "screenshot": "Screenshot",
     "showQueue": "Show queue",
     "miniPlayer": "Mini player",
-    "exit": "Exit"
+    "exit": "Exit",
+    "seek": "Playback position"
   },
   "queue": {
     "title": "Queue ({{count}})",
@@ -621,7 +711,8 @@
     "cancel": "Cancel"
   },
   "confirm": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "about": {
     "sectionTitle": "About",
@@ -640,5 +731,10 @@
     "failed": "Failed to move {{count}} file(s)",
     "syncModeNote": "Sync mode: the category directory will be created in the destination if missing",
     "virtualModeNote": "Virtual mode: files are moved directly into the selected folder"
+  },
+  "dndDestDir": {
+    "title": "Choose a destination folder",
+    "desc": "{{count}} files will be copied into the Unsorted subfolder of the folder you choose and added to the library.",
+    "cancel": "Cancel"
   }
 }

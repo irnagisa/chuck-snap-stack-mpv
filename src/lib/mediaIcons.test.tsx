@@ -45,9 +45,9 @@ describe('MediaIcon', () => {
 // ---------------------------------------------------------------------------
 
 describe('IconPicker', () => {
-  it('renders a button for each MEDIA_ICONS entry', () => {
+  it('renders a radio for each MEDIA_ICONS entry', () => {
     render(<IconPicker value={null} onChange={() => {}} />);
-    expect(screen.getAllByRole('button')).toHaveLength(MEDIA_ICONS.length);
+    expect(screen.getAllByRole('radio')).toHaveLength(MEDIA_ICONS.length);
   });
 
   it('sets the title attribute from ICON_LABELS', () => {
@@ -60,30 +60,29 @@ describe('IconPicker', () => {
   it('calls onChange with the clicked icon key', () => {
     const onChange = vi.fn();
     render(<IconPicker value={null} onChange={onChange} />);
-    fireEvent.click(screen.getAllByRole('button')[0]);
+    fireEvent.click(screen.getAllByRole('radio')[0]);
     expect(onChange).toHaveBeenCalledWith(MEDIA_ICONS[0]);
   });
 
   it('calls onChange with the correct key for each button', () => {
     const onChange = vi.fn();
     render(<IconPicker value={null} onChange={onChange} />);
-    const buttons = screen.getAllByRole('button');
+    const buttons = screen.getAllByRole('radio');
     buttons.forEach((btn, i) => {
       fireEvent.click(btn);
       expect(onChange).toHaveBeenCalledWith(MEDIA_ICONS[i]);
     });
   });
 
-  it('applies active highlight class to the selected icon', () => {
+  it('marks the selected icon as checked', () => {
     const { getAllByRole } = render(<IconPicker value="star" onChange={() => {}} />);
     const starIndex = MEDIA_ICONS.indexOf('star');
-    const buttons = getAllByRole('button');
-    expect(buttons[starIndex].className).toContain('ring-1');
+    expect(getAllByRole('radio')[starIndex]).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('does not apply active class to unselected icons', () => {
+  it('does not mark unselected icons as checked', () => {
     const { getAllByRole } = render(<IconPicker value="star" onChange={() => {}} />);
     const folderIndex = MEDIA_ICONS.indexOf('folder');
-    expect(getAllByRole('button')[folderIndex].className).not.toContain('ring-1');
+    expect(getAllByRole('radio')[folderIndex]).toHaveAttribute('aria-checked', 'false');
   });
 });

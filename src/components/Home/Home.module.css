@@ -1,0 +1,19 @@
+/* ホームのダッシュボードカード (ライブラリのカードと同じ見た目) */
+@layer ui {
+  .section {
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-2xl);
+    background: var(--color-bg-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* サムネイルを横に並べる行 */
+  .strip {
+    display: flex;
+    gap: var(--space-3);
+    margin: 0 calc(var(--space-5) * -1);
+    padding: var(--space-1) var(--space-5) var(--space-2);
+    overflow-x: auto;
+    list-style: none;
+  }
+}

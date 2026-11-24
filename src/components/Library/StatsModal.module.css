@@ -1,0 +1,201 @@
+/* ライブラリ統計モーダル */
+@layer ui {
+  .root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-10) 0;
+    color: var(--color-fg-muted);
+    text-align: center;
+  }
+  .spinner {
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--color-accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      rotate: 360deg;
+    }
+  }
+
+  /* ---- サマリーのタイル ---- */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-3);
+  }
+  .tile {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-hover);
+  }
+  .tileLabel {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+  }
+  .tileValue {
+    margin: var(--space-1) 0 0;
+    color: var(--color-fg);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- 視聴進捗 ---- */
+  .progressHead {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--space-1-5);
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+  }
+  .num {
+    color: var(--color-fg);
+    font-variant-numeric: tabular-nums;
+  }
+  .progressTrack {
+    height: 0.625rem;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-active);
+    overflow: hidden;
+  }
+  .progressFill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent);
+    transition: width var(--duration-normal) var(--ease-out);
+  }
+
+  /* ---- 段組み ---- */
+  .cols2,
+  .cols3 {
+    display: grid;
+    gap: var(--space-6);
+  }
+  .cols2 {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+  .cols3 {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
+
+  .heading {
+    margin: 0 0 var(--space-3);
+    color: var(--color-fg);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+
+  /* ---- 横棒グラフ ---- */
+  .bars {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+  }
+  .barRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+  }
+  .barLabel {
+    flex-shrink: 0;
+    width: 7rem;
+    overflow: hidden;
+    color: var(--color-fg-muted);
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .barTrack {
+    flex: 1;
+    height: 0.625rem;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-active);
+    overflow: hidden;
+  }
+  .barFill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent-line);
+  }
+  .barValue {
+    flex-shrink: 0;
+    width: 1.75rem;
+    color: var(--color-fg);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* ---- ランキング ---- */
+  .rank {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+    margin: 0;
+    padding: 0;
+    font-size: var(--text-xs);
+    list-style: none;
+
+    & li {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1-5);
+      min-width: 0;
+    }
+  }
+  .rank .rankStacked {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+  .rankNo {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    border-radius: var(--radius-full);
+    background: var(--color-accent-soft);
+    color: var(--color-accent-fg);
+    font-size: 0.625rem;
+    font-weight: var(--weight-bold);
+  }
+  .rankTitle {
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--color-fg);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rankSub {
+    flex-shrink: 0;
+    color: var(--color-fg-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+  .stars {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 2px;
+    color: var(--palette-amber-500);
+    font-weight: var(--weight-bold);
+
+    & svg {
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+  }
+}

@@ -1,4 +1,7 @@
 import { useInboxStore } from "../../store/useInboxStore";
+import { Sparkles } from "lucide-react";
+import { Button } from "../ui";
+import homeStyles from "./Home.module.css";
 
 interface Props {
   onOrganize: () => void;
@@ -8,7 +11,7 @@ export function InboxSummaryCard({ onOrganize }: Props) {
   const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">ライブラリ</h2>
       <div className="flex items-center justify-between gap-4">
         <div>
@@ -16,14 +19,10 @@ export function InboxSummaryCard({ onOrganize }: Props) {
             未整理ファイル {inboxCount}件
           </p>
         </div>
-        <button
-          type="button"
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm shrink-0 disabled:opacity-50"
-          disabled={inboxCount === 0}
-          onClick={onOrganize}
-        >
+        <Button variant="primary" size="md" disabled={inboxCount === 0} onClick={onOrganize}>
+          <Sparkles aria-hidden />
           整理を開始
-        </button>
+        </Button>
       </div>
     </section>
   );

@@ -1,0 +1,113 @@
+/* 一括リネームモーダル */
+@layer ui {
+  .root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  /* 項目名 + 入力欄を 2 列で並べる */
+  .form {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+  }
+  .fieldLabel {
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+  }
+  .inlineCheck {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1-5);
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    cursor: pointer;
+  }
+
+  /* 連番モードの横並びの設定 */
+  .numberFields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+  }
+  .inlineField {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+  }
+  .w3 {
+    width: 3.5rem;
+  }
+  .w4 {
+    width: 4.5rem;
+  }
+
+  /* ---- プレビュー表 ---- */
+  .preview {
+    max-height: 18rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow-y: auto;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+
+    & th {
+      position: sticky;
+      top: 0;
+      padding: var(--space-1-5) var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-hover);
+      color: var(--color-fg-muted);
+      font-weight: var(--weight-semibold);
+      text-align: left;
+    }
+    & td {
+      padding: var(--space-1-5) var(--space-3);
+      color: var(--color-fg-muted);
+      overflow-wrap: anywhere;
+      vertical-align: top;
+    }
+    & tbody tr + tr td {
+      border-top: 1px solid var(--color-border);
+    }
+    & tr[data-unchanged] {
+      opacity: 0.45;
+    }
+  }
+  /* 変更後の名前: 緑 / 変更なし: 淡色 / 重複: 赤 (.table td より強くするため td を付ける) */
+  .table td.after {
+    font-weight: var(--weight-semibold);
+    color: light-dark(oklch(52.7% 0.154 150.069), oklch(79.2% 0.209 151.711));
+  }
+  .table tr[data-unchanged] td.after {
+    color: var(--color-fg-subtle);
+  }
+  .table tr[data-conflict] td.after {
+    color: var(--color-danger-fg);
+  }
+
+  .conflictNote {
+    margin-inline-start: var(--space-1-5);
+    color: var(--color-danger-fg);
+    font-weight: var(--weight-medium);
+  }
+
+  .resultTitle {
+    margin: 0;
+    font-weight: var(--weight-semibold);
+  }
+  .resultLine {
+    margin: 2px 0 0;
+  }
+}

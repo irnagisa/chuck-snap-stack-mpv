@@ -1,14 +1,14 @@
 /**
- * ライブラリ UI テスト: フィルターバー・表示モード切り替え・サイドバータブ
+ * ライブラリ UI テスト: フィルターバー・表示モード切り替え・サイドバー
  *
  * DB 初期化完了後にフィルターバーが描画されるため、before フックで待機する。
  */
 describe('Chuck Snap Stack - Library UI', () => {
   before(async () => {
-    // ライブラリビューに遷移し、DB 準備完了まで待機 (評価フィルターセレクトの出現で判定)
+    // ライブラリビューに遷移し、DB 準備完了まで待機 (「絞り込み」ボタンの出現で判定)
     const libBtn = await $('button=ライブラリ')
     await libBtn.click()
-    await $('select[title="評価フィルタ"]').waitForExist({ timeout: 15000 })
+    await $('button[title="絞り込み"]').waitForExist({ timeout: 15000 })
   })
 
   // ────────────────────────────────────────────
@@ -16,9 +16,12 @@ describe('Chuck Snap Stack - Library UI', () => {
   // ────────────────────────────────────────────
   describe('フィルターバー', () => {
     it('ソートセレクトに「追加日」「長さ」「評価」の選択肢がある', async () => {
-      await expect(await $('option=追加日')).toExist()
-      await expect(await $('option=長さ')).toExist()
-      await expect(await $('option=評価')).toExist()
+      // Radix Select: トリガーを開くと role="option" の選択肢が出る
+      await (await $('button[title="並び順"]')).click()
+      await expect(await $('[role="option"]*=追加日')).toExist()
+      await expect(await $('[role="option"]*=長さ')).toExist()
+      await expect(await $('[role="option"]*=評価')).toExist()
+      await browser.keys('Escape')
     })
 
     it('ソート順切り替えボタンが存在する', async () => {
@@ -30,25 +33,36 @@ describe('Chuck Snap Stack - Library UI', () => {
       expect(descExists || ascExists).toBe(true)
     })
 
-    it('評価フィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="評価フィルタ"]')).toExist()
-    })
+    describe('絞り込みポップオーバー', () => {
+      before(async () => {
+        await (await $('button[title="絞り込み"]')).click()
+        await $('[role="dialog"]').waitForExist({ timeout: 5000 })
+      })
 
-    it('音声フィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="音声フィルタ"]')).toExist()
-    })
+      after(async () => {
+        await browser.keys('Escape')
+      })
 
-    it('視聴状態フィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="視聴状態フィルタ"]')).toExist()
-    })
+      it('評価フィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="評価フィルタ"]')).toExist()
+      })
 
-    it('メディアタイプフィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="メディアタイプフィルタ"]')).toExist()
-    })
+      it('音声フィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="音声フィルタ"]')).toExist()
+      })
 
-    it('最短・最長秒数の数値入力欄が存在する', async () => {
-      await expect(await $('input[title="最小長さ (秒)"]')).toExist()
-      await expect(await $('input[title="最大長さ (秒)"]')).toExist()
+      it('視聴状態フィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="視聴状態フィルタ"]')).toExist()
+      })
+
+      it('メディアタイプフィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="メディアタイプフィルタ"]')).toExist()
+      })
+
+      it('最短・最長秒数の数値入力欄が存在する', async () => {
+        await expect(await $('input[title="最小長さ (秒)"]')).toExist()
+        await expect(await $('input[title="最大長さ (秒)"]')).toExist()
+      })
     })
   })
 
@@ -87,31 +101,28 @@ describe('Chuck Snap Stack - Library UI', () => {
   })
 
   // ────────────────────────────────────────────
-  // サイドバータブ
+  // サイドバー (折りたためるセクション)
   // ────────────────────────────────────────────
-  describe('サイドバータブ', () => {
-    it('カテゴリ・フォルダ・リストの 3 タブが表示される', async () => {
-      await expect(await $('button=カテゴリ')).toExist()
-      await expect(await $('button=フォルダ')).toExist()
-      await expect(await $('button=リスト')).toExist()
+  describe('サイドバー', () => {
+    it('プレイリスト・カテゴリ・フォルダのセクションが並んで表示される', async () => {
+      await expect(await $('section[aria-label="プレイリスト"]')).toExist()
+      await expect(await $('section[aria-label="カテゴリ"]')).toExist()
+      await expect(await $('section[aria-label="フォルダ"]')).toExist()
     })
 
-    it('フォルダタブに切り替えられる', async () => {
-      const folderTab = await $('button=フォルダ')
-      await folderTab.click()
-      await expect(folderTab).toBeDisplayed()
+    it('セクションの見出しで折りたたみと展開ができる', async () => {
+      const toggle = await $('section[aria-label="フォルダ"] button[aria-expanded]')
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     })
 
-    it('プレイリストタブに切り替えられる', async () => {
-      const listTab = await $('button=リスト')
-      await listTab.click()
-      await expect(listTab).toBeDisplayed()
-    })
-
-    it('カテゴリタブに戻れる', async () => {
-      const categoryTab = await $('button=カテゴリ')
-      await categoryTab.click()
-      await expect(categoryTab).toBeDisplayed()
+    it('「すべて」で絞り込みを解除できる', async () => {
+      const all = await $('nav[aria-label="ライブラリのナビゲーション"]').$('button=すべて')
+      await all.click()
+      await expect(all).toHaveAttribute('aria-current', 'true')
     })
   })
 })

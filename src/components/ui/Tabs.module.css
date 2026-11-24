@@ -1,0 +1,70 @@
+@layer ui {
+  .list {
+    display: flex;
+    gap: var(--space-0-5);
+    padding: 3px;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-track);
+  }
+
+  .trigger {
+    position: relative;
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    min-width: 0;
+    height: 1.5rem;
+    padding-inline: var(--space-2);
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--duration-fast) ease;
+
+    &:hover {
+      color: var(--color-fg);
+    }
+    &[data-state="active"] {
+      color: var(--color-fg);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    & svg {
+      width: 0.875rem;
+      height: 0.875rem;
+    }
+  }
+
+  /* アクティブタブの背景。Motion の layoutId でタブ間をスライドする */
+  .indicator {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background: var(--color-bg-segment);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .label {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .content:focus-visible {
+    outline-offset: 2px;
+  }
+}

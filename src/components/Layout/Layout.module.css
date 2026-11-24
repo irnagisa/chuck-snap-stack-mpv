@@ -1,0 +1,267 @@
+/*
+ * アプリシェル / ライブラリ 3 ペインレイアウト
+ * (Tailwind 版の余白・ネガティブマージンを等価に移植している)
+ */
+@layer ui {
+  /* ---- app shell ---- */
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--color-bg-app);
+    color: var(--color-fg);
+  }
+
+  /* フル表示 / ミニプレイヤーの切替単位 */
+  .shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .fill {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* ---- 3 pane ---- */
+  /* 色付きの背景の上に、角丸のパネル (カード) を 3 枚並べる */
+  .threePane {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    /* 下余白はフローティングのプレイヤーバーとの干渉回避 */
+    padding: 0 var(--pane-gap) 4.5rem;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-radius: var(--radius-2xl);
+    background: var(--color-bg-surface);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+
+  .sidebar {
+    flex-shrink: 0;
+    /* width は PaneResizer の値を --sidebar-width 経由で受け取る */
+    width: var(--sidebar-width);
+    padding: var(--space-3);
+  }
+
+  .main {
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-3) var(--space-4) 0;
+  }
+
+  .detail {
+    flex-shrink: 0;
+    width: var(--pane-detail-width);
+    margin-inline-start: var(--pane-gap);
+  }
+
+  .detailView {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ---- resizer ---- */
+  /* パネル間のすき間がそのままつまみ。hover で小さなハンドルが出る */
+  .resizer {
+    position: relative;
+    flex-shrink: 0;
+    align-self: stretch;
+    width: var(--pane-gap);
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 2.5rem;
+      border-radius: var(--radius-full);
+      translate: -50% -50%;
+      background: var(--color-border-strong);
+      opacity: 0;
+      transition:
+        opacity var(--duration-fast) ease,
+        background-color var(--duration-fast) ease,
+        height var(--duration-normal) var(--ease-out);
+    }
+    &:hover::after,
+    &:focus-visible::after {
+      opacity: 1;
+    }
+    &[data-dragging]::after {
+      opacity: 1;
+      height: 4rem;
+      background: var(--color-accent);
+    }
+    &:focus-visible {
+      outline: none;
+    }
+  }
+
+  /* ---- library main column ---- */
+  .libraryColumn {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .libraryView {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* グリッド / リスト切替の単位 */
+  .viewSwap {
+    height: 100%;
+  }
+
+  .status {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-fg-muted);
+
+    &[data-tone="error"] {
+      color: var(--color-danger-fg);
+    }
+  }
+
+  /* ---- pagination ---- */
+  .pagination {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding-block: var(--space-2-5);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .pageInfo {
+    padding: var(--space-1) var(--space-2-5);
+    border-radius: var(--radius-full);
+    background: var(--color-bg-hover);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-fg-muted);
+  }
+
+  .pageCount {
+    margin-inline-start: var(--space-2);
+    color: var(--color-fg-subtle);
+  }
+
+  /* ---- detail placeholder ---- */
+  .placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    height: 100%;
+    padding: var(--space-6);
+    color: var(--color-fg-muted);
+    font-size: var(--text-sm);
+    text-align: center;
+    user-select: none;
+
+    & p {
+      margin: 0;
+    }
+  }
+
+  /* アイコンを淡い色の丸に入れて、空の状態でも寂しくならないようにする */
+  .placeholderIcon {
+    display: grid;
+    place-items: center;
+    width: 4rem;
+    height: 4rem;
+    border-radius: var(--radius-full);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+
+    & svg {
+      width: 1.75rem;
+      height: 1.75rem;
+    }
+  }
+
+  .placeholderHint {
+    color: var(--color-fg-subtle);
+    font-size: var(--text-xs);
+  }
+
+  /* ---- drop overlay ---- */
+  .dropOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-drop-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .dropBackdrop {
+    position: absolute;
+    inset: 0;
+    background: var(--color-accent-soft);
+    backdrop-filter: blur(4px);
+  }
+
+  .dropCard {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-8) var(--space-10);
+    border: 2px dashed var(--color-accent-line);
+    border-radius: var(--radius-3xl);
+    background: color-mix(in oklch, var(--color-bg-surface) 80%, transparent);
+    box-shadow: var(--shadow-xl);
+
+    & svg {
+      width: 2.5rem;
+      height: 2.5rem;
+      color: var(--color-accent);
+    }
+  }
+
+  .dropTitle {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    color: var(--color-accent-fg);
+  }
+
+  .dropHint {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--color-fg-muted);
+  }
+}

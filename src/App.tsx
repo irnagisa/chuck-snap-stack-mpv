@@ -22,7 +22,6 @@ import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { ImageViewerModal } from "./components/Library/ImageViewerModal";
-import { ConfirmModal } from "./components/common/ConfirmModal";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { AppHeader } from "./components/AppHeader";
 import { ThumbnailProgressBar } from "./components/ThumbnailProgressBar";
@@ -33,9 +32,21 @@ import { LibraryFilterBar } from "./components/Library/LibraryFilterBar";
 import { BatchActionBar } from "./components/Library/BatchActionBar";
 import InboxView from "./components/Inbox/InboxView";
 import { HomeView } from "./components/Home/HomeView";
+import {
+  DetailPlaceholder,
+  DropOverlay,
+  Pagination,
+  ThreePaneLayout,
+  layoutStyles as styles,
+} from "./components/Layout";
 import { useInboxStore } from "./store/useInboxStore";
+import { motion } from "motion/react";
+import { Button, Collapse, ConfirmDialog, EmptyState, motionPresets } from "./components/ui";
+import { FolderPlus, SearchX } from "lucide-react";
 
 type MainView = "home" | "library" | "inbox";
+
+const { viewEnter } = motionPresets;
 
 function App() {
   const { t } = useTranslation();
@@ -95,7 +106,6 @@ function App() {
     })));
 
   const viewMode = useLibraryViewStore((s) => s.viewMode);
-  const setSidebarTab = useLibraryViewStore((s) => s.setSidebarTab);
 
   const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
 
@@ -124,43 +134,6 @@ function App() {
 
   const libraryRef = useRef<LibraryViewHandle>(null);
   const pendingScrollIdRef = useRef<number | null>(null);
-
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem("librarySidebarWidth");
-    return saved ? Number(saved) : 176;
-  });
-  const isSidebarDragging = useRef(false);
-  const sidebarDragStartX = useRef(0);
-  const sidebarDragStartWidth = useRef(176);
-
-  const handleSidebarDividerMouseDown = (e: React.MouseEvent) => {
-    isSidebarDragging.current = true;
-    sidebarDragStartX.current = e.clientX;
-    sidebarDragStartWidth.current = sidebarWidth;
-    e.preventDefault();
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isSidebarDragging.current) return;
-      const delta = e.clientX - sidebarDragStartX.current;
-      const newWidth = Math.max(120, Math.min(400, sidebarDragStartWidth.current + delta));
-      setSidebarWidth(newWidth);
-      sidebarDragStartWidth.current = newWidth;
-      sidebarDragStartX.current = e.clientX;
-    };
-    const handleMouseUp = () => {
-      if (!isSidebarDragging.current) return;
-      isSidebarDragging.current = false;
-      localStorage.setItem("librarySidebarWidth", String(sidebarDragStartWidth.current));
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -220,6 +193,11 @@ function App() {
 
   const IMPORT_CONFIRM_THRESHOLD = 300;
 
+  // 確認ダイアログの退場アニメーション中も件数を表示し続けるため、最後の値を保持する
+  const lastPendingImport = useRef(pendingImport);
+  if (pendingImport) lastPendingImport.current = pendingImport;
+  const shownImport = pendingImport ?? lastPendingImport.current;
+
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected !== "string") return;
@@ -237,6 +215,40 @@ function App() {
   };
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  // 検索・絞り込み・サイドバーの選択のどれかが効いているか (空のときの表示を出し分ける)
+  const isFiltered =
+    filterSearch !== "" ||
+    filterCategoryId !== null ||
+    filterTagIds.length > 0 ||
+    filterMinRating !== 0 ||
+    filterHasAudio !== null ||
+    filterMinDuration > 0 ||
+    filterMaxDuration > 0 ||
+    filterWatchedStatus !== "all" ||
+    filterWatchDir !== null ||
+    filterMediaType !== "all" ||
+    filterAv1 !== "all";
+
+  const libraryEmptyState = isFiltered ? (
+    <EmptyState
+      icon={<SearchX />}
+      title={t("library.noMatchTitle")}
+      description={t("library.noMatchDescription")}
+    />
+  ) : (
+    <EmptyState
+      icon={<FolderPlus />}
+      title={t("library.emptyTitle")}
+      description={t("library.emptyDescription")}
+      action={
+        <Button variant="primary" onClick={handlePickDir}>
+          <FolderPlus aria-hidden />
+          {t("app.addFolder")}
+        </Button>
+      }
+    />
+  );
 
   const selectedVideos = useMemo(
     () => videos.filter((v) => selectedVideoIds.has(v.id)),
@@ -295,18 +307,19 @@ function App() {
   const handleHomeOpenFolder = useCallback(
     (dir: string) => {
       setMainView("library");
-      setSidebarTab("folder");
       useLibraryStore.getState().setWatchDirFilter(dir);
     },
-    [setSidebarTab]
+    []
   );
 
   return (
-    <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <main className={styles.app}>
       {isMiniPlayer ? (
-        <MiniPlayer />
+        <motion.div key="mini" className={styles.shell} {...viewEnter}>
+          <MiniPlayer />
+        </motion.div>
       ) : (
-        <>
+        <motion.div key="full" className={styles.shell} {...viewEnter}>
           <AppHeader
             mainView={mainView}
             inboxCount={inboxCount}
@@ -325,160 +338,118 @@ function App() {
           <WatchDirRemovedAlert />
 
           {/* ボディ */}
-          <div className="flex flex-1 min-h-0">
-            {mainView === "home" ? (
-              <ErrorBoundary>
-                <HomeView
-                  onNavigate={setMainView}
-                  onOpenVideo={handleHomeOpenVideo}
-                  onOpenFolder={handleHomeOpenFolder}
-                />
-              </ErrorBoundary>
-            ) : mainView === "inbox" ? (
-              <div className="flex flex-1 min-h-0 min-w-0">
+          <div className={styles.body}>
+            {/* ビュー切替: key が変わるたびに新しいビューをフェードインさせる */}
+            <motion.div key={mainView} className={styles.fill} {...viewEnter}>
+              {mainView === "home" ? (
+                <ErrorBoundary>
+                  <HomeView
+                    onNavigate={setMainView}
+                    onOpenVideo={handleHomeOpenVideo}
+                    onOpenFolder={handleHomeOpenFolder}
+                  />
+                </ErrorBoundary>
+              ) : mainView === "inbox" ? (
                 <ErrorBoundary>
                   <InboxView />
                 </ErrorBoundary>
-              </div>
-            ) : (
-              <div className="flex flex-1 px-4 pt-4 pb-10 min-h-0">
-                {isDbReady && (
-                  <div style={{ width: sidebarWidth }} className="shrink-0 min-h-0 flex flex-col">
-                    <LibrarySidebar />
-                  </div>
-                )}
-
-                {isDbReady && (
-                  <div
-                    className="relative shrink-0 w-4 self-stretch cursor-col-resize group select-none -mt-4"
-                    onMouseDown={handleSidebarDividerMouseDown}
-                  >
-                    <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-400 dark:group-hover:bg-blue-600 transition-colors" />
-                  </div>
-                )}
-
-                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden pt-4 -mt-4 pl-2 -ml-2 pr-2">
+              ) : (
+                <ThreePaneLayout
+                  sidebar={isDbReady ? <LibrarySidebar /> : null}
+                  detailKey={detailVideo?.id ?? "empty"}
+                  detail={
+                    detailVideo ? (
+                      <VideoDetailModal
+                        key={detailVideo.id}
+                        video={detailVideo}
+                        onClose={() => { closeDetailVideo(); fetchVideos(); }}
+                        onViewImage={setViewingImage}
+                      />
+                    ) : (
+                      <DetailPlaceholder />
+                    )
+                  }
+                >
                   {!isDbReady && !dbError && (
-                    <p className="text-gray-500 text-sm dark:text-gray-400">
-                      {t("app.dbInitializing")}
-                    </p>
+                    <p className={styles.status}>{t("app.dbInitializing")}</p>
                   )}
                   {dbError && (
-                    <p className="text-red-500 text-sm dark:text-red-400">
+                    <p className={styles.status} data-tone="error">
                       {t("app.dbError", { error: dbError })}
                     </p>
                   )}
 
                   {isDbReady && (
                     <ErrorBoundary>
-                      <div className="flex flex-col flex-1 min-h-0">
+                      <div className={styles.libraryColumn}>
                         <LibraryFilterBar />
 
-                        <BatchActionBar
-                          selectedVideoIds={selectedVideoIds}
-                          isThumbnailGenerating={isThumbnailGenerating}
-                          onClearSelection={() => setSelectedVideoIds(new Set())}
-                        />
-
-                        <div className="flex-1 min-h-0 pt-4 -mt-4">
-                          {viewMode === "list" ? (
-                            <LibraryList
-                              ref={libraryRef}
-                              videos={videos}
-                              currentVideoId={currentVideo?.id ?? null}
-                              detailVideoId={detailVideo?.id ?? null}
-                              scrollResetKey={scrollResetKey}
-                              onPlay={handlePlay}
-                              onShowDetail={openDetailVideo}
-                              onAddToPlaylist={openAddToPlaylist}
-                              onSetTag={handleContextSetTag}
-                              onSetCategory={handleContextSetCategory}
-                              onMoveDir={handleContextMoveDir}
-                              selectedIds={selectedVideoIds}
-                              onSelectionChange={setSelectedVideoIds}
-                            />
-                          ) : (
-                            <LibraryGrid
-                              ref={libraryRef}
-                              videos={videos}
-                              currentVideoId={currentVideo?.id ?? null}
-                              detailVideoId={detailVideo?.id ?? null}
-                              scrollResetKey={scrollResetKey}
-                              onPlay={handlePlay}
-                              onShowDetail={openDetailVideo}
-                              onAddToPlaylist={openAddToPlaylist}
-                              onSetTag={handleContextSetTag}
-                              onSetCategory={handleContextSetCategory}
-                              onMoveDir={handleContextMoveDir}
-                              selectedIds={selectedVideoIds}
-                              onSelectionChange={setSelectedVideoIds}
+                        <Collapse show={selectedVideoIds.size > 0} data={selectedVideoIds}>
+                          {(ids) => (
+                            <BatchActionBar
+                              selectedVideoIds={ids}
+                              isThumbnailGenerating={isThumbnailGenerating}
+                              onClearSelection={() => setSelectedVideoIds(new Set())}
                             />
                           )}
+                        </Collapse>
+
+                        <div className={styles.libraryView}>
+                          <motion.div key={viewMode} className={styles.viewSwap} {...viewEnter}>
+                            {viewMode === "list" ? (
+                              <LibraryList
+                                ref={libraryRef}
+                                videos={videos}
+                                emptyState={libraryEmptyState}
+                                currentVideoId={currentVideo?.id ?? null}
+                                detailVideoId={detailVideo?.id ?? null}
+                                scrollResetKey={scrollResetKey}
+                                onPlay={handlePlay}
+                                onShowDetail={openDetailVideo}
+                                onAddToPlaylist={openAddToPlaylist}
+                                onSetTag={handleContextSetTag}
+                                onSetCategory={handleContextSetCategory}
+                                onMoveDir={handleContextMoveDir}
+                                selectedIds={selectedVideoIds}
+                                onSelectionChange={setSelectedVideoIds}
+                              />
+                            ) : (
+                              <LibraryGrid
+                                ref={libraryRef}
+                                videos={videos}
+                                emptyState={libraryEmptyState}
+                                currentVideoId={currentVideo?.id ?? null}
+                                detailVideoId={detailVideo?.id ?? null}
+                                scrollResetKey={scrollResetKey}
+                                onPlay={handlePlay}
+                                onShowDetail={openDetailVideo}
+                                onAddToPlaylist={openAddToPlaylist}
+                                onSetTag={handleContextSetTag}
+                                onSetCategory={handleContextSetCategory}
+                                onMoveDir={handleContextMoveDir}
+                                selectedIds={selectedVideoIds}
+                                onSelectionChange={setSelectedVideoIds}
+                              />
+                            )}
+                          </motion.div>
                         </div>
 
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-3 py-2 shrink-0 border-t border-gray-100 dark:border-gray-800">
-                            <button
-                              type="button"
-                              className="px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              disabled={currentPage <= 1}
-                              onClick={() => handleSetPage(currentPage - 1)}
-                            >
-                              {t("pagination.prev")}
-                            </button>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                              {currentPage} / {totalPages}
-                              <span className="ml-2 text-gray-400 dark:text-gray-500">
-                                {t("pagination.count", { count: totalCount.toLocaleString() })}
-                              </span>
-                            </span>
-                            <button
-                              type="button"
-                              className="px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              disabled={currentPage >= totalPages}
-                              onClick={() => handleSetPage(currentPage + 1)}
-                            >
-                              {t("pagination.next")}
-                            </button>
-                          </div>
-                        )}
+                        <Pagination
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          totalCount={totalCount}
+                          onPageChange={handleSetPage}
+                        />
                       </div>
                     </ErrorBoundary>
                   )}
-                </div>
-
-                {/* 詳細パネル */}
-                <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden -my-4 -mr-4">
-                  {detailVideo ? (
-                    <VideoDetailModal
-                      key={detailVideo.id}
-                      video={detailVideo}
-                      onClose={() => { closeDetailVideo(); fetchVideos(); }}
-                      onViewImage={setViewingImage}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600 select-none gap-2">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="w-10 h-10 opacity-40"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={1.2}
-                      >
-                        <rect x="3" y="5" width="18" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M10 9l5 3-5 3V9z" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      <p className="text-xs">動画を選択してください</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                </ThreePaneLayout>
+              )}
+            </motion.div>
           </div>
 
           {mainView !== "inbox" && <PlayerControls />}
-        </>
+        </motion.div>
       )}
 
       {viewingImage && (
@@ -499,33 +470,24 @@ function App() {
       <DownloadQueuePanel />
       <ToastContainer />
 
-      {pendingImport && (
-        <ConfirmModal
-          message={t("app.confirmImport", { count: pendingImport.fileCount.toLocaleString() })}
-          confirmLabel={t("app.confirmImportButton")}
-          onConfirm={() => {
-            const { path, useDirAsCategory: udc } = pendingImport;
-            setPendingImport(null);
-            scanAndImport(path, udc);
-          }}
-          onCancel={() => setPendingImport(null)}
-        />
-      )}
+      <ConfirmDialog
+        open={pendingImport !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingImport(null);
+        }}
+        title={t("app.confirmImportTitle")}
+        description={t("app.confirmImport", { count: (shownImport?.fileCount ?? 0).toLocaleString() })}
+        confirmLabel={t("app.confirmImportButton")}
+        cancelLabel={t("confirm.cancel")}
+        onConfirm={() => {
+          if (!pendingImport) return;
+          const { path, useDirAsCategory: udc } = pendingImport;
+          setPendingImport(null);
+          scanAndImport(path, udc);
+        }}
+      />
 
-      {isDragging && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none">
-          <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-400/20 backdrop-blur-[2px]" />
-          <div className="relative flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed border-blue-500 dark:border-blue-400 bg-white/80 dark:bg-gray-900/80 shadow-2xl">
-            <span className="text-4xl">🎬</span>
-            <p className="text-lg font-semibold text-blue-700 dark:text-blue-300">
-              {t("app.dropImport")}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {t("app.dropFormats")}
-            </p>
-          </div>
-        </div>
-      )}
+      <DropOverlay visible={isDragging} />
     </main>
   );
 }

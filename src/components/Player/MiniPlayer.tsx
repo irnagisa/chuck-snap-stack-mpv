@@ -6,6 +6,8 @@ import { useTagStore } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { TagBadge } from '../Library/TagBadge';
 import { formatTime } from '../../utils/time';
+import { Maximize2, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
+import { Button, Slider } from "../ui";
 
 export function MiniPlayer() {
   const { t } = useTranslation();
@@ -57,7 +59,6 @@ export function MiniPlayer() {
 
   if (!isMiniPlayer) return null;
 
-  const pct = duration > 0 ? (playbackTime / duration) * 100 : 0;
   const hasPrev = queue.length > 0 && queueIndex > 0;
   const hasNext = queue.length > 0 && queueIndex < queue.length - 1;
   const title = currentVideo
@@ -78,20 +79,21 @@ export function MiniPlayer() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-gray-900 text-white overflow-hidden select-none">
+    <div className="scheme-dark flex flex-col h-screen w-screen bg-gray-900 text-white overflow-hidden select-none">
       {/* タイトル行 */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-1 shrink-0">
         <span className="flex-1 text-xs text-gray-300 truncate min-w-0" title={title}>
           {title}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('player.backToNormal')}
           onClick={toggleMiniPlayer}
-          className="text-gray-400 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-gray-700 shrink-0"
           title={t('player.backToNormal')}
         >
-          ⇲
-        </button>
+          <Maximize2 aria-hidden />
+        </Button>
       </div>
 
       {/* シークバー */}
@@ -100,33 +102,16 @@ export function MiniPlayer() {
           <span className="text-[10px] text-gray-500 tabular-nums w-8 text-right shrink-0">
             {formatTime(localSeek)}
           </span>
-          <div className="flex-1 relative h-4 flex items-center">
-            <div className="absolute inset-x-0 h-1 rounded-full bg-gray-700">
-              <div
-                className="h-full rounded-full bg-blue-500 pointer-events-none"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <input
-              type="range"
-              className="absolute inset-x-0 w-full opacity-0 cursor-pointer h-4"
-              min={0}
-              max={duration > 0 ? duration : 100}
-              step={0.5}
-              value={localSeek}
-              onChange={(e) => { isDraggingSeek.current = true; setLocalSeek(Number(e.target.value)); }}
-              onMouseDown={() => { isDraggingSeek.current = true; }}
-              onMouseUp={(e) => {
-                isDraggingSeek.current = false;
-                seekTo(Number((e.target as HTMLInputElement).value));
-              }}
-              onTouchStart={() => { isDraggingSeek.current = true; }}
-              onTouchEnd={(e) => {
-                isDraggingSeek.current = false;
-                seekTo(Number((e.target as HTMLInputElement).value));
-              }}
-            />
-          </div>
+          <Slider
+            className="flex-1"
+            min={0}
+            max={duration > 0 ? duration : 100}
+            step={0.5}
+            value={[localSeek]}
+            onValueChange={([v]) => { isDraggingSeek.current = true; setLocalSeek(v); }}
+            onValueCommit={([v]) => { isDraggingSeek.current = false; seekTo(v); }}
+            thumbLabel={t('player.seek')}
+          />
           <span className="text-[10px] text-gray-500 tabular-nums w-8 shrink-0">
             {duration > 0 ? formatTime(duration) : '--:--'}
           </span>
@@ -135,32 +120,35 @@ export function MiniPlayer() {
 
       {/* コントロールボタン */}
       <div className="flex items-center justify-center gap-1 px-3 pb-3 shrink-0">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('player.prevVideo')}
           onClick={playPrev}
           disabled={!hasPrev}
-          className="p-1.5 rounded hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300"
           title={t('player.prevVideo')}
         >
-          ⏮
-        </button>
-        <button
-          type="button"
+          <SkipBack aria-hidden />
+        </Button>
+        <Button
+          variant="primary"
+          size="icon"
           onClick={pauseResume}
-          className="p-1.5 rounded hover:bg-gray-700 text-white w-9 text-center"
           title={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
+          aria-label={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
         >
-          {isPaused ? '▶' : '⏸'}
-        </button>
-        <button
-          type="button"
+          {isPaused ? <Play aria-hidden fill="currentColor" /> : <Pause aria-hidden fill="currentColor" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('player.nextVideo')}
           onClick={playNext}
           disabled={!hasNext}
-          className="p-1.5 rounded hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300"
           title={t('player.nextVideo')}
         >
-          ⏭
-        </button>
+          <SkipForward aria-hidden />
+        </Button>
 
         <div className="flex-1" />
 
@@ -170,14 +158,16 @@ export function MiniPlayer() {
           </span>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="ml-1"
+          aria-label={t('player.endPlayback')}
           onClick={quit}
-          className="p-1.5 rounded hover:bg-red-700 text-gray-400 hover:text-white text-xs ml-1"
           title={t('player.endPlayback')}
         >
-          ✕
-        </button>
+          <X aria-hidden />
+        </Button>
       </div>
 
       {/* 評価・カテゴリ・タグ */}

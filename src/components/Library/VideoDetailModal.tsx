@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { VideoOrganizerPanel } from '../common/VideoOrganizerPanel';
 import { useTranslation } from 'react-i18next';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useLibraryStore } from '../../store/useLibraryStore';
@@ -10,12 +10,16 @@ import { useTagStore } from '../../store/useTagStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { TranscodeModal } from './TranscodeModal';
-import { Select } from '../common/Select';
+import { Button, Checkbox, Dialog, Input, SegmentedControl, Select } from '../ui';
+import { ThumbImage } from './MediaThumb';
+import { TagBadge } from './TagBadge';
+import styles from './VideoDetailModal.module.css';
 import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from '../../store/useToastStore';
 import { similarityPct } from '../../utils/phash';
 import { formatTime, formatFileSize } from '../../utils/time';
+import { Check, ExternalLink, Film, FolderOpen, Image as ImageIcon, LoaderCircle, Maximize2, Music, Play, Plus, X } from "lucide-react";
 
 interface Props {
   video: Video;
@@ -39,6 +43,21 @@ interface VideoForPhash {
 }
 
 type SimilarThreshold = 4 | 8 | 12;
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** 見出し付きの区切り */
+function Section({ title, actions, children }: { title: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className={styles.section}>
+      <div className={styles.sectionHead}>
+        <h3 className={styles.sectionTitle}>{title}</h3>
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
 
 
 export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
@@ -112,12 +131,12 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       setSimilarVideos(result);
       setSimilarDetected(true);
     } catch (e) {
-      toast.error(`類似検索に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('detail.similarFailed', { error: errorText(e) }));
     } finally {
       setSimilarLoading(false);
       setSimilarHashProgress(null);
     }
-  }, [video.id, similarThreshold]);
+  }, [video.id, similarThreshold, t]);
 
   const handleSimilarThresholdChange = (next: SimilarThreshold) => {
     setSimilarThreshold(next);
@@ -237,11 +256,19 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     }
   };
 
-  const handleNewSuggestionClick = async (sug: AiNewSuggestion) => {
-    const name = window.prompt('新しいタグ名を確認してください:', sug.name);
+  // 新規タグ候補: 名前を確認するダイアログを開く
+  const [newTagOpen, setNewTagOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const handleNewSuggestionClick = (sug: AiNewSuggestion) => {
+    setNewTagName(sug.name);
+    setNewTagOpen(true);
+  };
+  const handleCreateNewTag = async () => {
+    const name = newTagName.trim();
     if (!name) return;
+    setNewTagOpen(false);
     try {
-      const tag = await createTag(name.trim(), '#6366f1');
+      const tag = await createTag(name, '#6366f1');
       await addTagToVideo(video.id, tag.id);
       await fetchTags();
     } catch {
@@ -271,7 +298,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
         await invoke<void>('rename_video_file', { oldPath, newName: newFilename });
       } catch (e) {
         await updateVideo(video.id, { title: video.title ?? '', path: oldPath });
-        toast.error(`ファイルのリネームに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+        toast.error(t('detail.renameFailed', { error: errorText(e) }));
       }
     } else {
       await updateVideo(video.id, { title: trimmed });
@@ -304,7 +331,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       setThumbCacheBust(Date.now());
       await fetchVideos();
     } catch (e) {
-      toast.error(`サムネイルの取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('detail.captureFailed', { error: errorText(e) }));
     } finally {
       setIsCapturingThumb(false);
     }
@@ -327,7 +354,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
       await invoke('load_subtitle', { path });
       setLoadedSubtitle(path);
     } catch (e) {
-      toast.error(`字幕の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('detail.subtitleFailed', { error: errorText(e) }));
     }
   };
 
@@ -356,6 +383,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
     }
   };
 
+  const MediaIcon = video.media_type === 'image' ? ImageIcon : video.media_type === 'audio' ? Music : Film;
+
   return (
     <>
       {showTranscode && (
@@ -367,540 +396,425 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
           }}
         />
       )}
-      <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('detail.title')}</h2>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
-            onClick={onClose}
-            aria-label={t('confirm.cancel')}
-          >
-            ✕
-          </button>
+
+      {/* AI の新規タグ候補から作るタグ名の確認 */}
+      <Dialog
+        open={newTagOpen}
+        onOpenChange={setNewTagOpen}
+        size="sm"
+        title={t('detail.newTagTitle')}
+        description={t('detail.newTagDesc')}
+        showClose={false}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setNewTagOpen(false)}>
+              {t('detail.newTagCancel')}
+            </Button>
+            <Button variant="primary" disabled={!newTagName.trim()} onClick={handleCreateNewTag}>
+              {t('detail.newTagCreate')}
+            </Button>
+          </>
+        }
+      >
+        <Input
+          size="md"
+          className={styles.fullWidth}
+          value={newTagName}
+          onChange={(e) => setNewTagName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleCreateNewTag(); }}
+          aria-label={t('detail.newTagTitle')}
+          autoFocus
+        />
+      </Dialog>
+
+      <div className={styles.root}>
+        {/* ヘッダー */}
+        <div className={styles.header}>
+          <h2 className={styles.title}>{t('detail.title')}</h2>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t('detail.close')}>
+            <X aria-hidden />
+          </Button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto pb-20">
+        <div className={styles.body}>
           {/* サムネイル + 再生 */}
-          <div className="px-4 pt-4 pb-3 flex flex-col gap-2">
+          <div className={styles.hero}>
             <div
-              className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer"
+              className={styles.preview}
+              data-image={video.media_type === 'image' || undefined}
               onDoubleClick={handlePlay}
             >
               {localThumbnail ? (
-                <img
-                  src={`${convertFileSrc(localThumbnail)}${thumbCacheBust ? `?t=${thumbCacheBust}` : ''}`}
-                  alt={localTitle}
-                  className={`w-full h-full ${video.media_type === 'image' ? 'object-contain bg-black' : 'object-cover'}`}
-                />
+                <ThumbImage src={localThumbnail} alt={localTitle} version={thumbCacheBust} />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-3xl">
-                  {video.media_type === 'image' ? '🖼' : video.media_type === 'audio' ? '♪' : '▶'}
+                <div className={styles.previewEmpty}>
+                  <MediaIcon aria-hidden />
+                </div>
+              )}
+              {progressPercent !== null && progressPercent > 0 && (
+                <div className={styles.progress}>
+                  <div className={styles.progressBar} style={{ width: `${progressPercent}%` }} />
                 </div>
               )}
             </div>
-            {progressPercent !== null && progressPercent > 0 && (
-              <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full">
-                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progressPercent}%` }} />
-              </div>
-            )}
-            <div className="flex gap-2">
+
+            <div className={styles.actions}>
               {isLink ? (
-                <button
-                  type="button"
-                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                  onClick={() => openUrl(video.path).catch(() => {})}
-                >
+                <Button variant="primary" size="md" className={styles.grow} onClick={() => openUrl(video.path).catch(() => {})}>
+                  <ExternalLink aria-hidden />
                   {t('detail.openInBrowser')}
-                </button>
+                </Button>
               ) : video.media_type === 'image' ? (
                 onViewImage && (
-                  <button
-                    type="button"
-                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                    onClick={() => onViewImage(video)}
-                  >
+                  <Button variant="primary" size="md" className={styles.grow} onClick={() => onViewImage(video)}>
+                    <Maximize2 aria-hidden />
                     {t('detail.viewer')}
-                  </button>
+                  </Button>
                 )
               ) : (
-                <button
-                  type="button"
-                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                  onClick={handlePlay}
-                >
+                <Button variant="primary" size="md" className={styles.grow} onClick={handlePlay}>
+                  <Play aria-hidden fill="currentColor" />
                   {t('detail.play')}
-                </button>
+                </Button>
               )}
               {!isLink && (
-                <button
-                  type="button"
-                  className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium disabled:opacity-50"
+                <Button
+                  variant="secondary"
+                  size="md"
                   onClick={handleRescan}
                   disabled={isRescanning}
                   title={t('detail.rescanTitle')}
                 >
                   {isRescanning ? t('detail.rescanning') : t('detail.rescan')}
-                </button>
+                </Button>
               )}
               {!isLink && video.media_type !== 'image' && (
-                <button
-                  type="button"
-                  className="py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg font-medium"
-                  onClick={() => setShowTranscode(true)}
-                >
-                  AV1
-                </button>
+                <Button variant="secondary" size="md" onClick={() => setShowTranscode(true)}>
+                  {t('detail.av1')}
+                </Button>
               )}
             </div>
           </div>
 
-          <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800 px-4">
-            {/* タイトル + パス */}
-            <div className="pb-4 flex flex-col gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
-                  {t('detail.titleField')}
-                </label>
-                <input
-                  ref={titleRef}
-                  className="w-full px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg outline-none transition-colors"
-                  value={localTitle}
-                  onChange={(e) => setLocalTitle(e.target.value)}
-                  onBlur={handleTitleSave}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
-                />
-                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer w-fit">
-                  <input
-                    type="checkbox"
-                    checked={renameFile}
-                    onChange={(e) => setRenameFile(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-blue-500"
-                  />
-                  <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.renameFile')}</span>
-                </label>
-              </div>
-              {!isLink && (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-                      {t('detail.path')}
-                    </label>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
-                      onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(`Finder での表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`))}
-                      title={t('detail.openFinder')}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                      </svg>
-                      {t('detail.openFinder')}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">{video.path}</p>
+          {/* タイトル・パス・URL */}
+          <section className={styles.section}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="detail-title">{t('detail.titleField')}</label>
+              <Input
+                id="detail-title"
+                size="md"
+                variant="ghost"
+                className={styles.fullWidth}
+                ref={titleRef}
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                onBlur={handleTitleSave}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+              />
+              <label className={styles.check}>
+                <Checkbox checked={renameFile} onCheckedChange={(v) => setRenameFile(v === true)} />
+                {t('detail.renameFile')}
+              </label>
+            </div>
+
+            {!isLink && (
+              <div className={styles.field}>
+                <div className={styles.labelRow}>
+                  <span className={styles.label}>{t('detail.path')}</span>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(t('detail.revealFailed', { error: errorText(e) })))}
+                    title={t('detail.openFinder')}
+                  >
+                    <FolderOpen aria-hidden />
+                    {t('detail.openFinder')}
+                  </Button>
                 </div>
-              )}
-              <div>
-                <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                  {t('detail.url')}
-                </label>
-                <input
-                  className="w-full px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg outline-none transition-colors"
-                  placeholder={t('detail.urlPlaceholder')}
-                  value={localSourceUrl}
-                  onChange={(e) => setLocalSourceUrl(e.target.value)}
-                  onBlur={handleSourceUrlSave}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
-                />
-                {localSourceUrl && (
-                  <button
-                    type="button"
-                    className="text-xs text-blue-500 hover:underline mt-0.5 block truncate max-w-full text-left"
-                    onClick={() => openUrl(localSourceUrl).catch((e: unknown) => toast.error(`URL を開けませんでした: ${e instanceof Error ? e.message : String(e)}`))}
-                    title={localSourceUrl}
-                  >
-                    {localSourceUrl}
-                  </button>
-                )}
+                <p className={styles.path}>{video.path}</p>
               </div>
-            </div>
+            )}
 
-            {/* カテゴリ + タグ + 評価 */}
-            <div className="py-4">
-              <VideoOrganizerPanel video={video} />
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="detail-url">{t('detail.url')}</label>
+              <Input
+                id="detail-url"
+                size="sm"
+                variant="ghost"
+                className={styles.fullWidth}
+                placeholder={t('detail.urlPlaceholder')}
+                value={localSourceUrl}
+                onChange={(e) => setLocalSourceUrl(e.target.value)}
+                onBlur={handleSourceUrlSave}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+              />
+              {localSourceUrl && (
+                <button
+                  type="button"
+                  className={styles.link}
+                  onClick={() => openUrl(localSourceUrl).catch((e: unknown) => toast.error(t('detail.openUrlFailed', { error: errorText(e) })))}
+                  title={localSourceUrl}
+                >
+                  {localSourceUrl}
+                </button>
+              )}
             </div>
+          </section>
 
-            {/* メタデータ */}
-            {!isLink && <div className="py-4 flex flex-col gap-3">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    {t('detail.mediaType')}
-                  </label>
-                  <Select
-                    value={localMediaType}
-                    onChange={(e) => handleMediaTypeChange(e.target.value)}
-                  >
-                    <option value="video">{t('detail.mediaVideo')}</option>
-                    <option value="audio">{t('detail.mediaAudio')}</option>
-                    <option value="image">{t('detail.mediaImage')}</option>
-                  </Select>
+          {/* カテゴリ・タグ・評価 */}
+          <section className={styles.section}>
+            <VideoOrganizerPanel video={video} />
+          </section>
+
+          {/* メタデータ */}
+          {!isLink && (
+            <section className={styles.section}>
+              <dl className={styles.meta}>
+                <div className={styles.metaWide}>
+                  <dt>{t('detail.mediaType')}</dt>
+                  <dd>
+                    <Select
+                      fullWidth
+                      value={localMediaType}
+                      onValueChange={handleMediaTypeChange}
+                      aria-label={t('detail.mediaType')}
+                      options={[
+                        { value: 'video', label: t('detail.mediaVideo') },
+                        { value: 'audio', label: t('detail.mediaAudio') },
+                        { value: 'image', label: t('detail.mediaImage') },
+                      ]}
+                    />
+                  </dd>
                 </div>
                 {video.duration != null && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      {t('detail.duration')}
-                    </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatTime(video.duration)}</p>
+                    <dt>{t('detail.duration')}</dt>
+                    <dd>{formatTime(video.duration)}</dd>
                   </div>
                 )}
                 {video.progress > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      {t('detail.watchProgress')}
-                    </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{formatTime(video.progress)}</p>
+                    <dt>{t('detail.watchProgress')}</dt>
+                    <dd>{formatTime(video.progress)}</dd>
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    {t('detail.fileSize')}
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
-                  </p>
+                  <dt>{t('detail.fileSize')}</dt>
+                  <dd>{fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}</dd>
                 </div>
                 {dimensions && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                      {t('detail.resolution')}
-                    </label>
-                    <p className="text-sm text-gray-800 dark:text-gray-200">
-                      {dimensions.width} × {dimensions.height}
-                    </p>
+                    <dt>{t('detail.resolution')}</dt>
+                    <dd>{dimensions.width} × {dimensions.height}</dd>
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    {t('detail.createdAt')}
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {new Date(video.created_at).toLocaleDateString()}
-                  </p>
+                  <dt>{t('detail.createdAt')}</dt>
+                  <dd>{new Date(video.created_at).toLocaleDateString()}</dd>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
-                    {t('detail.playCount')}
-                  </label>
-                  <p className="text-sm text-gray-800 dark:text-gray-200">
-                    {(video.watch_count ?? 0)}{t('detail.playCountUnit')}
-                  </p>
+                  <dt>{t('detail.playCount')}</dt>
+                  <dd>{video.watch_count ?? 0}{t('detail.playCountUnit')}</dd>
                 </div>
-              </div>
-            </div>}
+              </dl>
+            </section>
+          )}
 
-            {/* カスタムサムネイル */}
-            {!isLink && <div className="pt-4 pb-4 flex flex-col gap-2">
-              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-                {t('detail.thumbnail')}
-              </label>
-              <div className="flex items-center gap-2 flex-wrap">
-                <input
+          {/* サムネイルの差し替え */}
+          {!isLink && (
+            <Section title={t('detail.thumbnail')}>
+              <div className={styles.row}>
+                <Input
+                  size="sm"
+                  className={styles.secondsInput}
                   type="number"
                   min={0}
                   step={1}
-                  className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   value={thumbTimestamp}
                   onChange={(e) => setThumbTimestamp(e.target.value)}
+                  aria-label={t('detail.captureAt')}
                 />
-                <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('detail.captureAt')}</span>
-                <button
-                  type="button"
-                  onClick={handleCaptureThumb}
-                  disabled={isCapturingThumb}
-                  className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
-                >
+                <span className={styles.muted}>{t('detail.captureAt')}</span>
+                <Button variant="secondary" size="sm" onClick={handleCaptureThumb} disabled={isCapturingThumb}>
                   {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
-                </button>
+                </Button>
               </div>
-            </div>}
+            </Section>
+          )}
 
-            {/* AI タグ提案 */}
-            {aiEnabled && <div className="pt-4 pb-4 flex flex-col gap-2">
-              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-                AI タグ提案
-              </label>
-
-              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
-                {t('detail.aiNsfwWarning')}
-              </p>
+          {/* AI タグ提案 */}
+          {aiEnabled && (
+            <Section title={t('detail.aiTitle')}>
+              <p className={styles.warning}>{t('detail.aiNsfwWarning')}</p>
 
               {aiModelDownloaded === false && !aiDownloading && (
-                <button
-                  type="button"
-                  onClick={handleDownloadAiModel}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-medium"
-                >
-                  AI タグ機能を有効にする（{aiModelType === 'joytag' ? '~700 MB' : '~200 MB'}）
-                </button>
+                <Button variant="primary" size="md" fullWidth onClick={handleDownloadAiModel}>
+                  {t('detail.aiEnable', { size: aiModelType === 'joytag' ? '~700 MB' : '~200 MB' })}
+                </Button>
               )}
 
               {aiDownloading && (
-                <div className="flex flex-col gap-1">
-                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-500 rounded-full transition-all"
-                      style={{ width: `${Math.round(aiDownloadProgress * 100)}%` }}
-                    />
+                <div className={styles.stackTight}>
+                  <div className={styles.meter}>
+                    <div className={styles.meterBar} style={{ width: `${Math.round(aiDownloadProgress * 100)}%` }} />
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                    ダウンロード中… {Math.round(aiDownloadProgress * 100)}%
+                  <p className={`${styles.muted} ${styles.center}`}>
+                    {t('detail.aiDownloading', { percent: Math.round(aiDownloadProgress * 100) })}
                   </p>
                 </div>
               )}
 
               {aiModelDownloaded && !aiDownloading && (
                 <>
-                  <button
-                    type="button"
-                    onClick={handleAnalyzeTags}
-                    disabled={aiAnalyzing || !localThumbnail}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-medium disabled:opacity-50"
-                  >
-                    {aiAnalyzing ? '分析中…' : 'タグを分析する'}
-                  </button>
+                  <Button variant="primary" size="sm" onClick={handleAnalyzeTags} disabled={aiAnalyzing || !localThumbnail}>
+                    {aiAnalyzing ? t('detail.aiAnalyzing') : t('detail.aiAnalyze')}
+                  </Button>
+                  {!localThumbnail && <p className={styles.muted}>{t('detail.aiNeedThumbnail')}</p>}
+                  {aiError && <p className={styles.error}>{aiError}</p>}
 
-                  {!localThumbnail && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      サムネイルが必要です
-                    </p>
+                  {aiResult && aiResult.matched_tags.length > 0 && (
+                    <div className={styles.stackTight}>
+                      <p className={styles.label}>{t('detail.aiMatched')}</p>
+                      {aiResult.matched_tags.map((m) => {
+                        const tag = tags.find((tg) => tg.id === m.tag_id);
+                        if (!tag) return null;
+                        return (
+                          <label key={m.tag_id} className={styles.check}>
+                            <Checkbox onCheckedChange={(v) => { if (v === true) handleApplyMatchedTag(m.tag_id); }} />
+                            <TagBadge tag={tag} showIcon />
+                            <span className={styles.score}>{(m.score * 100).toFixed(0)}%</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   )}
 
-                  {aiError && (
-                    <p className="text-xs text-red-500">{aiError}</p>
-                  )}
-
-                  {aiResult && (
-                    <div className="flex flex-col gap-3 mt-1">
-                      {/* 既存タグ候補 */}
-                      {aiResult.matched_tags.length > 0 && (
-                        <div className="flex flex-col gap-1">
-                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                            既存タグ候補
-                          </p>
-                          {aiResult.matched_tags.map((m) => {
-                            const tag = tags.find((t) => t.id === m.tag_id);
-                            if (!tag) return null;
-                            return (
-                              <label
-                                key={m.tag_id}
-                                className="flex items-center gap-2 cursor-pointer text-xs"
-                              >
-                                <input
-                                  type="checkbox"
-                                  className="w-3.5 h-3.5 accent-indigo-500"
-                                  onChange={(e) => {
-                                    if (e.target.checked) handleApplyMatchedTag(m.tag_id);
-                                  }}
-                                />
-                                <span
-                                  className="px-1.5 py-0.5 rounded text-white text-xs"
-                                  style={{ backgroundColor: tag.color }}
-                                >
-                                  {tag.name}
-                                </span>
-                                <span className="text-gray-400 dark:text-gray-500">
-                                  {(m.score * 100).toFixed(0)}%
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* 新規タグ候補 */}
-                      {aiResult.new_suggestions.length > 0 && (
-                        <div className="flex flex-col gap-1">
-                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                            新規タグ候補
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {aiResult.new_suggestions.map((sug) => (
-                              <button
-                                key={sug.name}
-                                type="button"
-                                onClick={() => handleNewSuggestionClick(sug)}
-                                className="px-2 py-0.5 bg-gray-100 hover:bg-indigo-100 dark:bg-gray-800 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300 text-xs rounded border border-gray-200 dark:border-gray-700 hover:border-indigo-400 transition-colors"
-                                title={`スコア: ${(sug.score * 100).toFixed(0)}%`}
-                              >
-                                + {sug.name}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                  {aiResult && aiResult.new_suggestions.length > 0 && (
+                    <div className={styles.stackTight}>
+                      <p className={styles.label}>{t('detail.aiNew')}</p>
+                      <div className={styles.wrap}>
+                        {aiResult.new_suggestions.map((sug) => (
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            key={sug.name}
+                            onClick={() => handleNewSuggestionClick(sug)}
+                            title={t('detail.aiScore', { score: (sug.score * 100).toFixed(0) })}
+                          >
+                            <Plus aria-hidden />
+                            {sug.name}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </>
               )}
-            </div>
+            </Section>
+          )}
 
-            }
-
-            {/* 字幕ファイル管理 */}
-            {!isLink && <div className="pt-4 pb-4 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
-                  {t('detail.subtitle')}
-                </label>
-                <button
-                  type="button"
-                  onClick={handleScanSubtitles}
-                  disabled={isScanningSubs}
-                  className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
-                >
+          {/* 字幕 */}
+          {!isLink && (
+            <Section
+              title={t('detail.subtitle')}
+              actions={
+                <Button variant="secondary" size="xs" onClick={handleScanSubtitles} disabled={isScanningSubs}>
                   {isScanningSubs ? t('detail.searchingSubtitle') : t('detail.searchSubtitle')}
-                </button>
-              </div>
-              {subtitles.length === 0 && !isScanningSubs && (
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  {t('detail.subtitleHelp')}
-                </p>
-              )}
+                </Button>
+              }
+            >
+              {subtitles.length === 0 && !isScanningSubs && <p className={styles.muted}>{t('detail.subtitleHelp')}</p>}
               {subtitles.length > 0 && (
-                <div className="flex flex-col gap-1">
-                  {subtitles.map((sub) => (
-                    <div key={sub.path} className="flex items-center gap-2 text-xs">
-                      <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{sub.name}</span>
-                      <span className="text-gray-400 dark:text-gray-500 uppercase">{sub.ext}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleLoadSubtitle(sub.path)}
-                        className={`px-2 py-0.5 rounded text-xs ${
-                          loadedSubtitle === sub.path
-                            ? 'bg-green-600 text-white'
-                            : 'bg-blue-600 hover:bg-blue-700 text-white'
-                        }`}
-                      >
-                        {loadedSubtitle === sub.path ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                <ul className={styles.list}>
+                  {subtitles.map((sub) => {
+                    const loaded = loadedSubtitle === sub.path;
+                    return (
+                      <li key={sub.path} className={styles.subRow}>
+                        <span className={styles.ellipsis}>{sub.name}</span>
+                        <span className={styles.ext}>{sub.ext}</span>
+                        <Button variant={loaded ? 'soft' : 'primary'} size="xs" onClick={() => handleLoadSubtitle(sub.path)}>
+                          {loaded && <Check aria-hidden />}
+                          {loaded ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-            </div>}
+            </Section>
+          )}
 
-            {/* 類似動画 */}
-            {!isLink && <div className="pt-4 pb-4 flex flex-col gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <label className="text-xs font-medium text-gray-400 dark:text-gray-500 shrink-0">
-                  {t('detail.similarVideos')}
-                </label>
-                <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 ml-auto">
-                  {t('detail.similarSensitivity')}:
-                </span>
-                {([4, 8, 12] as SimilarThreshold[]).map((th) => (
-                  <button
-                    key={th}
-                    type="button"
-                    onClick={() => handleSimilarThresholdChange(th)}
-                    className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                      similarThreshold === th
-                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium'
-                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                    }`}
-                  >
-                    {th === 4
-                      ? t('detail.similarSensHigh')
-                      : th === 8
-                      ? t('detail.similarSensNormal')
-                      : t('detail.similarSensLow')}
-                  </button>
-                ))}
-              </div>
-
+          {/* 類似動画 */}
+          {!isLink && (
+            <Section
+              title={t('detail.similarVideos')}
+              actions={
+                <div className={styles.row}>
+                  <span className={styles.muted}>{t('detail.similarSensitivity')}</span>
+                  <SegmentedControl
+                    size="xs"
+                    aria-label={t('detail.similarSensitivity')}
+                    value={String(similarThreshold)}
+                    onValueChange={(v) => handleSimilarThresholdChange(Number(v) as SimilarThreshold)}
+                    options={([4, 8, 12] as SimilarThreshold[]).map((th) => ({
+                      value: String(th),
+                      label:
+                        th === 4
+                          ? t('detail.similarSensHigh')
+                          : th === 8
+                          ? t('detail.similarSensNormal')
+                          : t('detail.similarSensLow'),
+                    }))}
+                  />
+                </div>
+              }
+            >
               {!similarDetected && !similarLoading ? (
-                <div className="flex flex-col items-center py-4 gap-2">
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{t('detail.similarNotRun')}</p>
-                  <button
-                    type="button"
-                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg font-medium"
-                    onClick={() => detectSimilar()}
-                  >
+                <div className={styles.placeholder}>
+                  <p className={styles.muted}>{t('detail.similarNotRun')}</p>
+                  <Button variant="primary" size="sm" onClick={() => detectSimilar()}>
                     {t('detail.similarDetect')}
-                  </button>
+                  </Button>
                 </div>
               ) : similarLoading ? (
-                <div className="flex flex-col items-center py-4 gap-2 text-xs text-gray-400 dark:text-gray-500">
-                  <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
-                  {similarHashProgress
-                    ? t('detail.similarComputing', { done: similarHashProgress.done, total: similarHashProgress.total })
-                    : '…'}
+                <div className={styles.placeholder}>
+                  <LoaderCircle className={styles.spinner} aria-hidden />
+                  <p className={styles.muted}>
+                    {similarHashProgress
+                      ? t('detail.similarComputing', { done: similarHashProgress.done, total: similarHashProgress.total })
+                      : '…'}
+                  </p>
                   {similarHashProgress && (
-                    <div className="w-40 bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-1">
+                    <div className={`${styles.meter} ${styles.meterNarrow}`}>
                       <div
-                        className="bg-blue-500 h-1 rounded-full transition-all"
+                        className={styles.meterBar}
                         style={{ width: `${(similarHashProgress.done / similarHashProgress.total) * 100}%` }}
                       />
                     </div>
                   )}
                 </div>
-              ) : similarDetected && similarVideos.length === 0 ? (
-                <div className="flex flex-col items-center py-4 gap-1">
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{t('detail.similarEmpty')}</p>
-                  <button
-                    type="button"
-                    className="mt-1 px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                    onClick={() => detectSimilar()}
-                  >
+              ) : similarVideos.length === 0 ? (
+                <div className={styles.placeholder}>
+                  <p className={styles.muted}>{t('detail.similarEmpty')}</p>
+                  <Button variant="secondary" size="sm" onClick={() => detectSimilar()}>
                     {t('detail.similarRedetect')}
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-1">
+                <div className={styles.list}>
                   {similarVideos.map((sim) => {
                     const pct = currentPhash ? similarityPct(sim.phash, currentPhash) : null;
                     return (
-                      <button
-                        key={sim.id}
-                        type="button"
-                        className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors text-left w-full"
-                        onClick={() => handleOpenSimilar(sim)}
-                      >
-                        {sim.thumbnail ? (
-                          <img
-                            src={convertFileSrc(sim.thumbnail)}
-                            alt=""
-                            className="w-16 h-10 object-cover rounded shrink-0 bg-gray-200 dark:bg-gray-700"
-                          />
-                        ) : (
-                          <div className="w-16 h-10 rounded bg-gray-200 dark:bg-gray-700 shrink-0 flex items-center justify-center text-gray-400 text-base">
-                            ▶
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                            {sim.title ?? sim.path.split('/').pop()}
-                          </p>
-                          {sim.duration != null && (
-                            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                              {formatTime(sim.duration)}
-                            </p>
-                          )}
-                        </div>
+                      <button key={sim.id} type="button" className={styles.similar} onClick={() => handleOpenSimilar(sim)}>
+                        <span className={styles.similarThumb}>
+                          {sim.thumbnail ? <ThumbImage src={sim.thumbnail} alt="" /> : <Film aria-hidden />}
+                        </span>
+                        <span className={styles.similarText}>
+                          <span className={styles.ellipsis}>{sim.title ?? sim.path.split('/').pop()}</span>
+                          {sim.duration != null && <span className={styles.subtle}>{formatTime(sim.duration)}</span>}
+                        </span>
                         {pct !== null && (
-                          <span
-                            className={`text-[10px] font-medium shrink-0 ${
-                              pct >= 95
-                                ? 'text-red-500 dark:text-red-400'
-                                : pct >= 88
-                                ? 'text-amber-500 dark:text-amber-400'
-                                : 'text-gray-400 dark:text-gray-500'
-                            }`}
-                          >
+                          <span className={styles.pct} data-level={pct >= 95 ? 'high' : pct >= 88 ? 'mid' : undefined}>
                             {t('detail.similarPct', { pct })}
                           </span>
                         )}
@@ -909,8 +823,8 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                   })}
                 </div>
               )}
-            </div>}
-          </div>
+            </Section>
+          )}
         </div>
       </div>
     </>

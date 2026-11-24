@@ -1,0 +1,108 @@
+@layer ui {
+  .root {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-track);
+  }
+  .root[data-full-width] {
+    display: flex;
+    width: 100%;
+  }
+  /* 幅いっぱいのときは文字量に応じて配分する (短い項目に余白を取られて長い項目が切れないように) */
+  .root[data-full-width] .item {
+    flex: 1 1 auto;
+    padding-inline: var(--space-1);
+  }
+
+  .item {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-fg-muted);
+    font: inherit;
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--duration-fast) ease;
+
+    &:hover:not(:disabled) {
+      color: var(--color-fg);
+    }
+    &[data-state="on"] {
+      color: var(--color-fg);
+    }
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
+  .root[data-size="xs"] {
+    --seg-h: 1.375rem;
+  }
+  .root[data-size="sm"] {
+    --seg-h: 1.625rem;
+  }
+  .root[data-size="md"] {
+    --seg-h: 2rem;
+  }
+
+  .root[data-size="xs"] .item {
+    height: var(--seg-h);
+    padding-inline: var(--space-2);
+    font-size: 0.6875rem;
+  }
+  .root[data-size="sm"] .item {
+    height: var(--seg-h);
+    padding-inline: var(--space-2-5);
+    font-size: var(--text-xs);
+  }
+  .root[data-size="md"] .item {
+    height: var(--seg-h);
+    padding-inline: var(--space-4);
+    font-size: var(--text-sm);
+  }
+  /* アイコンだけの項目は正方形 */
+  .root .item[data-icon-only] {
+    flex: 0 0 auto;
+    width: var(--seg-h);
+    padding-inline: 0;
+
+    & svg {
+      width: 0.95rem;
+      height: 0.95rem;
+    }
+  }
+
+  .indicator {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--color-bg-segment);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .label {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    & svg {
+      flex-shrink: 0;
+      width: 1.1em;
+      height: 1.1em;
+    }
+  }
+}

@@ -2,6 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useModalStore } from "../../store/useModalStore";
+import { FolderInput, FolderOutput, FolderTree, PencilLine, RefreshCw, Star, Tags, Trash2, X } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   selectedVideoIds: Set<number>;
@@ -22,81 +24,62 @@ export function BatchActionBar({
 
   if (selectedVideoIds.size === 0) return null;
 
+  const ids = () => Array.from(selectedVideoIds);
+
   return (
-    <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg shrink-0">
-      <span className="text-xs font-medium text-blue-700 dark:text-blue-300 shrink-0">
+    <div className="flex flex-wrap items-center gap-1.5 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-2xl shrink-0">
+      <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 shrink-0 mr-1">
         {t("batch.selectedCount", { count: selectedVideoIds.size })}
       </span>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
-        onClick={() => openBulkModal("tag")}
-      >
+      <Button variant="soft" onClick={() => openBulkModal("tag")}>
+        <Tags aria-hidden />
         {t("batch.setTag")}
-      </button>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
-        onClick={() => openBulkModal("category")}
-      >
+      </Button>
+      <Button variant="soft" onClick={() => openBulkModal("category")}>
+        <FolderTree aria-hidden />
         {t("batch.setCategory")}
-      </button>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded"
+      </Button>
+      <Button
+        variant="soft"
         onClick={async () => {
-          await assignCategoryFromPath(Array.from(selectedVideoIds));
+          await assignCategoryFromPath(ids());
           onClearSelection();
         }}
       >
+        <FolderInput aria-hidden />
         {t("batch.assignDirCategory")}
-      </button>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-yellow-500 hover:bg-yellow-600 text-white rounded"
-        onClick={() => openBulkModal("rating")}
-      >
+      </Button>
+      <Button variant="soft" onClick={() => openBulkModal("rating")}>
+        <Star aria-hidden />
         {t("batch.setRating")}
-      </button>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded"
-        onClick={() => openBulkModal("moveDir")}
-      >
+      </Button>
+      <Button variant="soft" onClick={() => openBulkModal("moveDir")}>
+        <FolderOutput aria-hidden />
         {t("batch.moveDir")}
-      </button>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded"
-        onClick={() => openBulkModal("rename")}
-      >
+      </Button>
+      <Button variant="soft" onClick={() => openBulkModal("rename")}>
+        <PencilLine aria-hidden />
         {t("batch.rename")}
-      </button>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
-        onClick={() => openBulkModal("delete")}
-      >
-        {t("batch.delete")}
-      </button>
-      <button
-        type="button"
-        className="px-2.5 py-1 text-xs bg-gray-600 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400 text-white rounded disabled:opacity-50"
+      </Button>
+      <Button
+        variant="secondary"
         disabled={isThumbnailGenerating}
         onClick={async () => {
-          await rescanMultiple(Array.from(selectedVideoIds));
+          await rescanMultiple(ids());
           onClearSelection();
         }}
       >
+        <RefreshCw aria-hidden />
         {t("batch.rescan")}
-      </button>
-      <button
-        type="button"
-        className="ml-auto text-xs text-blue-500 dark:text-blue-400 hover:underline"
-        onClick={onClearSelection}
-      >
+      </Button>
+      <Button variant="danger" onClick={() => openBulkModal("delete")}>
+        <Trash2 aria-hidden />
+        {t("batch.delete")}
+      </Button>
+      <Button variant="ghost" size="xs" className="ml-auto" onClick={onClearSelection}>
+        <X aria-hidden />
         {t("batch.deselect")}
-      </button>
+      </Button>
     </div>
   );
 }

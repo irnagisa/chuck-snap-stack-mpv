@@ -1,0 +1,38 @@
+/*
+ * ベーススタイル (リセットは Tailwind の preflight に任せている。
+ * Tailwind を外すタイミングで最小リセットをここへ移す)
+ */
+@layer tokens {
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-bg-app);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* キーボード操作時のみフォーカスリングを出す共通スタイル */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+}
+
+/*
+ * テーマ切替 (src/lib/theme.ts の applyTheme)
+ * View Transitions で旧画面→新画面をクロスフェードする。
+ * 切替中は要素個別の CSS トランジションを止め、色が要素ごとにずれて変わるのを防ぐ。
+ */
+@layer tokens {
+  .theme-switching,
+  .theme-switching *,
+  .theme-switching *::before,
+  .theme-switching *::after {
+    transition: none !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 260ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}

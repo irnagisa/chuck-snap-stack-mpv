@@ -1,4 +1,5 @@
 import { useHomeStore } from "../../store/useHomeStore";
+import homeStyles from "./Home.module.css";
 
 export function WatcherStatusCard() {
   const watchingPaths = useHomeStore((s) => s.watchingPaths);
@@ -6,7 +7,7 @@ export function WatcherStatusCard() {
   const isActive = watchingPaths.length > 0;
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <div className="flex items-center gap-2 mb-2">
         <span
           className={`w-2 h-2 rounded-full flex-shrink-0 ${

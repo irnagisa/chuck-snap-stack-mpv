@@ -6,6 +6,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../../store/useSettingsStore";
 import { useDownloadStore } from "../../store/useDownloadStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { Download, Link2 } from "lucide-react";
+import { Button, Dialog, Input, SegmentedControl, Switch, useDialogClose } from "../ui";
+import styles from "./LibraryModal.module.css";
 
 interface Props {
   onClose: () => void;
@@ -53,6 +56,7 @@ export function DownloadModal({ onClose }: Props) {
   const [isFetching, setIsFetching] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const dialog = useDialogClose(onClose);
 
   useEffect(() => {
     const init = async () => {
@@ -88,7 +92,7 @@ export function DownloadModal({ onClose }: Props) {
   const handleDownload = () => {
     if (!url.trim() || !saveDir) return;
     addJob({ url: url.trim(), saveDir, filename, useYtdlp });
-    onClose();
+    dialog.close();
   };
 
   const canStart = url.trim() !== "" && saveDir !== "" && (useYtdlp || filename.trim() !== "");
@@ -122,7 +126,7 @@ export function DownloadModal({ onClose }: Props) {
         thumbnailUrl: linkMeta?.thumbnailUrl ?? null,
       });
       await fetchVideos();
-      onClose();
+      dialog.close();
     } catch (e) {
       setFetchError(String(e));
     } finally {
@@ -131,66 +135,64 @@ export function DownloadModal({ onClose }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+    <Dialog
+      {...dialog.props}
+      size="md"
+      title={mode === "download" ? t('download.title') : t('download.linkTitle')}
+      closeLabel={t('confirm.close')}
+      footer={
+        mode === "download" ? (
+          <>
+            <Button variant="secondary" onClick={() => dialog.close()}>
+              {t('download.cancel')}
+            </Button>
+            <Button variant="primary" onClick={handleDownload} disabled={!canStart}>
+              {t('download.start')}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={() => dialog.close()}>
+              {t('download.cancel')}
+            </Button>
+            <Button variant="primary" onClick={handleAddLink} disabled={!linkUrl.trim() || isAdding}>
+              {isAdding ? '…' : t('download.linkAdd')}
+            </Button>
+          </>
+        )
+      }
     >
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
+      <div className={styles.stack}>
         {/* モード切り替え */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-          <button
-            type="button"
-            onClick={() => setMode("download")}
-            className={`flex-1 py-1.5 text-sm rounded-md font-medium transition-colors ${
-              mode === "download"
-                ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }`}
-          >
-            {t('download.title')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("link")}
-            className={`flex-1 py-1.5 text-sm rounded-md font-medium transition-colors ${
-              mode === "link"
-                ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }`}
-          >
-            {t('download.linkTitle')}
-          </button>
-        </div>
+        <SegmentedControl<"download" | "link">
+          size="md"
+          fullWidth
+          aria-label={t('download.title')}
+          value={mode}
+          onValueChange={setMode}
+          options={[
+            { value: "download", label: <><Download aria-hidden />{t('download.title')}</> },
+            { value: "link", label: <><Link2 aria-hidden />{t('download.linkTitle')}</> },
+          ]}
+        />
 
         {mode === "download" ? (
           <>
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('download.title')}</h2>
-              <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                <span className="text-xs text-gray-500 dark:text-gray-400">yt-dlp</span>
-                <div
-                  className={`relative w-9 h-5 rounded-full transition-colors ${
-                    useYtdlp ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
-                  }`}
-                  onClick={() => setUseYtdlp((v) => !v)}
-                >
-                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${useYtdlp ? "translate-x-4" : ""}`} />
-                </div>
-              </label>
-            </div>
+            <label className={styles.spaceBetween}>
+              <span className={styles.muted}>yt-dlp</span>
+              <Switch checked={useYtdlp} onCheckedChange={setUseYtdlp} aria-label="yt-dlp" />
+            </label>
 
             {useYtdlp && ytdlpPath === "" && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 -mt-2">
-                {t('download.ytdlpWarning')}
-              </p>
+              <p className={styles.callout} data-tone="warning">{t('download.ytdlpWarning')}</p>
             )}
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">URL</label>
-              <input
-                className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+            <div>
+              <label className={styles.label} htmlFor="download-url">URL</label>
+              <Input
+                id="download-url"
+                size="md"
+                className={styles.fullWidth}
                 placeholder={useYtdlp ? t('download.urlPlaceholderYtdlp') : t('download.urlPlaceholderDirect')}
                 value={url}
                 onChange={(e) => handleUrlChange(e.target.value)}
@@ -198,124 +200,93 @@ export function DownloadModal({ onClose }: Props) {
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.saveDir')}</label>
-              <div className="flex gap-2">
-                <input
+            <div>
+              <p className={styles.label}>{t('download.saveDir')}</p>
+              <div className={styles.row}>
+                <Input
+                  size="md"
+                  className={styles.grow}
                   readOnly
-                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 cursor-default min-w-0"
                   placeholder={t('download.saveDirPlaceholder')}
                   value={saveDir}
+                  aria-label={t('download.saveDir')}
                 />
-                <button
-                  type="button"
-                  onClick={handlePickDir}
-                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0"
-                >
+                <Button variant="secondary" size="md" onClick={handlePickDir}>
                   {t('download.selectDir')}
-                </button>
+                </Button>
               </div>
             </div>
 
-            {!useYtdlp && (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.filename')}</label>
-                <input
-                  className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            {useYtdlp ? (
+              <p className={styles.note}>{t('download.filenameAuto')}</p>
+            ) : (
+              <div>
+                <label className={styles.label} htmlFor="download-filename">{t('download.filename')}</label>
+                <Input
+                  id="download-filename"
+                  size="md"
+                  className={styles.fullWidth}
                   value={filename}
                   onChange={(e) => setFilename(e.target.value)}
                 />
               </div>
             )}
-
-            {useYtdlp && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
-                {t('download.filenameAuto')}
-              </p>
-            )}
-
-            <div className="flex gap-2 justify-end pt-1">
-              <button type="button" onClick={onClose} className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
-                {t('download.cancel')}
-              </button>
-              <button type="button" onClick={handleDownload} disabled={!canStart} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50">
-                {t('download.start')}
-              </button>
-            </div>
           </>
         ) : (
           <>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">URL</label>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-w-0"
+            <div>
+              <label className={styles.label} htmlFor="link-url">URL</label>
+              <div className={styles.row}>
+                <Input
+                  id="link-url"
+                  size="md"
+                  className={styles.grow}
                   placeholder="https://www.youtube.com/watch?v=..."
                   value={linkUrl}
                   onChange={(e) => { setLinkUrl(e.target.value); setLinkMeta(null); setFetchError(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleFetchMeta(); }}
                   autoFocus
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="md"
                   onClick={handleFetchMeta}
                   disabled={!linkUrl.trim() || isFetching}
-                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0 disabled:opacity-50"
                 >
                   {isFetching ? '…' : t('download.linkFetch')}
-                </button>
+                </Button>
               </div>
             </div>
 
-            {fetchError && (
-              <p className="text-xs text-red-500 -mt-2">{fetchError}</p>
-            )}
+            {fetchError && <p className={styles.callout} data-tone="danger">{fetchError}</p>}
 
-            {linkMeta && (
-              <div className="flex gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                {linkMeta.thumbnailUrl && (
-                  <img
-                    src={linkMeta.thumbnailUrl}
-                    alt=""
-                    className="w-24 h-14 object-cover rounded shrink-0 bg-gray-200 dark:bg-gray-700"
-                  />
+            {linkMeta && (linkMeta.thumbnailUrl || linkMeta.siteName) && (
+              <div className={styles.linkPreview}>
+                {linkMeta.thumbnailUrl && <img src={linkMeta.thumbnailUrl} alt="" className={styles.linkThumb} />}
+                {linkMeta.siteName && (
+                  <p className={styles.note}>
+                    {linkMeta.siteName}{linkMeta.authorName ? ` · ${linkMeta.authorName}` : ''}
+                  </p>
                 )}
-                <div className="flex flex-col gap-1 min-w-0">
-                  {linkMeta.siteName && (
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500">{linkMeta.siteName}{linkMeta.authorName ? ` · ${linkMeta.authorName}` : ''}</p>
-                  )}
-                </div>
               </div>
             )}
 
             {(linkMeta || linkUrl.trim()) && (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.linkTitleLabel')}</label>
-                <input
-                  className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              <div>
+                <label className={styles.label} htmlFor="link-title">{t('download.linkTitleLabel')}</label>
+                <Input
+                  id="link-title"
+                  size="md"
+                  className={styles.fullWidth}
                   placeholder={linkUrl}
                   value={linkTitle}
                   onChange={(e) => setLinkTitle(e.target.value)}
                 />
               </div>
             )}
-
-            <div className="flex gap-2 justify-end pt-1">
-              <button type="button" onClick={onClose} className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
-                {t('download.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={handleAddLink}
-                disabled={!linkUrl.trim() || isAdding}
-                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
-              >
-                {isAdding ? '…' : t('download.linkAdd')}
-              </button>
-            </div>
           </>
         )}
       </div>
-    </div>
+    </Dialog>
   );
 }

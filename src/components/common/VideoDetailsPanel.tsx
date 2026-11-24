@@ -5,7 +5,8 @@ import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
-import { Select } from './Select';
+import { Check } from 'lucide-react';
+import { Select, Button, Input, Checkbox } from '../ui';
 import type { Video, SubtitleFile } from '../../types';
 import { formatTime, formatFileSize } from '../../utils/time';
 
@@ -183,9 +184,11 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
         <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
           {t('detail.titleField')}
         </label>
-        <input
+        <Input
+          size="md"
+          variant="ghost"
+          className="w-full"
           ref={titleRef}
-          className="w-full px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg outline-none transition-colors"
           value={localTitle}
           onChange={(e) => setLocalTitle(e.target.value)}
           onBlur={handleTitleSave}
@@ -194,11 +197,9 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           }}
         />
         <label className="flex items-center gap-1.5 mt-1 cursor-pointer w-fit">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={renameFile}
-            onChange={(e) => setRenameFile(e.target.checked)}
-            className="w-3.5 h-3.5 accent-blue-500"
+            onCheckedChange={(v) => setRenameFile(v === true)}
           />
           <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.renameFile')}</span>
         </label>
@@ -210,9 +211,9 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
             {t('detail.path')}
           </label>
-          <button
-            type="button"
-            className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(`Finder での表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`))}
           >
             <svg
@@ -229,7 +230,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
               />
             </svg>
             {t('detail.openFinder')}
-          </button>
+          </Button>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">
           {video.path}
@@ -241,8 +242,10 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
         <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
           {t('detail.url')}
         </label>
-        <input
-          className="w-full px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-lg outline-none transition-colors"
+        <Input
+          size="sm"
+          variant="ghost"
+          className="w-full"
           placeholder={t('detail.urlPlaceholder')}
           value={localSourceUrl}
           onChange={(e) => setLocalSourceUrl(e.target.value)}
@@ -269,20 +272,26 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
             {t('detail.mediaType')}
           </label>
-          <button
-            type="button"
-            className="text-xs px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded disabled:opacity-50"
+          <Button
+            variant="secondary"
+            size="xs"
             onClick={handleRescan}
             disabled={isRescanning}
           >
             {isRescanning ? t('detail.rescanning') : t('detail.rescan')}
-          </button>
+          </Button>
         </div>
-        <Select value={localMediaType} onChange={(e) => handleMediaTypeChange(e.target.value)}>
-          <option value="video">{t('detail.mediaVideo')}</option>
-          <option value="audio">{t('detail.mediaAudio')}</option>
-          <option value="image">{t('detail.mediaImage')}</option>
-        </Select>
+        <Select
+          fullWidth
+          value={localMediaType}
+          onValueChange={handleMediaTypeChange}
+          aria-label={t('detail.mediaType')}
+          options={[
+            { value: 'video', label: t('detail.mediaVideo') },
+            { value: 'audio', label: t('detail.mediaAudio') },
+            { value: 'image', label: t('detail.mediaImage') },
+          ]}
+        />
         <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
           {video.duration != null && (
             <div>
@@ -361,36 +370,37 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           {t('detail.thumbnail')}
         </label>
         <div className="flex items-center gap-2 flex-wrap">
-          <input
+          <Input
+            size="sm"
+            className="w-20"
             type="number"
             min={0}
             step={1}
-            className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             value={thumbTimestamp}
             onChange={(e) => setThumbTimestamp(e.target.value)}
           />
           <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
             {t('detail.captureAt')}
           </span>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleCaptureThumb}
             disabled={isCapturingThumb}
-            className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
           >
             {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
-          </button>
+          </Button>
         </div>
         {localMediaType === 'audio' && (
           <div className="mt-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleGenerateWaveform}
               disabled={isGeneratingWaveform}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
             >
               {isGeneratingWaveform ? t('detail.waveformGenerating') : t('detail.waveformGenerate')}
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -401,14 +411,14 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
             {t('detail.subtitle')}
           </label>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="xs"
             onClick={handleScanSubtitles}
             disabled={isScanningSubs}
-            className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded disabled:opacity-50"
           >
             {isScanningSubs ? t('detail.searchingSubtitle') : t('detail.searchSubtitle')}
-          </button>
+          </Button>
         </div>
         {subtitles.length === 0 && !isScanningSubs && (
           <p className="text-xs text-gray-400 dark:text-gray-500">{t('detail.subtitleHelp')}</p>
@@ -419,19 +429,14 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
               <div key={sub.path} className="flex items-center gap-2 text-xs">
                 <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{sub.name}</span>
                 <span className="text-gray-400 dark:text-gray-500 uppercase">{sub.ext}</span>
-                <button
-                  type="button"
+                <Button
+                  variant={loadedSubtitle === sub.path ? 'soft' : 'primary'}
+                  size="xs"
                   onClick={() => handleLoadSubtitle(sub.path)}
-                  className={`px-2 py-0.5 rounded text-xs ${
-                    loadedSubtitle === sub.path
-                      ? 'bg-green-600 text-white'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
                 >
-                  {loadedSubtitle === sub.path
-                    ? t('detail.subtitleLoaded')
-                    : t('detail.subtitleLoad')}
-                </button>
+                  {loadedSubtitle === sub.path && <Check aria-hidden />}
+                  {loadedSubtitle === sub.path ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
+                </Button>
               </div>
             ))}
           </div>

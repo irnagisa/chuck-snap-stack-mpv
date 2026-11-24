@@ -8,9 +8,11 @@ beforeEach(() => {
 });
 
 describe('ToastContainer', () => {
-  it('renders nothing when there are no toasts', () => {
+  it('renders an empty live region when there are no toasts', () => {
     const { container } = render(<ToastContainer />);
-    expect(container.firstChild).toBeNull();
+    const region = container.querySelector('[aria-live="polite"]');
+    expect(region).not.toBeNull();
+    expect(region).toBeEmptyDOMElement();
   });
 
   it('renders toast messages', () => {

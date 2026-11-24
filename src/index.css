@@ -1,10 +1,25 @@
+/*
+ * カスケードレイヤー順序
+ *   theme / base / components / utilities : Tailwind (移行期間中のみ)
+ *   tokens : デザイントークン・ベーススタイル (src/styles)
+ *   ui     : Native CSS コンポーネント (*.module.css は @layer ui { ... } で書く)
+ *
+ * ui は utilities より前なので、移行途中に Tailwind クラスを className で
+ * 渡した場合はそちらが勝つ。Tailwind 撤去後はこの宣言から外すだけで良い。
+ */
+@layer theme, base, tokens, components, ui, utilities;
+
 @import "tailwindcss";
+@import "./styles/tokens.css";
+@import "./styles/tailwind-bridge.css";
+@import "./styles/base.css";
 
 /* class ベースの dark モード: <html class="dark"> で切り替え */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* rem の基準。UI 全体 (文字・余白・角丸) がこの値に比例する */
 html {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 @keyframes loading-bar-slide {
@@ -16,11 +31,3 @@ html {
   animation: loading-bar-slide 1.4s ease-in-out infinite;
 }
 
-@keyframes audioWave {
-  0%   { transform: scaleY(0.3); }
-  100% { transform: scaleY(1.0); }
-}
-
-.audio-wave-bar {
-  transform-origin: bottom;
-}

@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
+import { Check, LoaderCircle } from "lucide-react";
+import { Button, Dialog, RadioGroup, RadioGroupItem, useDialogClose } from "../ui";
+import { ThumbImage } from "./MediaThumb";
+import styles from "./LibraryModal.module.css";
 
 interface VideoWithSize extends Video {
   fileSize: number | null;
@@ -46,6 +49,7 @@ export function DuplicatesModal({ onClose }: Props) {
   const [keepIds, setKeepIds] = useState<Map<number, number>>(new Map());
   const [processing, setProcessing] = useState<Set<number>>(new Set());
   const [resolvedGroups, setResolvedGroups] = useState<Set<number>>(new Set());
+  const dialog = useDialogClose(onClose, { locked: processing.size > 0 });
 
   useEffect(() => {
     detectExact();
@@ -136,172 +140,104 @@ export function DuplicatesModal({ onClose }: Props) {
     doRemove(keepId, group.videos, groupIndex, deleteFiles);
   };
 
-  // ── Shared action row ─────────────────────────────────────────────────────
-  const GroupActions = ({
-    isProcessing,
-    onRemoveLib,
-    onDeleteFiles,
-  }: {
-    isProcessing: boolean;
-    onRemoveLib: () => void;
-    onDeleteFiles: () => void;
-  }) => (
-    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
-      <button
-        type="button"
-        disabled={isProcessing}
-        className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
-        onClick={onRemoveLib}
-      >
-        {t('duplicates.removeOthersFromLibrary')}
-      </button>
-      <button
-        type="button"
-        disabled={isProcessing}
-        className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
-        onClick={onDeleteFiles}
-      >
-        {t('duplicates.deleteOthers')}
-      </button>
-      {isProcessing && (
-        <span className="text-xs text-gray-400 dark:text-gray-500">{t('duplicates.processing')}</span>
-      )}
-    </div>
-  );
-
   const activeExact = groups.filter((_, i) => !resolvedGroups.has(i));
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
+    <Dialog
+      {...dialog.props}
+      size="lg"
+      title={t('duplicates.title')}
+      closeLabel={t('confirm.close')}
+      footer={
+        <Button variant="secondary" onClick={() => dialog.close()}>
+          {t('duplicates.close')}
+        </Button>
+      }
     >
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[700px] max-w-[95vw] max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {t('duplicates.title')}
-          </h2>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-base leading-none"
-            onClick={onClose}
-          >
-            ✕
-          </button>
+      {loading ? (
+        <div className={styles.status}>
+          <LoaderCircle className={styles.spinner} aria-hidden />
+          {t('duplicates.loading')}
         </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 min-h-0">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-2 text-sm text-gray-400 dark:text-gray-500">
-              <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
-              {t('duplicates.loading')}
-            </div>
-          ) : activeExact.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-2">
-              <span className="text-3xl">✓</span>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {groups.length === 0 ? t('duplicates.empty') : t('duplicates.resolved')}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-5">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {t('duplicates.found', {
-                  groups: activeExact.length,
-                  count: activeExact.reduce((s: number, g) => s + g.videos.length, 0),
-                })}
-              </p>
-              {groups.map((group, groupIdx) => {
-                if (resolvedGroups.has(groupIdx)) return null;
-                const isProcessing = processing.has(groupIdx);
-                const keepId = keepIds.get(groupIdx) ?? group.videos[0].id;
-                return (
-                  <div key={groupIdx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                    <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                      <span className="font-medium text-gray-700 dark:text-gray-300">
-                        {t('duplicates.group')} {groupIdx + 1}
+      ) : activeExact.length === 0 ? (
+        <div className={styles.status}>
+          <span className={styles.statusIcon}>
+            <Check aria-hidden />
+          </span>
+          {groups.length === 0 ? t('duplicates.empty') : t('duplicates.resolved')}
+        </div>
+      ) : (
+        <div className={styles.stack}>
+          <p className={styles.muted}>
+            {t('duplicates.found', {
+              groups: activeExact.length,
+              count: activeExact.reduce((s: number, g) => s + g.videos.length, 0),
+            })}
+          </p>
+          {groups.map((group, groupIdx) => {
+            if (resolvedGroups.has(groupIdx)) return null;
+            const isProcessing = processing.has(groupIdx);
+            const keepId = keepIds.get(groupIdx) ?? group.videos[0].id;
+            return (
+              <div key={groupIdx} className={styles.panel}>
+                <div className={styles.panelHead}>
+                  <span className={styles.strong}>
+                    {t('duplicates.group')} {groupIdx + 1}
+                  </span>
+                  <span>·</span>
+                  <span>{group.videos.length} {t('duplicates.countUnit')}</span>
+                  <span>·</span>
+                  <span>{fmtDuration(group.duration)}</span>
+                  <span>·</span>
+                  <span>{fmtSize(group.fileSize)}</span>
+                </div>
+                <RadioGroup
+                  aria-label={t('duplicates.keep')}
+                  value={String(keepId)}
+                  onValueChange={(v) => setKeepIds((prev) => new Map(prev).set(groupIdx, Number(v)))}
+                >
+                  {group.videos.map((video) => (
+                    <label
+                      key={video.id}
+                      className={styles.panelRow}
+                      data-selected={keepId === video.id || undefined}
+                    >
+                      <RadioGroupItem value={String(video.id)} />
+                      <span className={`${styles.miniThumb} ${styles.thumbBox}`}>
+                        {video.thumbnail && <ThumbImage src={video.thumbnail} alt="" />}
                       </span>
-                      <span>·</span>
-                      <span>{group.videos.length} {t('duplicates.countUnit')}</span>
-                      <span>·</span>
-                      <span>{fmtDuration(group.duration)}</span>
-                      <span>·</span>
-                      <span>{fmtSize(group.fileSize)}</span>
-                    </div>
-                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                      {group.videos.map((video) => (
-                        <label
-                          key={video.id}
-                          className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
-                            keepId === video.id
-                              ? 'bg-blue-50 dark:bg-blue-950/30'
-                              : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={`keep-${groupIdx}`}
-                            checked={keepId === video.id}
-                            onChange={() =>
-                              setKeepIds((prev) => new Map(prev).set(groupIdx, video.id))
-                            }
-                            className="accent-blue-600 shrink-0"
-                          />
-                          {video.thumbnail ? (
-                            <img
-                              src={convertFileSrc(video.thumbnail)}
-                              alt=""
-                              className="w-14 h-9 object-cover rounded shrink-0 bg-gray-200 dark:bg-gray-700"
-                            />
-                          ) : (
-                            <div className="w-14 h-9 rounded bg-gray-200 dark:bg-gray-700 shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                              {video.title ?? video.path.split('/').pop()}
-                            </p>
-                            <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
-                              {video.path}
-                            </p>
-                          </div>
-                          {keepId === video.id && (
-                            <span className="text-[10px] text-blue-600 dark:text-blue-400 shrink-0 font-medium">
-                              {t('duplicates.keep')}
-                            </span>
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                    <GroupActions
-                      isProcessing={isProcessing}
-                      onRemoveLib={() => handleRemoveOthers(groupIdx, false)}
-                      onDeleteFiles={() => handleRemoveOthers(groupIdx, true)}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      <span className={styles.fileText}>
+                        <span className={styles.fileName}>{video.title ?? video.path.split('/').pop()}</span>
+                        <span className={styles.filePath}>{video.path}</span>
+                      </span>
+                      {keepId === video.id && <span className={styles.badge}>{t('duplicates.keep')}</span>}
+                    </label>
+                  ))}
+                </RadioGroup>
+                <div className={styles.panelFoot}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={isProcessing}
+                    onClick={() => handleRemoveOthers(groupIdx, false)}
+                  >
+                    {t('duplicates.removeOthersFromLibrary')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={isProcessing}
+                    onClick={() => handleRemoveOthers(groupIdx, true)}
+                  >
+                    {t('duplicates.deleteOthers')}
+                  </Button>
+                  {isProcessing && <span className={styles.note}>{t('duplicates.processing')}</span>}
+                </div>
+              </div>
+            );
+          })}
         </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 shrink-0 flex justify-end">
-          <button
-            type="button"
-            className="px-4 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-            onClick={onClose}
-          >
-            {t('duplicates.close')}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }

@@ -1,0 +1,42 @@
+@layer ui {
+  .root {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .viewport {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+  }
+
+  .scrollbar {
+    display: flex;
+    padding: 2px;
+    user-select: none;
+    touch-action: none;
+    transition: background-color var(--duration-fast) ease;
+
+    &[data-orientation="vertical"] {
+      width: 0.625rem;
+    }
+    &[data-orientation="horizontal"] {
+      flex-direction: column;
+      height: 0.625rem;
+    }
+    &:hover {
+      background: var(--color-bg-hover);
+    }
+  }
+
+  .thumb {
+    position: relative;
+    flex: 1;
+    border-radius: var(--radius-full);
+    background: var(--color-border-strong);
+
+    &:hover {
+      background: var(--color-fg-subtle);
+    }
+  }
+}

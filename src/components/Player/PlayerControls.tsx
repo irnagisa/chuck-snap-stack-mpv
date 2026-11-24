@@ -6,6 +6,8 @@ import { useModalStore } from '../../store/useModalStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { invoke } from '@tauri-apps/api/core';
 import { formatTime } from '../../utils/time';
+import { Select, Button, Slider } from '../ui';
+import { Camera, ListVideo, Pause, PictureInPicture2, Play, Repeat, Shuffle, SkipBack, SkipForward, Square, X } from "lucide-react";
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -17,6 +19,7 @@ function PlayerSeekBar() {
   const abLoopB = usePlayerStore((s) => s.abLoopB);
   const seekTo = usePlayerStore((s) => s.seekTo);
 
+  const { t } = useTranslation();
   const isDragging = useRef(false);
   const [localSeek, setLocalSeek] = useState(0);
 
@@ -26,17 +29,15 @@ function PlayerSeekBar() {
     }
   }, [playbackTime]);
 
-  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocalSeek(Number(e.target.value));
-  };
-
-  const handleSeekStart = () => {
+  // ドラッグ中は表示だけ更新し、離したときにシークする
+  const handleSeekChange = ([v]: number[]) => {
     isDragging.current = true;
+    setLocalSeek(v);
   };
 
-  const handleSeekEnd = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
+  const handleSeekCommit = ([v]: number[]) => {
     isDragging.current = false;
-    seekTo(Number((e.target as HTMLInputElement).value));
+    seekTo(v);
   };
 
   const pct = (t: number) => duration > 0 ? `${(t / duration) * 100}%` : '0%';
@@ -47,18 +48,14 @@ function PlayerSeekBar() {
         {formatTime(localSeek)}
       </span>
       <div className="flex-1 relative">
-        <input
-          type="range"
-          className="w-full h-1.5 accent-blue-500 cursor-pointer"
+        <Slider
           min={0}
           max={duration > 0 ? duration : 100}
           step={0.5}
-          value={localSeek}
-          onChange={handleSeekChange}
-          onMouseDown={handleSeekStart}
-          onMouseUp={handleSeekEnd}
-          onTouchStart={handleSeekStart}
-          onTouchEnd={handleSeekEnd}
+          value={[localSeek]}
+          onValueChange={handleSeekChange}
+          onValueCommit={handleSeekCommit}
+          thumbLabel={t('player.seek')}
         />
         {/* チャプターマーカー */}
         {duration > 0 && chapters.map((ch, i) => (
@@ -153,38 +150,43 @@ export function PlayerControls() {
   // ミニプレイヤーモード中はフッターを非表示
   if (isMiniPlayer) return null;
 
+  // 再生バーは常に暗い面なので、配下のボタン等はダーク配色で描画する (scheme-dark)
+  const barClass =
+    "scheme-dark fixed bottom-3 left-3 right-3 rounded-2xl bg-gray-900/95 backdrop-blur-md text-white shadow-xl ring-1 ring-white/10";
+
   if (!currentVideo) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 py-2 shadow-lg border-t border-gray-700 flex items-center gap-2">
+      <div className={`${barClass} px-4 py-2 flex items-center gap-2`}>
         <span className="text-xs text-gray-500 shrink-0">{t('player.playbackSettings')}</span>
         <div className="w-px h-4 bg-gray-700 shrink-0" />
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={toggleShuffle}
-          className={`px-2.5 py-1 rounded text-sm shrink-0 ${isShuffle ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
           title={isShuffle ? t('player.shuffleOff') : t('player.shuffleOn')}
+          aria-pressed={isShuffle}
         >
+          <Shuffle aria-hidden />
           {t('player.shuffleLabel')}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="ghost"
           onClick={toggleLoop}
-          className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
           title={isLooping ? t('player.loopOff') : t('player.loopOn')}
           aria-label={isLooping ? t('player.loopOff') : t('player.loopOn')}
           aria-pressed={isLooping}
         >
+          <Repeat aria-hidden />
           {t('player.loopLabel')}
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white px-4 pt-2 pb-3 shadow-lg border-t border-gray-700 flex flex-col gap-2">
+    <div className={`${barClass} px-4 pt-2.5 pb-3 flex flex-col gap-2`}>
       <PlayerSeekBar />
 
-      <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex items-center gap-1 flex-wrap">
         {queue.length > 0 && (
           <span className="text-xs text-gray-400 shrink-0 tabular-nums">
             {t('player.queuePosition', { current: queueIndex + 1, total: queue.length })}
@@ -195,138 +197,128 @@ export function PlayerControls() {
         </span>
 
         {/* A-B ループ */}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={setAbLoopA}
-          className={`px-2 py-1 rounded text-xs shrink-0 ${abActive ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+          aria-pressed={abActive}
           title={abActive ? (abComplete ? t('player.abLooping') : t('player.abSetB')) : t('player.abSetA')}
         >
           {abComplete ? 'AB' : abActive ? 'A→B?' : 'A-B'}
-        </button>
+        </Button>
         {abActive && (
-          <button
-            type="button"
-            onClick={clearAbLoop}
-            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs shrink-0 text-gray-400"
-            title={t('player.abClear')}
-          >
-            ✕AB
-          </button>
+          <Button variant="ghost" size="xs" onClick={clearAbLoop} title={t('player.abClear')}>
+            <X aria-hidden />
+            AB
+          </Button>
         )}
 
         {/* 速度セレクタ */}
-        <select
-          value={speed}
-          onChange={(e) => setSpeed(Number(e.target.value))}
-          className="bg-gray-700 text-gray-200 text-xs rounded px-1 py-1 shrink-0 cursor-pointer"
+        <Select
+          value={String(speed)}
+          onValueChange={(v) => setSpeed(Number(v))}
           title={t('player.speed')}
-        >
-          {SPEED_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s === 1.0 ? '1x' : `${s}x`}</option>
-          ))}
-        </select>
+          className="shrink-0"
+          options={SPEED_OPTIONS.map((s) => ({ value: String(s), label: s === 1.0 ? '1x' : `${s}x` }))}
+        />
 
         {/* 前/再生/次 */}
         {queue.length > 0 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={playPrev}
             disabled={!hasPrev}
-            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
             title={t('player.prevVideo')}
             aria-label={t('player.prevVideo')}
           >
-            ⏮
-          </button>
+            <SkipBack aria-hidden fill="currentColor" />
+          </Button>
         )}
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="icon"
           onClick={pauseResume}
-          className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 w-12 text-center"
           title={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
           aria-label={isPaused ? t('player.playTooltip') : t('player.pauseTooltip')}
         >
-          {isPaused ? '▶' : '⏸'}
-        </button>
+          {isPaused ? <Play aria-hidden fill="currentColor" /> : <Pause aria-hidden fill="currentColor" />}
+        </Button>
         {queue.length > 0 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={playNext}
             disabled={!hasNext}
-            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded text-sm shrink-0"
             title={t('player.nextVideo')}
             aria-label={t('player.nextVideo')}
           >
-            ⏭
-          </button>
+            <SkipForward aria-hidden fill="currentColor" />
+          </Button>
         )}
 
         {/* シャッフル・ループ */}
         {queue.length > 1 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={toggleShuffle}
-            className={`px-2.5 py-1 rounded text-sm shrink-0 ${isShuffle ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
             title={isShuffle ? t('player.shuffleOff') : t('player.shuffleOn')}
             aria-label={isShuffle ? t('player.shuffleOff') : t('player.shuffleOn')}
             aria-pressed={isShuffle}
           >
-            ⇄
-          </button>
+            <Shuffle aria-hidden />
+          </Button>
         )}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={toggleLoop}
-          className={`px-2.5 py-1 rounded text-sm shrink-0 ${isLooping ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
           title={isLooping ? t('player.loopOff') : t('player.loopOn')}
           aria-label={isLooping ? t('player.loopOff') : t('player.loopOn')}
           aria-pressed={isLooping}
         >
-          ↻
-        </button>
+          <Repeat aria-hidden />
+        </Button>
 
         {/* スクリーンショット */}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={handleScreenshot}
-          className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
           title={t('player.screenshot')}
           aria-label={t('player.screenshot')}
         >
-          📷
-        </button>
+          <Camera aria-hidden />
+        </Button>
 
         {/* キューパネルトグル */}
         {queue.length > 0 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={toggleQueuePanel}
-            className={`px-2.5 py-1 rounded text-sm shrink-0 ${showQueuePanel ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
             title={t('player.showQueue')}
             aria-label={t('player.showQueue')}
             aria-pressed={showQueuePanel}
           >
-            ≡
-          </button>
+            <ListVideo aria-hidden />
+          </Button>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={toggleMiniPlayer}
-          className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm shrink-0 text-gray-300"
           title={t('player.miniPlayer')}
           aria-label={t('player.miniPlayer')}
         >
-          ⇱
-        </button>
-        <button
-          type="button"
-          onClick={quit}
-          className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-sm shrink-0"
-          title={t('player.exit')}
-        >
+          <PictureInPicture2 aria-hidden />
+        </Button>
+        <Button variant="danger-soft" onClick={quit} title={t('player.exit')}>
+          <Square aria-hidden fill="currentColor" />
           {t('player.exit')}
-        </button>
+        </Button>
       </div>
     </div>
   );

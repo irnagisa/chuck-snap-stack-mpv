@@ -1,3 +1,5 @@
+import styles from './mediaIcons.module.css';
+
 export type IconKey = 'folder' | 'tag' | 'film' | 'star' | 'music' | 'heart';
 
 export const MEDIA_ICONS: IconKey[] = ['folder', 'tag', 'film', 'star', 'music', 'heart'];
@@ -92,20 +94,20 @@ export function IconPicker({
   onChange: (icon: string | null) => void;
 }) {
   return (
-    <div className="flex gap-0.5">
+    <div className={styles.picker} role="radiogroup">
       {MEDIA_ICONS.map((key) => (
         <button
           key={key}
           type="button"
+          role="radio"
           title={ICON_LABELS[key]}
-          className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
-            value === key
-              ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400 ring-1 ring-blue-500'
-              : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-          }`}
+          aria-label={ICON_LABELS[key]}
+          aria-checked={value === key}
+          className={styles.option}
+          data-selected={value === key || undefined}
           onClick={() => onChange(key)}
         >
-          <MediaIcon icon={key} className="w-3.5 h-3.5" />
+          <MediaIcon icon={key} className={styles.icon} />
         </button>
       ))}
     </div>

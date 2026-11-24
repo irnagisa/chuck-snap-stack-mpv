@@ -2,9 +2,9 @@
   "app": {
     "title": "Chuck Snap Stack",
     "scanning": "扫描中...",
-    "addFolder": "+ 添加文件夹",
+    "addFolder": "添加文件夹",
     "useDirAsCategory": "用文件夹名作为分类",
-    "downloadUrl": "↓ URL",
+    "downloadUrl": "URL",
     "searchPlaceholder": "搜索文件...",
     "statsTitle": "统计面板",
     "exportTitle": "导出 / 导入",
@@ -25,13 +25,14 @@
     "transcodeStarting": "启动中...",
     "transcodeCancel": "取消",
     "transcodeDismiss": "✕",
-    "shuffleAll": "⇄ 全部",
+    "shuffleAll": "全部",
     "shuffleAllTitle": "随机播放全部 {{count}} 个结果",
-    "saveSmartPlaylist": "💾 保存",
+    "saveSmartPlaylist": "保存",
     "saveSmartPlaylistTitle": "将当前筛选条件保存为智能播放列表",
     "dropImport": "拖放视频以导入",
     "dropFormats": "支持 mp4 / mkv / webm / avi / mov 等格式",
     "confirmImport": "找到 {{count}} 个文件。\n全部添加？",
+    "confirmImportTitle": "添加此文件夹？",
     "confirmImportButton": "添加",
     "watchDirRemoved": "找不到文件夹",
     "watchDirRemovedAction": "标记为缺失",
@@ -44,11 +45,15 @@
     "transcodeBatchPartial": "转码结束: {{total}} 个中 {{failed}} 个失败"
   },
   "sidebar": {
-    "categoryTab": "分类",
-    "folderTab": "文件夹",
-    "playlistTab": "播放列表"
+    "label": "媒体库导航",
+    "searchPlaceholder": "筛选...",
+    "filtering": "正在按此部分筛选",
+    "moreActions": "{{name}} 的操作",
+    "allHint": "清除所有分类、文件夹和标签筛选",
+    "tagHint": "点击添加或移除筛选。F2 编辑，Delete 删除"
   },
   "filters": {
+    "sortBy": "排序方式",
     "sortByCreatedAt": "添加日期",
     "sortByDuration": "时长",
     "sortByRating": "评分",
@@ -83,7 +88,21 @@
     "av1Exclude": "排除 AV1 已转换",
     "minDurationPlaceholder": "最短秒数",
     "maxDurationPlaceholder": "最长秒数",
-    "durationSuffix": "秒"
+    "durationSuffix": "秒",
+    "title": "筛选",
+    "reset": "重置",
+    "rating": "评分",
+    "audio": "音频",
+    "watchedStatus": "观看状态",
+    "mediaType": "类型",
+    "av1": "AV1 转换",
+    "duration": "时长",
+    "all": "全部",
+    "unrated": "未评分",
+    "audioYesShort": "有",
+    "audioNoShort": "无",
+    "av1OnlyShort": "已转换",
+    "av1ExcludeShort": "排除"
   },
   "batch": {
     "selectedCount": "已选 {{count}} 个",
@@ -98,8 +117,8 @@
     "moveDir": "移动到其他文件夹"
   },
   "pagination": {
-    "prev": "← 上一页",
-    "next": "下一页 →",
+    "prev": "上一页",
+    "next": "下一页",
     "count": "(共{{count}}项)"
   },
   "settings": {
@@ -137,7 +156,7 @@
     "sectionScanPaths": "扫描路径",
     "noScanPaths": "未配置扫描文件夹",
     "removePath": "删除此路径",
-    "addFolder": "+ 添加文件夹",
+    "addFolder": "添加文件夹",
     "sectionWebServer": "Web 服务器",
     "webServerDesc": "让局域网内其他设备（手机、PC）通过浏览器浏览和播放您的媒体库。",
     "port": "端口",
@@ -150,6 +169,8 @@
     "keybindingCapture": "请按下要分配给「{{action}}」的按键...",
     "keybindingCancel": "取消",
     "keybindingReset": "全部恢复默认",
+    "keybindingChange": "更改",
+    "keybindingResetOne": "恢复默认",
     "sectionCategoryMode": "分类模式",
     "categoryModeVirtual": "Virtual 模式",
     "categoryModeVirtualDesc": "分类仅记录在数据库中，不移动文件。支持只读和网络驱动器。",
@@ -194,12 +215,17 @@
     "play": "播放",
     "openUrl": "打开链接",
     "deleteVideo": "删除视频",
-    "playing": "播放中"
+    "playing": "播放中",
+    "select": "选择",
+    "emptyTitle": "还没有媒体",
+    "emptyDescription": "添加文件夹后，其中的视频、音频和图片会显示在这里。",
+    "noMatchTitle": "没有符合条件的媒体",
+    "noMatchDescription": "请尝试更改搜索关键词、筛选条件或侧边栏中的选择。"
   },
   "detail": {
     "title": "详情",
     "viewImage": "🔍 放大查看",
-    "play": "▶ 播放",
+    "play": "播放",
     "openInBrowser": "在浏览器中打开",
     "viewer": "查看器",
     "rescan": "重新扫描",
@@ -258,7 +284,34 @@
     "similarRedetect": "重新搜索",
     "similarNotRun": "尚未执行相似视频搜索",
     "similarDetect": "搜索相似视频",
-    "aiNsfwWarning": "⚠ AI 标签建议可能包含涉及性内容的标签。"
+    "aiNsfwWarning": "⚠ AI 标签建议可能包含涉及性内容的标签。",
+    "aiTitle": "AI 标签建议",
+    "aiEnable": "启用 AI 标签功能（{{size}}）",
+    "aiDownloading": "下载中… {{percent}}%",
+    "aiAnalyze": "分析标签",
+    "aiAnalyzing": "分析中…",
+    "aiNeedThumbnail": "需要缩略图",
+    "aiMatched": "已有标签候选",
+    "aiNew": "新标签候选",
+    "aiScore": "得分：{{score}}%",
+    "newTagTitle": "创建新标签",
+    "newTagDesc": "请确认标签名称后创建。",
+    "newTagCreate": "创建并添加",
+    "newTagCancel": "取消",
+    "close": "关闭",
+    "similarFailed": "相似搜索失败：{{error}}",
+    "renameFailed": "重命名文件失败：{{error}}",
+    "captureFailed": "获取缩略图失败：{{error}}",
+    "subtitleFailed": "加载字幕失败：{{error}}",
+    "revealFailed": "无法在访达中显示：{{error}}",
+    "openUrlFailed": "无法打开 URL：{{error}}",
+    "categoryClear": "清除分类并退回收件箱",
+    "tagUsage": "{{count}} 个",
+    "newTagColor": "颜色",
+    "newTagIcon": "图标",
+    "removeTag": "移除 {{name}}",
+    "ratingStar": "{{count}} 星",
+    "categoryPick": "选择分类"
   },
   "download": {
     "title": "从 URL 下载",
@@ -285,7 +338,9 @@
     "all": "全部",
     "empty": "未注册文件夹",
     "rescan": "重新扫描",
-    "unwatch": "取消监视"
+    "unwatch": "取消监视",
+    "unwatchConfirmTitle": "停止监视“{{name}}”？",
+    "unwatchConfirmDescription": "此文件夹中的媒体将从媒体库中移除。文件本身不会被删除。"
   },
   "category": {
     "title": "分类",
@@ -304,12 +359,34 @@
     "cancel": "取消",
     "namePlaceholder": "分类名",
     "tagsTitle": "标签",
-    "addGroup": "+ 分组",
+    "addGroup": "分组",
     "groupNamePlaceholder": "分组名",
     "deleteGroup": "删除分组",
     "editGroup": "编辑分组名",
     "others": "其他",
-    "noTags": "暂无标签"
+    "noTags": "暂无标签",
+    "save": "保存",
+    "color": "颜色",
+    "icon": "图标",
+    "parent": "父分类",
+    "group": "分组",
+    "name": "名称",
+    "empty": "没有分类",
+    "addChildTitle": "向“{{name}}”添加子分类",
+    "editTitle": "编辑分类",
+    "editTagTitle": "编辑标签",
+    "addGroupLong": "添加标签组",
+    "deleteConfirmTitle": "删除分类“{{name}}”？",
+    "deleteConfirmDescription": "此分类中的媒体将变为未分类并移至收件箱。子分类将移至顶层。",
+    "deleteTagConfirmTitle": "删除标签“{{name}}”？",
+    "deleteTagConfirmDescription": "将从所有媒体中移除此标签。",
+    "deleteGroupConfirmTitle": "删除标签组“{{name}}”？",
+    "deleteGroupConfirmDescription": "组内的标签不会被删除，将移至“其他”。",
+    "editTags": "编辑标签",
+    "finishEditingTags": "完成编辑",
+    "editTagsHint": "点击标签进行编辑，点击 × 删除",
+    "editNamed": "编辑 {{name}}",
+    "deleteNamed": "删除 {{name}}"
   },
   "playlist": {
     "title": "播放列表",
@@ -319,12 +396,15 @@
     "delete": "删除",
     "smart": "智能",
     "applyFilter": "应用此筛选条件",
-    "playAll": "▶ 全部播放",
+    "playAll": "全部播放",
     "loading": "加载中...",
     "noVideos": "暂无视频，请从媒体库添加。",
     "removeFromPlaylist": "从播放列表移除",
     "dragToReorder": "拖动以排序",
-    "countSuffix": " 个"
+    "countSuffix": " 个",
+    "smartLoadError": "加载智能播放列表失败: {{error}}",
+    "deleteConfirmTitle": "删除“{{name}}”？",
+    "deleteConfirmDescription": "仅删除播放列表，媒体仍保留在媒体库中。"
   },
   "addToPlaylist": {
     "title": "添加到播放列表",
@@ -399,7 +479,10 @@
     "resultSkipped": "{{count}} 个文件在监视目录外，已跳过",
     "resultFailed": "{{count}} 个文件移动失败",
     "closeButton": "关闭",
-    "switchConfirm": "切换到 Sync 模式。\n更改分类时将自动移动文件。\n确认？"
+    "switchConfirm": "切换到 Sync 模式。\n更改分类时将自动移动文件。\n确认？",
+    "targetCount": "将移动 {{count}} 个文件",
+    "noTargets": "没有需要移动的文件",
+    "switchOnly": "切换到 Sync 模式"
   },
   "categoryModeChange": {
     "toVirtualTitle": "切换到 Virtual 模式",
@@ -440,7 +523,11 @@
     "cancel": "取消",
     "close": "关闭",
     "rename": "重命名 {{count}} 个",
-    "renaming": "重命名中..."
+    "renaming": "重命名中...",
+    "skippedDuplicate": "{{name}} → 因重复已跳过",
+    "resultDone": "已重命名 {{count}} 个文件",
+    "resultFailed": "，{{count}} 个失败",
+    "modeLabel": "重命名方式"
   },
   "duplicates": {
     "title": "检测重复视频",
@@ -525,8 +612,8 @@
   "export": {
     "title": "导出 / 导入",
     "desc": "将媒体库数据（视频、标签、播放列表）保存到 JSON 文件或从中恢复。",
-    "exportButton": "📤 导出备份",
-    "importButton": "📥 导入备份",
+    "exportButton": "导出备份",
+    "importButton": "导入备份",
     "importWarning": "⚠ 导入将覆盖当前数据",
     "exporting": "导出中...",
     "importing": "导入中...",
@@ -551,7 +638,9 @@
     "topRated": "Top 5 评分",
     "recentWatched": "最近观看",
     "topPlayed": "Top 5 播放",
-    "playCountUnit": " 次"
+    "playCountUnit": " 次",
+    "durationHours": "{{hours}}小时{{minutes}}分钟",
+    "durationMinutes": "{{minutes}}分钟"
   },
   "smartPlaylist": {
     "title": "保存智能播放列表",
@@ -596,10 +685,10 @@
     "playbackSettings": "播放设置",
     "shuffleOff": "关闭随机",
     "shuffleOn": "开启随机",
-    "shuffleLabel": "⇄ 随机",
+    "shuffleLabel": "随机",
     "loopOff": "关闭循环",
     "loopOn": "开启循环",
-    "loopLabel": "↻ 循环",
+    "loopLabel": "循环",
     "abSetA": "设置 A 点",
     "abSetB": "设置 B 点",
     "abLooping": "A-B 循环中",
@@ -608,7 +697,8 @@
     "screenshot": "截图",
     "showQueue": "显示队列",
     "miniPlayer": "迷你播放器",
-    "exit": "退出"
+    "exit": "退出",
+    "seek": "播放位置"
   },
   "queue": {
     "title": "队列（{{count}} 个）",
@@ -621,7 +711,8 @@
     "cancel": "取消"
   },
   "confirm": {
-    "cancel": "取消"
+    "cancel": "取消",
+    "close": "关闭"
   },
   "about": {
     "sectionTitle": "关于",
@@ -640,5 +731,10 @@
     "failed": "{{count}} 个文件移动失败",
     "syncModeNote": "Sync 模式：目标文件夹中若无对应分类目录将自动创建",
     "virtualModeNote": "Virtual 模式：直接移动到所选文件夹根目录"
+  },
+  "dndDestDir": {
+    "title": "选择目标文件夹",
+    "desc": "将把 {{count}} 个文件复制到所选文件夹的 Unsorted 子文件夹中并添加到媒体库。",
+    "cancel": "取消"
   }
 }

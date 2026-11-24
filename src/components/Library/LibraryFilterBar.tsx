@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/shallow";
-import { Select } from "../common/Select";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, Film, Image as ImageIcon, LayoutGrid, List, Music, RotateCcw, Shuffle, SlidersHorizontal, X } from "lucide-react";
+import { Select, Button, SegmentedControl, Input, Popover, Tooltip } from "../ui";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useTagStore } from "../../store/useTagStore";
-import { useLibraryViewStore } from "../../store/useLibraryViewStore";
+import { TagBadge } from "./TagBadge";
+import { useLibraryViewStore, type ListItemSize, type ViewMode } from "../../store/useLibraryViewStore";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import { useModalStore } from "../../store/useModalStore";
 import type {
@@ -92,344 +94,383 @@ export function LibraryFilterBar() {
     return () => clearTimeout(timer);
   }, [maxDurationInput]);
 
+  // 詳細フィルター (ポップオーバー内) のうち、既定値から変わっているものの数
+  const activeFilterCount = [
+    filterMinRating !== 0,
+    filterHasAudio !== null,
+    filterWatchedStatus !== "all",
+    filterMediaType !== "all",
+    filterAv1 !== "all",
+    filterMinDuration > 0,
+    filterMaxDuration > 0,
+  ].filter(Boolean).length;
+
+  const resetFilters = () => {
+    setMinRating(0);
+    setRatingMode("gte");
+    setHasAudio(null);
+    setWatchedStatus("all");
+    setMediaType("all");
+    setAv1Filter("all");
+    setDurationInput("");
+    setMaxDurationInput("");
+  };
+
+  const ratingLabel =
+    filterMinRating === -1
+      ? t("filters.ratingUnrated")
+      : `★${filterMinRating}${filterRatingMode === "lte" ? "-" : filterRatingMode === "eq" ? "=" : "+"}`;
+
+  const sortOrderTitle = filterSortOrder === "desc" ? t("filters.sortDescTitle") : t("filters.sortAscTitle");
+
   return (
-    <div className="flex flex-col gap-1.5 mb-3 shrink-0">
-      {/* Row 1: 選択中タグ + ソート */}
-      <div className="flex items-center gap-2">
-        <div className="flex flex-wrap gap-1 flex-1 min-w-0">
-          {/* アクティブな非タグフィルターのチップ */}
-          {filterMinRating !== 0 && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              {filterMinRating === -1
-                ? t('filters.ratingUnrated')
-                : `★${filterMinRating}${filterRatingMode === 'lte' ? '-' : filterRatingMode === 'eq' ? '=' : '+'}`}
-              <button type="button" onClick={() => setMinRating(0)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          )}
-          {filterHasAudio !== null && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              {filterHasAudio === 1 ? t('filters.audioYes') : t('filters.audioNo')}
-              <button type="button" onClick={() => setHasAudio(null)} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          )}
-          {filterWatchedStatus !== 'all' && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              {filterWatchedStatus === 'watched' ? t('filters.watched') : t('filters.unwatched')}
-              <button type="button" onClick={() => setWatchedStatus('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          )}
-          {filterMediaType !== 'all' && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              {filterMediaType === 'video' ? t('filters.mediaVideo') : filterMediaType === 'audio' ? t('filters.mediaAudio') : t('filters.mediaImage')}
-              <button type="button" onClick={() => setMediaType('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          )}
-          {filterAv1 !== 'all' && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              {filterAv1 === 'only' ? t('filters.av1Only') : t('filters.av1Exclude')}
-              <button type="button" onClick={() => setAv1Filter('all')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          )}
-          {filterMinDuration > 0 && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              {filterMinDuration}{t('filters.durationSuffix')}〜
-              <button type="button" onClick={() => setDurationInput('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          )}
-          {filterMaxDuration > 0 && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-              〜{filterMaxDuration}{t('filters.durationSuffix')}
-              <button type="button" onClick={() => setMaxDurationInput('')} aria-label={t('filters.tagClear')} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          )}
-          {filterTagIds.length > 0 && (
-            <>
-              {tags
-                .filter((tag) => filterTagIds.includes(tag.id))
-                .map((tag) => (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    className="px-1.5 py-px rounded-full text-[10px] font-medium text-white ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-950 hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: tag.color }}
-                    onClick={() => toggleTagFilter(tag.id)}
-                    title={t("filters.tagClear")}
-                  >
-                    {tag.name}
-                  </button>
-                ))}
-              {filterTagIds.length >= 2 && (
-                <button
-                  type="button"
-                  className="px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                  title={
-                    filterTagMode === "and"
-                      ? t("filters.tagFilterAnd")
-                      : t("filters.tagFilterOr")
-                  }
-                  onClick={() =>
-                    setTagMode(filterTagMode === "and" ? "or" : "and")
-                  }
-                >
-                  {filterTagMode === "and" ? "AND" : "OR"}
-                </button>
+    // 幅が足りないときは右側のグループごと次の行へ回り込む (縮めて潰さない)
+    <div className="flex flex-wrap items-start gap-x-2 gap-y-2 mb-3 shrink-0">
+      {/* 左: 絞り込みボタン + 適用中の条件 (チップは折り返して並ぶ) */}
+      <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-48">
+        <Popover.Root>
+          <Popover.Trigger asChild>
+            <Button variant={activeFilterCount > 0 ? "soft" : "secondary"} title={t("filters.title")}>
+              <SlidersHorizontal aria-hidden />
+              {t("filters.title")}
+              {activeFilterCount > 0 && (
+                <span className="min-w-4 px-1 rounded-full bg-blue-600 text-white text-[10px] leading-4 tabular-nums">
+                  {activeFilterCount}
+                </span>
               )}
-              <button
-                type="button"
-                className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
-                onClick={clearTagFilters}
-              >
-                {t("filters.tagClear")}
-              </button>
-            </>
-          )}
-        </div>
+            </Button>
+          </Popover.Trigger>
+          <Popover.Content align="start" className="w-[22rem]">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold">{t("filters.title")}</h3>
+              <Button variant="ghost" size="xs" disabled={activeFilterCount === 0} onClick={resetFilters}>
+                <RotateCcw aria-hidden />
+                {t("filters.reset")}
+              </Button>
+            </div>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <Select
-            variant="sm"
-            value={filterSortBy}
-            onChange={(e) =>
-              setSort(e.target.value as SortBy, filterSortOrder)
-            }
-          >
-            <option value="created_at">{t("filters.sortByCreatedAt")}</option>
-            <option value="duration">{t("filters.sortByDuration")}</option>
-            <option value="rating">{t("filters.sortByRating")}</option>
-            <option value="file_size">{t("filters.sortByFileSize")}</option>
-          </Select>
-          <button
-            type="button"
-            className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
-            title={
-              filterSortOrder === "desc"
-                ? t("filters.sortDescTitle")
-                : t("filters.sortAscTitle")
-            }
-            onClick={() =>
-              setSort(filterSortBy, filterSortOrder === "desc" ? "asc" : "desc")
-            }
-          >
-            {filterSortOrder === "desc" ? "↓" : "↑"}
-          </button>
-          {totalCount > 0 && (
-            <button
-              type="button"
-              className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-700 dark:hover:text-purple-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors"
-              title={t("app.shuffleAllTitle", {
-                count: totalCount.toLocaleString(),
-              })}
-              onClick={playShuffleAll}
-            >
-              {t("app.shuffleAll")}
-            </button>
-          )}
-          <button
-            type="button"
-            className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-400 dark:hover:border-amber-600 transition-colors"
-            title={t("app.saveSmartPlaylistTitle")}
-            onClick={openSmartPlaylist}
-          >
-            {t("app.saveSmartPlaylist")}
-          </button>
-        </div>
-      </div>
+            <div className="flex flex-col gap-3.5">
+              <FilterField label={t("filters.rating")}>
+                <SegmentedControl
+                  size="xs"
+                  fullWidth
+                  aria-label="評価フィルタ"
+                  value={String(filterMinRating)}
+                  onValueChange={(v) => setMinRating(Number(v))}
+                  options={[
+                    { value: "0", label: t("filters.all") },
+                    { value: "-1", label: t("filters.unrated") },
+                    ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: `★${n}` })),
+                  ]}
+                />
+                {filterMinRating > 0 && (
+                  <SegmentedControl<RatingMode>
+                    size="xs"
+                    className="mt-1.5"
+                    aria-label="評価の比較方法"
+                    value={filterRatingMode}
+                    onValueChange={setRatingMode}
+                    options={[
+                      { value: "gte", label: t("filters.ratingModeGte") },
+                      { value: "lte", label: t("filters.ratingModeLte") },
+                      { value: "eq", label: t("filters.ratingModeEq") },
+                    ]}
+                  />
+                )}
+              </FilterField>
 
-      {/* Row 2: 追加フィルタ */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <Select
-          variant="sm"
-          value={filterMinRating}
-          onChange={(e) => setMinRating(Number(e.target.value))}
-          title="評価フィルタ"
-        >
-          <option value={0}>{t("filters.ratingAll")}</option>
-          <option value={-1}>{t("filters.ratingUnrated")}</option>
-          <option value={1}>{t("filters.rating1")}</option>
-          <option value={2}>{t("filters.rating2")}</option>
-          <option value={3}>{t("filters.rating3")}</option>
-          <option value={4}>{t("filters.rating4")}</option>
-          <option value={5}>{t("filters.rating5")}</option>
-        </Select>
+              <FilterField label={t("filters.watchedStatus")}>
+                <SegmentedControl<WatchedStatus>
+                  size="xs"
+                  fullWidth
+                  aria-label="視聴状態フィルタ"
+                  value={filterWatchedStatus}
+                  onValueChange={setWatchedStatus}
+                  options={[
+                    { value: "all", label: t("filters.all") },
+                    { value: "unwatched", label: t("filters.unwatched") },
+                    { value: "watched", label: t("filters.watched") },
+                  ]}
+                />
+              </FilterField>
 
-        {filterMinRating > 0 && (
-          <Select
-            variant="sm"
-            value={filterRatingMode}
-            onChange={(e) => setRatingMode(e.target.value as RatingMode)}
-            title="評価の比較方法"
-          >
-            <option value="gte">{t("filters.ratingModeGte")}</option>
-            <option value="lte">{t("filters.ratingModeLte")}</option>
-            <option value="eq">{t("filters.ratingModeEq")}</option>
-          </Select>
+              <FilterField label={t("filters.mediaType")}>
+                <SegmentedControl<MediaTypeFilter>
+                  size="xs"
+                  fullWidth
+                  aria-label="メディアタイプフィルタ"
+                  value={filterMediaType}
+                  onValueChange={setMediaType}
+                  options={[
+                    { value: "all", label: t("filters.all") },
+                    { value: "video", label: <><Film aria-hidden />{t("filters.mediaVideo")}</> },
+                    { value: "audio", label: <><Music aria-hidden />{t("filters.mediaAudio")}</> },
+                    { value: "image", label: <><ImageIcon aria-hidden />{t("filters.mediaImage")}</> },
+                  ]}
+                />
+              </FilterField>
+
+              <div className="grid grid-cols-2 gap-3">
+                <FilterField label={t("filters.audio")}>
+                  <SegmentedControl
+                    size="xs"
+                    fullWidth
+                    aria-label="音声フィルタ"
+                    value={filterHasAudio === null ? "all" : String(filterHasAudio)}
+                    onValueChange={(v) => setHasAudio(v === "all" ? null : Number(v))}
+                    options={[
+                      { value: "all", label: t("filters.all") },
+                      { value: "1", label: t("filters.audioYesShort") },
+                      { value: "0", label: t("filters.audioNoShort") },
+                    ]}
+                  />
+                </FilterField>
+
+                <FilterField label={t("filters.av1")}>
+                  <SegmentedControl<Av1Filter>
+                    size="xs"
+                    fullWidth
+                    aria-label="AV1 変換済みフィルタ"
+                    value={filterAv1}
+                    onValueChange={setAv1Filter}
+                    options={[
+                      { value: "all", label: t("filters.all") },
+                      { value: "only", label: t("filters.av1OnlyShort") },
+                      { value: "exclude", label: t("filters.av1ExcludeShort") },
+                    ]}
+                  />
+                </FilterField>
+              </div>
+
+              <FilterField label={t("filters.duration")}>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    size="sm"
+                    className="flex-1"
+                    type="number"
+                    value={durationInput}
+                    onChange={(e) => setDurationInput(e.target.value)}
+                    placeholder={t("filters.minDurationPlaceholder")}
+                    min={0}
+                    title="最小長さ (秒)"
+                  />
+                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">〜</span>
+                  <Input
+                    size="sm"
+                    className="flex-1"
+                    type="number"
+                    value={maxDurationInput}
+                    onChange={(e) => setMaxDurationInput(e.target.value)}
+                    placeholder={t("filters.maxDurationPlaceholder")}
+                    min={0}
+                    title="最大長さ (秒)"
+                  />
+                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                    {t("filters.durationSuffix")}
+                  </span>
+                </div>
+              </FilterField>
+            </div>
+          </Popover.Content>
+        </Popover.Root>
+
+        {/* 適用中の条件 */}
+        {filterMinRating !== 0 && (
+          <FilterChip label={ratingLabel} clearLabel={t("filters.tagClear")} onClear={() => setMinRating(0)} />
+        )}
+        {filterHasAudio !== null && (
+          <FilterChip
+            label={filterHasAudio === 1 ? t("filters.audioYes") : t("filters.audioNo")}
+            clearLabel={t("filters.tagClear")}
+            onClear={() => setHasAudio(null)}
+          />
+        )}
+        {filterWatchedStatus !== "all" && (
+          <FilterChip
+            label={filterWatchedStatus === "watched" ? t("filters.watched") : t("filters.unwatched")}
+            clearLabel={t("filters.tagClear")}
+            onClear={() => setWatchedStatus("all")}
+          />
+        )}
+        {filterMediaType !== "all" && (
+          <FilterChip
+            label={
+              filterMediaType === "video"
+                ? t("filters.mediaVideo")
+                : filterMediaType === "audio"
+                ? t("filters.mediaAudio")
+                : t("filters.mediaImage")
+            }
+            clearLabel={t("filters.tagClear")}
+            onClear={() => setMediaType("all")}
+          />
+        )}
+        {filterAv1 !== "all" && (
+          <FilterChip
+            label={filterAv1 === "only" ? t("filters.av1Only") : t("filters.av1Exclude")}
+            clearLabel={t("filters.tagClear")}
+            onClear={() => setAv1Filter("all")}
+          />
+        )}
+        {filterMinDuration > 0 && (
+          <FilterChip
+            label={`${filterMinDuration}${t("filters.durationSuffix")}〜`}
+            clearLabel={t("filters.tagClear")}
+            onClear={() => setDurationInput("")}
+          />
+        )}
+        {filterMaxDuration > 0 && (
+          <FilterChip
+            label={`〜${filterMaxDuration}${t("filters.durationSuffix")}`}
+            clearLabel={t("filters.tagClear")}
+            onClear={() => setMaxDurationInput("")}
+          />
         )}
 
-        <Select
-          variant="sm"
-          value={filterHasAudio === null ? "" : String(filterHasAudio)}
-          onChange={(e) => {
-            const v = e.target.value;
-            setHasAudio(v === "" ? null : Number(v));
-          }}
-          title="音声フィルタ"
-        >
-          <option value="">{t("filters.audioAll")}</option>
-          <option value="1">{t("filters.audioYes")}</option>
-          <option value="0">{t("filters.audioNo")}</option>
-        </Select>
-
-        <Select
-          variant="sm"
-          value={filterWatchedStatus}
-          onChange={(e) => setWatchedStatus(e.target.value as WatchedStatus)}
-          title="視聴状態フィルタ"
-        >
-          <option value="all">{t("filters.watchedAll")}</option>
-          <option value="unwatched">{t("filters.unwatched")}</option>
-          <option value="watched">{t("filters.watched")}</option>
-        </Select>
-
-        <Select
-          variant="sm"
-          value={filterMediaType}
-          onChange={(e) => setMediaType(e.target.value as MediaTypeFilter)}
-          title="メディアタイプフィルタ"
-        >
-          <option value="all">{t("filters.mediaAll")}</option>
-          <option value="video">{t("filters.mediaVideo")}</option>
-          <option value="audio">{t("filters.mediaAudio")}</option>
-          <option value="image">{t("filters.mediaImage")}</option>
-        </Select>
-
-        <Select
-          variant="sm"
-          value={filterAv1}
-          onChange={(e) => setAv1Filter(e.target.value as Av1Filter)}
-          title="AV1 変換済みフィルタ"
-        >
-          <option value="all">{t("filters.av1All")}</option>
-          <option value="only">{t("filters.av1Only")}</option>
-          <option value="exclude">{t("filters.av1Exclude")}</option>
-        </Select>
-
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
-            value={durationInput}
-            onChange={(e) => setDurationInput(e.target.value)}
-            placeholder={t("filters.minDurationPlaceholder")}
-            min={0}
-            title="最小長さ (秒)"
-          />
-          <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-            〜
-          </span>
-          <input
-            type="number"
-            className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
-            value={maxDurationInput}
-            onChange={(e) => setMaxDurationInput(e.target.value)}
-            placeholder={t("filters.maxDurationPlaceholder")}
-            min={0}
-            title="最大長さ (秒)"
-          />
-          <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-            {t("filters.durationSuffix")}
-          </span>
-        </div>
-
-        {/* 表示モード・グリッドサイズ */}
-        <div className="flex items-center gap-1 ml-auto shrink-0">
-          <div className="flex gap-0.5 border border-gray-300 dark:border-gray-600 rounded p-0.5">
-            <button
-              type="button"
-              className={`p-1 rounded transition-colors ${
-                viewMode === "grid"
-                  ? "bg-blue-500 text-white"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-              }`}
-              onClick={() => setViewMode("grid")}
-              title="グリッド表示"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className="w-3.5 h-3.5"
+        {filterTagIds.length > 0 && (
+          <>
+            {tags
+              .filter((tag) => filterTagIds.includes(tag.id))
+              .map((tag) => (
+                <TagBadge
+                  key={tag.id}
+                  tag={tag}
+                  showIcon
+                  onRemove={() => toggleTagFilter(tag.id)}
+                  removeLabel={`${tag.name} を${t("filters.tagClear")}`}
+                />
+              ))}
+            {filterTagIds.length >= 2 && (
+              <Button
+                variant="secondary"
+                size="xs"
+                title={filterTagMode === "and" ? t("filters.tagFilterAnd") : t("filters.tagFilterOr")}
+                onClick={() => setTagMode(filterTagMode === "and" ? "or" : "and")}
               >
-                <rect x="1" y="1" width="6" height="6" rx="0.8" />
-                <rect x="9" y="1" width="6" height="6" rx="0.8" />
-                <rect x="1" y="9" width="6" height="6" rx="0.8" />
-                <rect x="9" y="9" width="6" height="6" rx="0.8" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={`p-1 rounded transition-colors ${
-                viewMode === "list"
-                  ? "bg-blue-500 text-white"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-              }`}
-              onClick={() => setViewMode("list")}
-              title="リスト表示"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <rect x="1" y="2" width="14" height="2.5" rx="0.8" />
-                <rect x="1" y="6.75" width="14" height="2.5" rx="0.8" />
-                <rect x="1" y="11.5" width="14" height="2.5" rx="0.8" />
-              </svg>
-            </button>
-          </div>
+                {filterTagMode === "and" ? "AND" : "OR"}
+              </Button>
+            )}
+            <Button variant="ghost" size="xs" onClick={clearTagFilters}>
+              <X aria-hidden />
+              {t("filters.tagClear")}
+            </Button>
+          </>
+        )}
+      </div>
 
-          {viewMode === "grid" &&
-            (
+      {/* 右: 並び替え・再生・表示 */}
+      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+        <Select<SortBy>
+          value={filterSortBy}
+          onValueChange={(v) => setSort(v, filterSortOrder)}
+          title={t("filters.sortBy")}
+          options={[
+            { value: "created_at", label: t("filters.sortByCreatedAt") },
+            { value: "duration", label: t("filters.sortByDuration") },
+            { value: "rating", label: t("filters.sortByRating") },
+            { value: "file_size", label: t("filters.sortByFileSize") },
+          ]}
+        />
+        <Tooltip content={sortOrderTitle} side="bottom">
+          <Button
+            variant="secondary"
+            size="icon"
+            title={sortOrderTitle}
+            aria-label={sortOrderTitle}
+            onClick={() => setSort(filterSortBy, filterSortOrder === "desc" ? "asc" : "desc")}
+          >
+            {filterSortOrder === "desc" ? <ArrowDownWideNarrow aria-hidden /> : <ArrowUpNarrowWide aria-hidden />}
+          </Button>
+        </Tooltip>
+
+        <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" aria-hidden />
+
+        {totalCount > 0 && (
+          <Tooltip content={t("app.shuffleAllTitle", { count: totalCount.toLocaleString() })} side="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("app.shuffleAll")}
+              onClick={playShuffleAll}
+            >
+              <Shuffle aria-hidden />
+            </Button>
+          </Tooltip>
+        )}
+        <Tooltip content={t("app.saveSmartPlaylistTitle")} side="bottom">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("app.saveSmartPlaylist")}
+            onClick={openSmartPlaylist}
+          >
+            <BookmarkPlus aria-hidden />
+          </Button>
+        </Tooltip>
+
+        <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" aria-hidden />
+
+        <SegmentedControl<ViewMode>
+          size="xs"
+          aria-label="表示モード"
+          value={viewMode}
+          onValueChange={setViewMode}
+          options={[
+            { value: "grid", label: <LayoutGrid aria-hidden />, "aria-label": "グリッド表示", title: "グリッド表示", iconOnly: true },
+            { value: "list", label: <List aria-hidden />, "aria-label": "リスト表示", title: "リスト表示", iconOnly: true },
+          ]}
+        />
+        {viewMode === "grid" ? (
+          <SegmentedControl
+            size="xs"
+            aria-label="カードサイズ"
+            value={String(gridItemMinWidth)}
+            onValueChange={(v) => setGridItemMinWidth(Number(v))}
+            options={(
               [
                 { label: "S", value: 120 },
                 { label: "M", value: 180 },
                 { label: "L", value: 240 },
                 { label: "XL", value: 320 },
               ] as const
-            ).map(({ label, value }) => (
-              <button
-                key={value}
-                type="button"
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  gridItemMinWidth === value
-                    ? "bg-blue-500 text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
-                onClick={() => setGridItemMinWidth(value)}
-                title={`カードサイズ: ${label}`}
-              >
-                {label}
-              </button>
-            ))}
-
-          {viewMode === "list" &&
-            (["S", "M", "L", "XL"] as const).map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  listItemSize === size
-                    ? "bg-blue-500 text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
-                onClick={() => setListItemSize(size)}
-                title={`行サイズ: ${size}`}
-              >
-                {size}
-              </button>
-            ))}
-        </div>
+            ).map(({ label, value }) => ({ value: String(value), label, title: `カードサイズ: ${label}` }))}
+          />
+        ) : (
+          <SegmentedControl<ListItemSize>
+            size="xs"
+            aria-label="行サイズ"
+            value={listItemSize}
+            onValueChange={setListItemSize}
+            options={(["S", "M", "L", "XL"] as const).map((size) => ({ value: size, label: size, title: `行サイズ: ${size}` }))}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/** 適用中の条件を表すチップ (× で解除) */
+function FilterChip({ label, clearLabel, onClear }: { label: string; clearLabel: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-0.5 h-6 pl-2.5 pr-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+      {label}
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`${label} を${clearLabel}`}
+        className="grid place-items-center size-4 rounded-full hover:bg-blue-200/60 dark:hover:bg-blue-800/60"
+      >
+        <X className="size-3" aria-hidden />
+      </button>
+    </span>
   );
 }

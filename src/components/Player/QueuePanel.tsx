@@ -3,6 +3,8 @@ import { useShallow } from 'zustand/shallow';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { useModalStore } from '../../store/useModalStore';
+import { X } from "lucide-react";
+import { Button } from "../ui";
 
 function formatTime(sec: number | null): string {
   if (!sec) return '--:--';
@@ -43,14 +45,15 @@ export function QueuePanel() {
     >
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0">
         <span className="text-sm font-medium text-gray-200">{t('queue.title', { count: queue.length })}</span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('queue.close')}
           onClick={closeQueuePanel}
-          className="text-gray-400 hover:text-gray-200 text-lg leading-none"
           title={t('queue.close')}
         >
-          ×
-        </button>
+          <X aria-hidden />
+        </Button>
       </div>
 
       <div className="overflow-y-auto flex-1">
@@ -91,17 +94,19 @@ export function QueuePanel() {
 
               {/* 削除ボタン (非現在曲のみ) */}
               {!isCurrent && (
-                <button
-                  type="button"
+                <Button
+                  variant="danger-soft"
+                  size="icon-sm"
+                  className="opacity-0 group-hover:opacity-100"
+                  aria-label={t('queue.remove')}
                   onClick={(e) => {
                     e.stopPropagation();
                     removeFromQueue(video.id);
                   }}
-                  className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 text-sm shrink-0 transition-opacity"
                   title={t('queue.remove')}
                 >
-                  ×
-                </button>
+                  <X aria-hidden />
+                </Button>
               )}
               {isCurrent && (
                 <span className="text-blue-400 text-xs shrink-0">▶</span>

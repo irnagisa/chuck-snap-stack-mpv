@@ -1,0 +1,19 @@
+@layer ui {
+  .content {
+    z-index: var(--z-tooltip);
+    max-width: 18rem;
+    padding: var(--space-1-5) var(--space-2-5);
+    border-radius: var(--radius-md);
+    background: var(--color-tooltip-bg);
+    color: var(--color-tooltip-fg);
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+    box-shadow: var(--shadow-md);
+    user-select: none;
+    transform-origin: var(--radix-tooltip-content-transform-origin);
+  }
+
+  .arrow {
+    fill: var(--color-tooltip-bg);
+  }
+}

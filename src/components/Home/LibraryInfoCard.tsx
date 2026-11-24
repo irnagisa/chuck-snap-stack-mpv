@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useHomeStore, type DiskInfo } from "../../store/useHomeStore";
 import { useInboxStore, buildStacks } from "../../store/useInboxStore";
 import { useTagStore } from "../../store/useTagStore";
+import homeStyles from "./Home.module.css";
 
 function StatTile({ label, value }: { label: string; value: number }) {
   return (
@@ -67,7 +68,7 @@ export function LibraryInfoCard() {
   const watchedPct = videoCount > 0 ? Math.round((watchedCount / videoCount) * 100) : 0;
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">ライブラリ情報</h2>
       <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100 dark:divide-gray-800">
         <StatTile label="画像" value={libraryStats?.imageCount ?? 0} />
