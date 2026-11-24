@@ -1,4 +1,5 @@
 @layer ui {
+  /* カジュアルテーマ: ボタンはピル型 */
   .button {
     display: inline-flex;
     align-items: center;
@@ -6,9 +7,9 @@
     gap: var(--space-1-5);
     flex-shrink: 0;
     border: 1px solid transparent;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-semibold);
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
@@ -16,49 +17,86 @@
     transition:
       background-color var(--duration-fast) ease,
       border-color var(--duration-fast) ease,
-      color var(--duration-fast) ease;
+      color var(--duration-fast) ease,
+      box-shadow var(--duration-fast) ease,
+      scale var(--duration-fast) ease;
 
+    &:active:not(:disabled) {
+      scale: 0.96;
+    }
     &:disabled {
-      opacity: 0.4;
+      opacity: 0.45;
       cursor: not-allowed;
     }
 
     & svg {
       flex-shrink: 0;
-      width: 1.15em;
-      height: 1.15em;
+      width: 1.2em;
+      height: 1.2em;
     }
   }
 
   /* ---- size ---- */
+  .button[data-size="xs"] {
+    height: 1.5rem;
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+    font-size: 0.6875rem;
+  }
   .button[data-size="sm"] {
-    height: 1.75rem;
-    padding-inline: var(--space-2-5);
+    height: 1.875rem;
+    padding-inline: var(--space-3);
   }
   .button[data-size="md"] {
-    height: 2.25rem;
-    padding-inline: var(--space-3);
+    height: 2.375rem;
+    padding-inline: var(--space-4);
     font-size: var(--text-sm);
   }
-  .button[data-size="icon"] {
-    width: 1.75rem;
-    height: 1.75rem;
+  .button[data-size="icon-sm"] {
+    width: 1.5rem;
+    height: 1.5rem;
     padding: 0;
+
+    & svg {
+      width: 0.9rem;
+      height: 0.9rem;
+    }
+  }
+  .button[data-size="icon"] {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+
+    & svg {
+      width: 1.15rem;
+      height: 1.15rem;
+    }
   }
 
   /* ---- variant ---- */
   .button[data-variant="primary"] {
     background: var(--color-accent);
     color: var(--color-fg-on-accent);
+    box-shadow: 0 2px 8px -2px oklch(54.5% 0.245 292 / 0.5);
     &:hover:not(:disabled) {
       background: var(--color-accent-hover);
+      box-shadow: 0 4px 12px -2px oklch(54.5% 0.245 292 / 0.55);
+    }
+  }
+
+  .button[data-variant="soft"] {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-fg);
+    &:hover:not(:disabled) {
+      background: oklch(61% 0.225 292 / 0.18);
     }
   }
 
   .button[data-variant="secondary"] {
     background: var(--color-bg-surface);
-    border-color: var(--color-border-strong);
+    border-color: var(--color-border);
     color: var(--color-fg);
+    box-shadow: var(--shadow-sm);
     &:hover:not(:disabled) {
       background: var(--color-bg-hover);
     }
@@ -68,7 +106,7 @@
     background: transparent;
     color: var(--color-fg-muted);
     &:hover:not(:disabled) {
-      background: var(--color-bg-hover);
+      background: var(--color-bg-active);
       color: var(--color-fg);
     }
     &[data-state="on"],
@@ -78,11 +116,35 @@
     }
   }
 
+  /* 周りの文字色を引き継ぐ。トーストや警告など色付きの面の上に置くボタン用 */
+  .button[data-variant="inherit"] {
+    background: transparent;
+    color: inherit;
+    opacity: 0.85;
+    &:hover:not(:disabled) {
+      background: color-mix(in oklch, currentColor 14%, transparent);
+      opacity: 1;
+    }
+  }
+
+  /* 赤文字 + hover で淡い赤。キャンセル・取り消しなど控えめな破壊的操作 */
+  .button[data-variant="danger-soft"] {
+    background: transparent;
+    color: var(--color-danger-fg);
+    &:hover:not(:disabled) {
+      background: oklch(63.7% 0.237 25.331 / 0.12);
+    }
+  }
+
   .button[data-variant="danger"] {
     background: var(--color-danger);
     color: var(--color-fg-on-accent);
     &:hover:not(:disabled) {
       background: var(--color-danger-hover);
     }
+  }
+
+  .button[data-full-width] {
+    width: 100%;
   }
 }

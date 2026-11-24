@@ -1,0 +1,6 @@
+@layer ui {
+  .collapse {
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+}

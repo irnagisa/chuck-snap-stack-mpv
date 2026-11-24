@@ -7,6 +7,7 @@ import type { Video } from '../../types';
 import type { Tag } from '../../types';
 import StackCard from './StackCard';
 import QuickSort from './QuickSort';
+import { Button } from "../ui";
 
 export default function InboxView() {
   const { videos, stats, isLoading, activeStack, fetchInbox, graduateFromInbox, setActiveStack, batchVideos, startBatch, clearBatch } =
@@ -137,26 +138,26 @@ export default function InboxView() {
             <div className="ml-auto flex items-center gap-1">
               <span className="text-[11px] text-gray-400 dark:text-gray-500">バッチ:</span>
               {([10, 20, 30] as const).map((n) => (
-                <button
+                <Button
+                  variant="secondary"
+                  size="xs"
                   key={n}
-                  type="button"
                   onClick={() => startBatch(n)}
                   disabled={isLoading}
-                  className="text-[11px] px-2 py-0.5 rounded border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   {n}件
-                </button>
+                </Button>
               ))}
             </div>
           )}
-          <button
-            type="button"
-            className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={fetchInbox}
             disabled={isLoading}
           >
             {isLoading ? '更新中...' : '更新'}
-          </button>
+          </Button>
         </div>
         {stats && (
           <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400 mb-2">
@@ -172,20 +173,16 @@ export default function InboxView() {
           {filterDefs.map(({ type, label, description }) => {
             const active = !hiddenTypes.has(type);
             return (
-              <button
+              <Button
                 key={type}
-                type="button"
+                variant="ghost"
+                size="xs"
                 onClick={() => toggleType(type)}
                 title={description}
                 aria-pressed={active}
-                className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
-                  active
-                    ? 'bg-blue-100 dark:bg-blue-900/50 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                    : 'bg-transparent border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500'
-                }`}
               >
                 {label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -197,13 +194,14 @@ export default function InboxView() {
           <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
             {selectedIds.size} 件選択中
           </span>
-          <button
-            type="button"
-            className="ml-auto text-xs text-blue-500 hover:underline"
+          <Button
+            variant="soft"
+            size="xs"
+            className="ml-auto"
             onClick={() => setSelectedIds(new Set())}
           >
             選択解除
-          </button>
+          </Button>
         </div>
       )}
 

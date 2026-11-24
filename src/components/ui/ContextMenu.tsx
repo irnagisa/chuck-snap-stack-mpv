@@ -1,11 +1,13 @@
-import type { ComponentProps, ReactNode } from "react";
+import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
 import { ContextMenu as RxContextMenu } from "radix-ui";
+import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronRight } from "lucide-react";
 import { cx } from "./cx";
+import { popover, presenceProps } from "./motion";
 import styles from "./Menu.module.css";
 
 /*
- * Radix ContextMenu の薄いラッパー。構造はそのまま、見た目だけを与える。
+ * Radix ContextMenu + Motion の開閉アニメーション。
  *
  * <ContextMenu.Root>
  *   <ContextMenu.Trigger asChild><div>…右クリック対象…</div></ContextMenu.Trigger>
@@ -13,13 +15,73 @@ import styles from "./Menu.module.css";
  *     <ContextMenu.Item icon={<Play />}>再生</ContextMenu.Item>
  *   </ContextMenu.Content>
  * </ContextMenu.Root>
+ *
+ * 退場アニメーションのため開閉状態を onOpenChange で追跡し、Content を forceMount で描画する。
+ * (ContextMenu.Root は open を制御できないので、Root は状態の追跡のみ行う)
  */
 
-function Content({ className, ...props }: ComponentProps<typeof RxContextMenu.Content>) {
+/** 最も近い Root / Sub の開閉状態 */
+const OpenContext = createContext(false);
+
+function useOpenState(open: boolean | undefined, defaultOpen: boolean | undefined, onOpenChange?: (o: boolean) => void) {
+  const [inner, setInner] = useState(defaultOpen ?? false);
+  const isOpen = open ?? inner;
+  const setOpen = (o: boolean) => {
+    setInner(o);
+    onOpenChange?.(o);
+  };
+  return [isOpen, setOpen] as const;
+}
+
+function Root({ onOpenChange, ...props }: ComponentProps<typeof RxContextMenu.Root>) {
+  const [isOpen, setOpen] = useOpenState(undefined, false, onOpenChange);
   return (
-    <RxContextMenu.Portal>
-      <RxContextMenu.Content className={cx(styles.content, className)} {...props} />
-    </RxContextMenu.Portal>
+    <OpenContext.Provider value={isOpen}>
+      <RxContextMenu.Root onOpenChange={setOpen} {...props} />
+    </OpenContext.Provider>
+  );
+}
+
+function Sub({ open, defaultOpen, onOpenChange, ...props }: ComponentProps<typeof RxContextMenu.Sub>) {
+  const [isOpen, setOpen] = useOpenState(open, defaultOpen, onOpenChange);
+  return (
+    <OpenContext.Provider value={isOpen}>
+      <RxContextMenu.Sub open={isOpen} onOpenChange={setOpen} {...props} />
+    </OpenContext.Provider>
+  );
+}
+
+function Content({ className, children, ...props }: ComponentProps<typeof RxContextMenu.Content>) {
+  const open = useContext(OpenContext);
+  return (
+    <AnimatePresence>
+      {open && (
+        <RxContextMenu.Portal forceMount>
+          <RxContextMenu.Content asChild forceMount {...props}>
+            <motion.div className={cx(styles.content, className)} variants={popover} {...presenceProps}>
+              {children}
+            </motion.div>
+          </RxContextMenu.Content>
+        </RxContextMenu.Portal>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function SubContent({ className, children, ...props }: ComponentProps<typeof RxContextMenu.SubContent>) {
+  const open = useContext(OpenContext);
+  return (
+    <AnimatePresence>
+      {open && (
+        <RxContextMenu.Portal forceMount>
+          <RxContextMenu.SubContent asChild forceMount {...props}>
+            <motion.div className={cx(styles.content, className)} variants={popover} {...presenceProps}>
+              {children}
+            </motion.div>
+          </RxContextMenu.SubContent>
+        </RxContextMenu.Portal>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -78,20 +140,12 @@ function SubTrigger({ className, children, ...props }: ComponentProps<typeof RxC
   );
 }
 
-function SubContent({ className, ...props }: ComponentProps<typeof RxContextMenu.SubContent>) {
-  return (
-    <RxContextMenu.Portal>
-      <RxContextMenu.SubContent className={cx(styles.content, className)} {...props} />
-    </RxContextMenu.Portal>
-  );
-}
-
 export const ContextMenu = {
-  Root: RxContextMenu.Root,
+  Root,
   Trigger: RxContextMenu.Trigger,
   Group: RxContextMenu.Group,
   RadioGroup: RxContextMenu.RadioGroup,
-  Sub: RxContextMenu.Sub,
+  Sub,
   Content,
   Item,
   CheckboxItem,

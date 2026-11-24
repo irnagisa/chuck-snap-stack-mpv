@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Button } from '../ui';
 
 interface Props {
   message: string;
@@ -23,24 +24,12 @@ export function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = 'OK'
       >
         <p className="text-sm text-gray-800 dark:text-gray-100 mb-5 leading-relaxed">{message}</p>
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            className="px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-            onClick={onCancel}
-          >
+          <Button variant="secondary" onClick={onCancel}>
             {t('confirm.cancel')}
-          </button>
-          <button
-            type="button"
-            className={`px-3 py-1.5 text-xs rounded text-white ${
-              confirmDanger
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-            onClick={onConfirm}
-          >
+          </Button>
+          <Button variant={confirmDanger ? 'danger' : 'primary'} onClick={onConfirm}>
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

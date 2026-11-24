@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath, type CategoryNode } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { Search } from "lucide-react";
+import { Button, Input, RadioGroup, RadioGroupItem } from "../ui";
 
 interface Props {
   videoIds: number[];
@@ -22,13 +24,11 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
 interface TreeNodeProps {
   node: CategoryNode;
   depth: number;
-  selectedCategoryId: number | null | 'unset';
   collapsedIds: Set<number>;
-  onSelect: (id: number) => void;
   onToggleCollapse: (id: number) => void;
 }
 
-function TreeNode({ node, depth, selectedCategoryId, collapsedIds, onSelect, onToggleCollapse }: TreeNodeProps) {
+function TreeNode({ node, depth, collapsedIds, onToggleCollapse }: TreeNodeProps) {
   const hasChildren = node.children.length > 0;
   const isCollapsed = collapsedIds.has(node.id);
 
@@ -57,12 +57,7 @@ function TreeNode({ node, depth, selectedCategoryId, collapsedIds, onSelect, onT
           </svg>
         </button>
         <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-          <input
-            type="radio"
-            name="bulk-category"
-            checked={selectedCategoryId === node.id}
-            onChange={() => onSelect(node.id)}
-          />
+          <RadioGroupItem value={String(node.id)} />
           <span
             className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
             style={{ backgroundColor: node.color }}
@@ -75,9 +70,7 @@ function TreeNode({ node, depth, selectedCategoryId, collapsedIds, onSelect, onT
           key={child.id}
           node={child}
           depth={depth + 1}
-          selectedCategoryId={selectedCategoryId}
           collapsedIds={collapsedIds}
-          onSelect={onSelect}
           onToggleCollapse={onToggleCollapse}
         />
       ))}
@@ -161,36 +154,25 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
         </p>
 
         {categories.length > 0 && (
-          <div className="relative mb-2">
-            <input
-              type="text"
-              className="w-full px-2.5 py-1.5 pl-7 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              placeholder={t('detail.categorySearchPlaceholder')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <svg
-              className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-          </div>
+          <Input
+            size="sm"
+            className="w-full mb-2"
+            icon={<Search />}
+            placeholder={t('detail.categorySearchPlaceholder')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch('')}
+          />
         )}
 
-        <div className="flex flex-col gap-0.5 mb-4 max-h-60 overflow-y-auto">
+        <RadioGroup
+          className="flex flex-col gap-0.5 mb-4 max-h-60 overflow-y-auto"
+          aria-label={t('bulkCategory.title')}
+          value={selectedCategoryId === 'unset' ? '' : selectedCategoryId === null ? 'none' : String(selectedCategoryId)}
+          onValueChange={(v) => setSelectedCategoryId(v === 'none' ? null : Number(v))}
+        >
           <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 rounded pl-7">
-            <input
-              type="radio"
-              name="bulk-category"
-              checked={selectedCategoryId === null}
-              onChange={() => setSelectedCategoryId(null)}
-            />
+            <RadioGroupItem value="none" />
             <span className="text-sm text-gray-500 dark:text-gray-400">{t('bulkCategory.none')}</span>
           </label>
 
@@ -204,12 +186,7 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
                   className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 rounded"
                   style={{ paddingLeft: `${28 + depth * 12}px` }}
                 >
-                  <input
-                    type="radio"
-                    name="bulk-category"
-                    checked={selectedCategoryId === cat.id}
-                    onChange={() => setSelectedCategoryId(cat.id)}
-                  />
+                  <RadioGroupItem value={String(cat.id)} />
                   <span
                     className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: cat.color }}
@@ -224,14 +201,12 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
                 key={node.id}
                 node={node}
                 depth={0}
-                selectedCategoryId={selectedCategoryId}
                 collapsedIds={collapsedIds}
-                onSelect={setSelectedCategoryId}
                 onToggleCollapse={toggleCollapse}
               />
             ))
           )}
-        </div>
+        </RadioGroup>
 
         {categories.length === 0 && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{t('bulkCategory.empty')}</p>
@@ -244,22 +219,23 @@ export function BulkCategoryModal({ videoIds, onClose, onDone }: Props) {
         </p>
 
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
             disabled={loading || selectedCategoryId === 'unset'}
-            className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
             onClick={handleApply}
           >
             {loading ? t('bulkCategory.applying') : t('bulkCategory.apply')}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            size="md"
             disabled={loading}
-            className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
             onClick={onClose}
           >
             {t('bulkCategory.cancel')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

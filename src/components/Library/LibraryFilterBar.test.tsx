@@ -3,6 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { LibraryFilterBar } from './LibraryFilterBar';
 import type { Tag } from '../../types';
 import '../../i18n';
+
+/** Radix Select をキーボードで開き、表示名で選択肢を選ぶ */
+async function chooseOption(triggerTitle: string, optionName: string) {
+  fireEvent.keyDown(screen.getByTitle(triggerTitle), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('option', { name: optionName }));
+}
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useTagStore } from '../../store/useTagStore';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
@@ -131,14 +137,14 @@ describe('LibraryFilterBar — シャッフル', () => {
     setupMocks({ totalCount: 10 });
     vi.mocked(usePlayerStore).mockReturnValue(playShuffleAll as any);
     render(<LibraryFilterBar />);
-    fireEvent.click(screen.getByText('⇄ 全件'));
+    fireEvent.click(screen.getByRole('button', { name: '全件' }));
     expect(playShuffleAll).toHaveBeenCalledOnce();
   });
 
   it('shuffle button is NOT shown when totalCount is 0', () => {
     setupMocks({ totalCount: 0 });
     render(<LibraryFilterBar />);
-    expect(screen.queryByText('⇄ 全件')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '全件' })).not.toBeInTheDocument();
   });
 });
 
@@ -147,46 +153,43 @@ describe('LibraryFilterBar — ソート', () => {
     const setSort = vi.fn();
     setupMocks({ filterSortBy: 'created_at', filterSortOrder: 'desc', setSort });
     render(<LibraryFilterBar />);
-    fireEvent.click(screen.getByText('↓'));
+    fireEvent.click(screen.getByTitle('降順 (クリックで昇順)'));
     expect(setSort).toHaveBeenCalledWith('created_at', 'asc');
   });
 
   it('shows ascending arrow when filterSortOrder is "asc"', () => {
     setupMocks({ filterSortOrder: 'asc' });
     render(<LibraryFilterBar />);
-    expect(screen.getByText('↑')).toBeInTheDocument();
+    expect(screen.getByTitle(/^昇順/)).toBeInTheDocument();
   });
 });
 
 describe('LibraryFilterBar — 視聴状態フィルター', () => {
-  it('calls setWatchedStatus when selection changes', () => {
+  it('calls setWatchedStatus when selection changes', async () => {
     const setWatchedStatus = vi.fn();
     setupMocks({ filterWatchedStatus: 'all', setWatchedStatus });
     render(<LibraryFilterBar />);
-    const select = screen.getByTitle('視聴状態フィルタ');
-    fireEvent.change(select, { target: { value: 'watched' } });
+    await chooseOption('視聴状態フィルタ', '視聴済み');
     expect(setWatchedStatus).toHaveBeenCalledWith('watched');
   });
 });
 
 describe('LibraryFilterBar — メディアタイプフィルター', () => {
-  it('calls setMediaType when selection changes', () => {
+  it('calls setMediaType when selection changes', async () => {
     const setMediaType = vi.fn();
     setupMocks({ filterMediaType: 'all', setMediaType });
     render(<LibraryFilterBar />);
-    const select = screen.getByTitle('メディアタイプフィルタ');
-    fireEvent.change(select, { target: { value: 'audio' } });
+    await chooseOption('メディアタイプフィルタ', '音声');
     expect(setMediaType).toHaveBeenCalledWith('audio');
   });
 });
 
 describe('LibraryFilterBar — AV1 フィルター', () => {
-  it('calls setAv1Filter when selection changes', () => {
+  it('calls setAv1Filter when selection changes', async () => {
     const setAv1Filter = vi.fn();
     setupMocks({ filterAv1: 'all', setAv1Filter });
     render(<LibraryFilterBar />);
-    const select = screen.getByTitle('AV1 変換済みフィルタ');
-    fireEvent.change(select, { target: { value: 'exclude' } });
+    await chooseOption('AV1 変換済みフィルタ', 'AV1 変換済みを除外');
     expect(setAv1Filter).toHaveBeenCalledWith('exclude');
   });
 });

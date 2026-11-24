@@ -5,10 +5,10 @@
  */
 describe('Chuck Snap Stack - Library UI', () => {
   before(async () => {
-    // ライブラリビューに遷移し、DB 準備完了まで待機 (評価フィルターセレクトの出現で判定)
+    // ライブラリビューに遷移し、DB 準備完了まで待機 (評価フィルターの出現で判定)
     const libBtn = await $('button=ライブラリ')
     await libBtn.click()
-    await $('select[title="評価フィルタ"]').waitForExist({ timeout: 15000 })
+    await $('button[title="評価フィルタ"]').waitForExist({ timeout: 15000 })
   })
 
   // ────────────────────────────────────────────
@@ -30,20 +30,20 @@ describe('Chuck Snap Stack - Library UI', () => {
       expect(descExists || ascExists).toBe(true)
     })
 
-    it('評価フィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="評価フィルタ"]')).toExist()
+    it('評価フィルターが存在する', async () => {
+      await expect(await $('button[title="評価フィルタ"]')).toExist()
     })
 
     it('音声フィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="音声フィルタ"]')).toExist()
+      await expect(await $('button[title="音声フィルタ"]')).toExist()
     })
 
     it('視聴状態フィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="視聴状態フィルタ"]')).toExist()
+      await expect(await $('button[title="視聴状態フィルタ"]')).toExist()
     })
 
     it('メディアタイプフィルターセレクトが存在する', async () => {
-      await expect(await $('select[title="メディアタイプフィルタ"]')).toExist()
+      await expect(await $('button[title="メディアタイプフィルタ"]')).toExist()
     })
 
     it('最短・最長秒数の数値入力欄が存在する', async () => {

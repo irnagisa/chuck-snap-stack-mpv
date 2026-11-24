@@ -11,13 +11,15 @@
 
 @import "tailwindcss";
 @import "./styles/tokens.css";
+@import "./styles/tailwind-bridge.css";
 @import "./styles/base.css";
 
 /* class ベースの dark モード: <html class="dark"> で切り替え */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* rem の基準。UI 全体 (文字・余白・角丸) がこの値に比例する */
 html {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 @keyframes loading-bar-slide {

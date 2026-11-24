@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useTagStore } from '../../store/useTagStore';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
+import { Download, Upload, X } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   onClose: () => void;
@@ -82,13 +84,14 @@ export function ExportModal({ onClose }: Props) {
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('export.title')}</h2>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="閉じる"
             onClick={onClose}
           >
-            ✕
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         <div className="px-6 py-5 flex flex-col gap-4">
@@ -98,20 +101,24 @@ export function ExportModal({ onClose }: Props) {
 
           {phase === 'idle' && (
             <div className="flex flex-col gap-3">
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
                 onClick={handleExport}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
               >
+                <Download aria-hidden />
                 {t('export.exportButton')}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="md"
+                fullWidth
                 onClick={handleImport}
-                className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium"
               >
+                <Upload aria-hidden />
                 {t('export.importButton')}
-              </button>
+              </Button>
               <p className="text-xs text-amber-600 dark:text-amber-400">
                 {t('export.importWarning')}
               </p>
@@ -129,13 +136,14 @@ export function ExportModal({ onClose }: Props) {
               <p className={`text-sm ${phase === 'done' ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                 {message}
               </p>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
+                fullWidth
                 onClick={() => setPhase('idle')}
-                className="w-full py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm"
               >
                 {t('export.back')}
-              </button>
+              </Button>
             </div>
           )}
         </div>

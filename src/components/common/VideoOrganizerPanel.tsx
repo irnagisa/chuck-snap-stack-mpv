@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { TagBadge } from '../Library/TagBadge';
 import { IconPicker, MediaIcon } from '../../lib/mediaIcons';
 import type { Video, Tag } from '../../types';
+import { Button, Input } from "../ui";
 
 const COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -167,10 +168,10 @@ export function VideoOrganizerPanel({ video }: Props) {
         </label>
         <div className="relative">
           <div
-            className={`w-full flex items-center gap-2 px-2.5 rounded-lg bg-white dark:bg-gray-800 cursor-pointer transition-colors ${
+            className={`w-full flex items-center gap-2 px-3 h-9 rounded-full bg-white dark:bg-gray-900 shadow-sm cursor-pointer transition-[border-color,box-shadow] ${
               categoryInputFocused
-                ? 'border border-blue-500 dark:border-blue-400 ring-1 ring-blue-500/20 dark:ring-blue-400/20'
-                : 'border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                ? 'border border-blue-400 dark:border-blue-500 ring-[3px] ring-blue-500/15'
+                : 'border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
             }`}
             onClick={() => setCategoryInputFocused(true)}
           >
@@ -199,16 +200,16 @@ export function VideoOrganizerPanel({ video }: Props) {
               />
             )}
             {selectedCategory && !categoryInputFocused && (
-              <button
-                type="button"
-                className="shrink-0 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 p-0.5 leading-none"
+              <Button
+                variant="ghost"
+                size="sm"
                 title="カテゴリを解除して Inbox に戻す"
                 onClick={(e) => { e.stopPropagation(); handleCategoryChange(''); }}
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
-              </button>
+              </Button>
             )}
             <span className="pointer-events-none shrink-0 text-gray-400 dark:text-gray-500">
               <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
@@ -265,8 +266,9 @@ export function VideoOrganizerPanel({ video }: Props) {
           )}
         </div>
         <div className="relative">
-          <input
-            className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
+          <Input
+            size="md"
+            className="w-full"
             placeholder={t('detail.tagSearchPlaceholder')}
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}

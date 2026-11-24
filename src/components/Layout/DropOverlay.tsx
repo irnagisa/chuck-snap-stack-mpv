@@ -19,7 +19,7 @@ export function DropOverlay({ visible }: { visible: boolean }) {
           {...presenceProps}
         >
           <div className={styles.dropBackdrop} />
-          <motion.div className={styles.dropCard} variants={popIn} transition={transitions.spring}>
+          <motion.div className={styles.dropCard} variants={popIn} transition={transitions.bouncy}>
             <Clapperboard strokeWidth={1.5} aria-hidden />
             <p className={styles.dropTitle}>{t("app.dropImport")}</p>
             <p className={styles.dropHint}>{t("app.dropFormats")}</p>

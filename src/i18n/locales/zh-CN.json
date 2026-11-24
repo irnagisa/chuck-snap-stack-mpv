@@ -2,9 +2,9 @@
   "app": {
     "title": "Chuck Snap Stack",
     "scanning": "扫描中...",
-    "addFolder": "+ 添加文件夹",
+    "addFolder": "添加文件夹",
     "useDirAsCategory": "用文件夹名作为分类",
-    "downloadUrl": "↓ URL",
+    "downloadUrl": "URL",
     "searchPlaceholder": "搜索文件...",
     "statsTitle": "统计面板",
     "exportTitle": "导出 / 导入",
@@ -25,9 +25,9 @@
     "transcodeStarting": "启动中...",
     "transcodeCancel": "取消",
     "transcodeDismiss": "✕",
-    "shuffleAll": "⇄ 全部",
+    "shuffleAll": "全部",
     "shuffleAllTitle": "随机播放全部 {{count}} 个结果",
-    "saveSmartPlaylist": "💾 保存",
+    "saveSmartPlaylist": "保存",
     "saveSmartPlaylistTitle": "将当前筛选条件保存为智能播放列表",
     "dropImport": "拖放视频以导入",
     "dropFormats": "支持 mp4 / mkv / webm / avi / mov 等格式",
@@ -49,6 +49,7 @@
     "playlistTab": "播放列表"
   },
   "filters": {
+    "sortBy": "排序方式",
     "sortByCreatedAt": "添加日期",
     "sortByDuration": "时长",
     "sortByRating": "评分",
@@ -98,8 +99,8 @@
     "moveDir": "移动到其他文件夹"
   },
   "pagination": {
-    "prev": "← 上一页",
-    "next": "下一页 →",
+    "prev": "上一页",
+    "next": "下一页",
     "count": "(共{{count}}项)"
   },
   "settings": {
@@ -137,7 +138,7 @@
     "sectionScanPaths": "扫描路径",
     "noScanPaths": "未配置扫描文件夹",
     "removePath": "删除此路径",
-    "addFolder": "+ 添加文件夹",
+    "addFolder": "添加文件夹",
     "sectionWebServer": "Web 服务器",
     "webServerDesc": "让局域网内其他设备（手机、PC）通过浏览器浏览和播放您的媒体库。",
     "port": "端口",
@@ -199,7 +200,7 @@
   "detail": {
     "title": "详情",
     "viewImage": "🔍 放大查看",
-    "play": "▶ 播放",
+    "play": "播放",
     "openInBrowser": "在浏览器中打开",
     "viewer": "查看器",
     "rescan": "重新扫描",
@@ -304,7 +305,7 @@
     "cancel": "取消",
     "namePlaceholder": "分类名",
     "tagsTitle": "标签",
-    "addGroup": "+ 分组",
+    "addGroup": "分组",
     "groupNamePlaceholder": "分组名",
     "deleteGroup": "删除分组",
     "editGroup": "编辑分组名",
@@ -319,7 +320,7 @@
     "delete": "删除",
     "smart": "智能",
     "applyFilter": "应用此筛选条件",
-    "playAll": "▶ 全部播放",
+    "playAll": "全部播放",
     "loading": "加载中...",
     "noVideos": "暂无视频，请从媒体库添加。",
     "removeFromPlaylist": "从播放列表移除",
@@ -525,8 +526,8 @@
   "export": {
     "title": "导出 / 导入",
     "desc": "将媒体库数据（视频、标签、播放列表）保存到 JSON 文件或从中恢复。",
-    "exportButton": "📤 导出备份",
-    "importButton": "📥 导入备份",
+    "exportButton": "导出备份",
+    "importButton": "导入备份",
     "importWarning": "⚠ 导入将覆盖当前数据",
     "exporting": "导出中...",
     "importing": "导入中...",
@@ -596,10 +597,10 @@
     "playbackSettings": "播放设置",
     "shuffleOff": "关闭随机",
     "shuffleOn": "开启随机",
-    "shuffleLabel": "⇄ 随机",
+    "shuffleLabel": "随机",
     "loopOff": "关闭循环",
     "loopOn": "开启循环",
-    "loopLabel": "↻ 循环",
+    "loopLabel": "循环",
     "abSetA": "设置 A 点",
     "abSetB": "设置 B 点",
     "abLooping": "A-B 循环中",
@@ -608,7 +609,8 @@
     "screenshot": "截图",
     "showQueue": "显示队列",
     "miniPlayer": "迷你播放器",
-    "exit": "退出"
+    "exit": "退出",
+    "seek": "播放位置"
   },
   "queue": {
     "title": "队列（{{count}} 个）",

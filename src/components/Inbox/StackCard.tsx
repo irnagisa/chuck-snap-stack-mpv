@@ -1,6 +1,8 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { InboxStack } from '../../store/useInboxStore';
 import type { Video } from '../../types';
+import { ArrowRight, Play } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   stack: InboxStack;
@@ -62,21 +64,21 @@ export default function StackCard({
         )}
         <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">{stack.count} 件</span>
         <div className="ml-auto flex gap-1">
-          <button
-            type="button"
-            className="text-xs px-2 py-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onGraduate}
             title="このスタックを全件整理完了にする"
           >
             全件完了
-          </button>
-          <button
-            type="button"
-            className="text-xs px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white"
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
             onClick={onOpen}
           >
-            開く →
-          </button>
+            開く<ArrowRight aria-hidden />
+          </Button>
         </div>
       </div>
 
@@ -117,14 +119,15 @@ export default function StackCard({
               </div>
               {/* hover ボタン（右下・ライブラリと統一） */}
               <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-                <button
-                  type="button"
-                  className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
+                <Button
+                  variant="primary"
+                  size="icon-sm"
                   onClick={(e) => { e.stopPropagation(); onPlay(v); }}
                   title="再生"
+                  aria-label="再生"
                 >
-                  ▶
-                </button>
+                  <Play aria-hidden fill="currentColor" />
+                </Button>
               </div>
             </div>
           );

@@ -13,6 +13,8 @@ import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
+import { ExternalLink, Play, Plus, Trash2 } from 'lucide-react';
+import { Button } from '../ui';
 
 interface VideoCardProps {
   video: Video;
@@ -201,31 +203,34 @@ const VideoCard = memo(function VideoCard({
         )}
         <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
           {onAddToPlaylist && (
-            <button
-              type="button"
-              className="bg-black/60 hover:bg-black/80 text-white text-xs px-1.5 py-0.5 rounded"
+            <Button
+              variant="secondary"
+              size="icon-sm"
               onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
               title={t('library.addToPlaylist')}
+              aria-label={t('library.addToPlaylist')}
             >
-              +
-            </button>
+              <Plus aria-hidden />
+            </Button>
           )}
-          <button
-            type="button"
-            className="bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded"
+          <Button
+            variant="primary"
+            size="icon-sm"
             onClick={(e) => { e.stopPropagation(); handlePlay(); }}
             title={isLink ? t('library.openUrl') : t('library.play')}
+            aria-label={isLink ? t('library.openUrl') : t('library.play')}
           >
-            {isLink ? '↗' : '▶'}
-          </button>
-          <button
-            type="button"
-            className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded"
+            {isLink ? <ExternalLink aria-hidden /> : <Play aria-hidden fill="currentColor" />}
+          </Button>
+          <Button
+            variant="danger"
+            size="icon-sm"
             onClick={(e) => { e.stopPropagation(); onDelete(v); }}
             title={t('library.deleteVideo')}
+            aria-label={t('library.deleteVideo')}
           >
-            削除
-          </button>
+            <Trash2 aria-hidden />
+          </Button>
         </div>
       </div>
 

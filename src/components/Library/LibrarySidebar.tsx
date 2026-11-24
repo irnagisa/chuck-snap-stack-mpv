@@ -6,6 +6,8 @@ import { PlaylistSidebar } from "./PlaylistSidebar";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useLibraryViewStore } from "../../store/useLibraryViewStore";
 import { useModalStore } from "../../store/useModalStore";
+import type { SidebarTab } from "../../store/useLibraryViewStore";
+import { SegmentedControl } from "../ui";
 
 export function LibrarySidebar() {
   const { t } = useTranslation();
@@ -29,28 +31,18 @@ export function LibrarySidebar() {
 
   return (
     <div className="w-full flex-1 flex flex-col gap-2 min-h-0">
-      <div className="flex gap-1 text-xs shrink-0">
-        {(
-          [
-            { key: "category", label: t("sidebar.categoryTab") },
-            { key: "folder", label: t("sidebar.folderTab") },
-            { key: "playlist", label: t("sidebar.playlistTab") },
-          ] as const
-        ).map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            className={`flex-1 py-1 rounded font-medium transition-colors ${
-              sidebarTab === key
-                ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }`}
-            onClick={() => setSidebarTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl<SidebarTab>
+        size="xs"
+        fullWidth
+        aria-label="サイドバー"
+        value={sidebarTab}
+        onValueChange={setSidebarTab}
+        options={[
+          { value: "category", label: t("sidebar.categoryTab") },
+          { value: "folder", label: t("sidebar.folderTab") },
+          { value: "playlist", label: t("sidebar.playlistTab") },
+        ]}
+      />
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         {sidebarTab === "category" ? (

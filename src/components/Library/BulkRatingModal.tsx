@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { Button } from "../ui";
 
 interface Props {
   videoIds: number[];
@@ -70,22 +71,23 @@ export function BulkRatingModal({ videoIds, onClose, onDone }: Props) {
         </p>
 
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
             disabled={loading || selectedRating === 'unset'}
-            className="flex-1 px-3 py-2 text-sm bg-yellow-500 hover:bg-yellow-600 text-white rounded disabled:opacity-50"
             onClick={handleApply}
           >
             {loading ? t('bulkRating.applying') : t('bulkRating.apply')}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            size="md"
             disabled={loading}
-            className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
             onClick={onClose}
           >
             {t('bulkRating.cancel')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { RotateCcw } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   children: ReactNode;
@@ -35,13 +37,10 @@ export class ErrorBoundary extends Component<Props, State> {
           <pre className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded p-3 max-w-lg overflow-auto text-left whitespace-pre-wrap">
             {this.state.error?.message}
           </pre>
-          <button
-            type="button"
-            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
-            onClick={() => this.setState({ hasError: false, error: null })}
-          >
+          <Button variant="primary" onClick={() => this.setState({ hasError: false, error: null })}>
+            <RotateCcw aria-hidden />
             再試行
-          </button>
+          </Button>
         </div>
       );
     }

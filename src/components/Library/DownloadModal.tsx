@@ -6,6 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../../store/useSettingsStore";
 import { useDownloadStore } from "../../store/useDownloadStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { Download, Link2 } from "lucide-react";
+import { Button, SegmentedControl, Input } from "../ui";
 
 interface Props {
   onClose: () => void;
@@ -139,30 +141,17 @@ export function DownloadModal({ onClose }: Props) {
     >
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
         {/* モード切り替え */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-          <button
-            type="button"
-            onClick={() => setMode("download")}
-            className={`flex-1 py-1.5 text-sm rounded-md font-medium transition-colors ${
-              mode === "download"
-                ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }`}
-          >
-            {t('download.title')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("link")}
-            className={`flex-1 py-1.5 text-sm rounded-md font-medium transition-colors ${
-              mode === "link"
-                ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }`}
-          >
-            {t('download.linkTitle')}
-          </button>
-        </div>
+        <SegmentedControl<"download" | "link">
+          size="md"
+          fullWidth
+          aria-label="モード"
+          value={mode}
+          onValueChange={setMode}
+          options={[
+            { value: "download", label: <><Download aria-hidden />{t('download.title')}</> },
+            { value: "link", label: <><Link2 aria-hidden />{t('download.linkTitle')}</> },
+          ]}
+        />
 
         {mode === "download" ? (
           <>
@@ -189,8 +178,8 @@ export function DownloadModal({ onClose }: Props) {
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 dark:text-gray-400">URL</label>
-              <input
-                className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+              <Input
+                size="md"
                 placeholder={useYtdlp ? t('download.urlPlaceholderYtdlp') : t('download.urlPlaceholderDirect')}
                 value={url}
                 onChange={(e) => handleUrlChange(e.target.value)}
@@ -201,27 +190,28 @@ export function DownloadModal({ onClose }: Props) {
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.saveDir')}</label>
               <div className="flex gap-2">
-                <input
+                <Input
+                  size="md"
+                  className="flex-1 min-w-0"
                   readOnly
-                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 cursor-default min-w-0"
                   placeholder={t('download.saveDirPlaceholder')}
                   value={saveDir}
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="md"
                   onClick={handlePickDir}
-                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0"
                 >
                   {t('download.selectDir')}
-                </button>
+                </Button>
               </div>
             </div>
 
             {!useYtdlp && (
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.filename')}</label>
-                <input
-                  className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                <Input
+                  size="md"
                   value={filename}
                   onChange={(e) => setFilename(e.target.value)}
                 />
@@ -235,12 +225,12 @@ export function DownloadModal({ onClose }: Props) {
             )}
 
             <div className="flex gap-2 justify-end pt-1">
-              <button type="button" onClick={onClose} className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+              <Button variant="secondary" size="md" onClick={onClose}>
                 {t('download.cancel')}
-              </button>
-              <button type="button" onClick={handleDownload} disabled={!canStart} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50">
+              </Button>
+              <Button variant="primary" size="md" onClick={handleDownload} disabled={!canStart}>
                 {t('download.start')}
-              </button>
+              </Button>
             </div>
           </>
         ) : (
@@ -248,22 +238,23 @@ export function DownloadModal({ onClose }: Props) {
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 dark:text-gray-400">URL</label>
               <div className="flex gap-2">
-                <input
-                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-w-0"
+                <Input
+                  size="md"
+                  className="flex-1 min-w-0"
                   placeholder="https://www.youtube.com/watch?v=..."
                   value={linkUrl}
                   onChange={(e) => { setLinkUrl(e.target.value); setLinkMeta(null); setFetchError(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleFetchMeta(); }}
                   autoFocus
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="md"
                   onClick={handleFetchMeta}
                   disabled={!linkUrl.trim() || isFetching}
-                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 shrink-0 disabled:opacity-50"
                 >
                   {isFetching ? '…' : t('download.linkFetch')}
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -291,8 +282,8 @@ export function DownloadModal({ onClose }: Props) {
             {(linkMeta || linkUrl.trim()) && (
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t('download.linkTitleLabel')}</label>
-                <input
-                  className="border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                <Input
+                  size="md"
                   placeholder={linkUrl}
                   value={linkTitle}
                   onChange={(e) => setLinkTitle(e.target.value)}
@@ -301,17 +292,17 @@ export function DownloadModal({ onClose }: Props) {
             )}
 
             <div className="flex gap-2 justify-end pt-1">
-              <button type="button" onClick={onClose} className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+              <Button variant="secondary" size="md" onClick={onClose}>
                 {t('download.cancel')}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
                 onClick={handleAddLink}
                 disabled={!linkUrl.trim() || isAdding}
-                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
               >
                 {isAdding ? '…' : t('download.linkAdd')}
-              </button>
+              </Button>
             </div>
           </>
         )}

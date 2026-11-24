@@ -5,6 +5,8 @@ import { useLibraryStore } from '../../store/useLibraryStore';
 import { VideoDetailsPanel } from '../common/VideoDetailsPanel';
 import { VideoOrganizerPanel } from '../common/VideoOrganizerPanel';
 import type { Video } from '../../types';
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   stack: InboxStack;
@@ -43,9 +45,9 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 dark:text-gray-500">
         <p className="text-sm">このスタックは空です</p>
-        <button type="button" className="text-sm text-blue-500 hover:underline" onClick={onBack}>
-          ← 戻る
-        </button>
+        <Button variant="soft" size="sm" onClick={onBack}>
+          <ArrowLeft aria-hidden />戻る
+        </Button>
       </div>
     );
   }
@@ -75,16 +77,16 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 dark:border-gray-800 shrink-0">
-        <button
-          type="button"
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 transition-colors"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onBack}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           {stack.label}
-        </button>
+        </Button>
         <span className="ml-auto text-xs font-medium tabular-nums text-gray-400 dark:text-gray-500">
           {quickSortIndex + 1} <span className="text-gray-300 dark:text-gray-600">/</span> {total}
         </span>
@@ -133,43 +135,43 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate min-w-0">
                   {current.path.split('/').slice(-2, -1)[0]}
                 </p>
-                <button
-                  type="button"
-                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors whitespace-nowrap"
+                <Button
+                  variant="soft"
+                  size="xs"
                   title="フォルダ名をカテゴリに変換して割り当て"
                   onClick={handleAssignCategory}
                 >
-                  → カテゴリ化
-                </button>
+                  <ArrowRight aria-hidden />カテゴリ化
+                </Button>
               </div>
             </div>
 
             {/* Play + Detail */}
             <div className="px-5 pb-5 flex items-center gap-3">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white text-sm font-medium transition-colors shadow-sm"
+              <Button
+                variant="primary"
+                size="md"
                 onClick={() => onPlay(current)}
               >
                 <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z" />
                 </svg>
                 再生
-              </button>
-              <button
-                type="button"
-                className="text-xs text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors"
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => onShowDetail(current)}
               >
-                詳細を開く →
-              </button>
+                詳細を開く<ArrowRight aria-hidden />
+              </Button>
             </div>
 
             {/* Navigation */}
             <div className="mt-auto px-5 pb-5 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              <Button
+                variant="secondary"
+                size="md"
                 disabled={quickSortIndex === 0}
                 onClick={() => setQuickSortIndex(quickSortIndex - 1)}
               >
@@ -177,11 +179,11 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
                 前
-              </button>
+              </Button>
               <span className="text-[10px] text-gray-300 dark:text-gray-600 select-none">← →</span>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              <Button
+                variant="secondary"
+                size="md"
                 disabled={isLast}
                 onClick={() => setQuickSortIndex(quickSortIndex + 1)}
               >
@@ -189,7 +191,7 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -203,20 +205,21 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
 
             {/* Graduate actions */}
             <div className="mt-auto pt-5 border-t border-gray-100 dark:border-gray-800 flex flex-col gap-2">
-              <button
-                type="button"
-                className="w-full py-2.5 rounded-lg bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-sm font-semibold shadow-sm transition-colors"
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
                 onClick={handleGraduateCurrent}
               >
-                ✓ 整理完了
-              </button>
-              <button
-                type="button"
-                className="text-xs text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors text-center py-1"
+                <Check aria-hidden />整理完了
+              </Button>
+              <Button
+                variant="danger-soft"
+                size="sm"
                 onClick={handleGraduateAll}
               >
                 スタック全件を整理完了にする
-              </button>
+              </Button>
             </div>
           </div>
 

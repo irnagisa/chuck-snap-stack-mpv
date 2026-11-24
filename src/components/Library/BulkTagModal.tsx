@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../store/useToastStore';
 import { useTagStore } from '../../store/useTagStore';
+import { Button, Checkbox } from "../ui";
 
 interface Props {
   videoIds: number[];
@@ -61,11 +62,9 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
                 key={tag.id}
                 className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 rounded"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={selectedTagIds.has(tag.id)}
-                  onChange={() => toggleTag(tag.id)}
-                  className="rounded"
+                  onCheckedChange={() => toggleTag(tag.id)}
                 />
                 <span
                   className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
@@ -78,22 +77,23 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
         )}
 
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
             disabled={loading || selectedTagIds.size === 0}
-            className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
             onClick={handleApply}
           >
             {loading ? t('bulkTag.applying') : t('bulkTag.apply', { count: selectedTagIds.size })}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            size="md"
             disabled={loading}
-            className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
             onClick={onClose}
           >
             {t('bulkTag.cancel')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

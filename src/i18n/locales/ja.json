@@ -2,9 +2,9 @@
   "app": {
     "title": "Chuck Snap Stack",
     "scanning": "スキャン中...",
-    "addFolder": "+ フォルダ追加",
+    "addFolder": "フォルダ追加",
     "useDirAsCategory": "フォルダ名をカテゴリに",
-    "downloadUrl": "↓ URL",
+    "downloadUrl": "URL",
     "searchPlaceholder": "ファイルを検索...",
     "statsTitle": "統計ダッシュボード",
     "exportTitle": "エクスポート / インポート",
@@ -25,9 +25,9 @@
     "transcodeStarting": "開始中...",
     "transcodeCancel": "キャンセル",
     "transcodeDismiss": "✕",
-    "shuffleAll": "⇄ 全件",
+    "shuffleAll": "全件",
     "shuffleAllTitle": "現在のフィルター全 {{count}} 件をシャッフル再生",
-    "saveSmartPlaylist": "💾 保存",
+    "saveSmartPlaylist": "保存",
     "saveSmartPlaylistTitle": "現在のフィルター条件をスマートプレイリストとして保存",
     "dropImport": "動画をドロップしてインポート",
     "dropFormats": "mp4 / mkv / webm / avi / mov などに対応",
@@ -49,6 +49,7 @@
     "playlistTab": "リスト"
   },
   "filters": {
+    "sortBy": "並び順",
     "sortByCreatedAt": "追加日",
     "sortByDuration": "長さ",
     "sortByRating": "評価",
@@ -98,8 +99,8 @@
     "moveDir": "他のディレクトリへ移動"
   },
   "pagination": {
-    "prev": "← 前",
-    "next": "次 →",
+    "prev": "前",
+    "next": "次",
     "count": "({{count}}件)"
   },
   "settings": {
@@ -137,7 +138,7 @@
     "sectionScanPaths": "スキャンパス",
     "noScanPaths": "スキャン対象フォルダがありません",
     "removePath": "このパスを削除",
-    "addFolder": "+ フォルダを追加",
+    "addFolder": "フォルダを追加",
     "sectionWebServer": "ウェブサーバー",
     "webServerDesc": "LAN 内の他デバイス（スマホ・PC）からブラウザでライブラリを閲覧・再生できます。",
     "port": "ポート",
@@ -199,7 +200,7 @@
   "detail": {
     "title": "詳細",
     "viewImage": "🔍 拡大表示",
-    "play": "▶ 再生",
+    "play": "再生",
     "openInBrowser": "ブラウザで開く",
     "viewer": "ビューア",
     "rescan": "再スキャン",
@@ -304,7 +305,7 @@
     "cancel": "キャンセル",
     "namePlaceholder": "カテゴリ名",
     "tagsTitle": "タグ",
-    "addGroup": "+ グループ",
+    "addGroup": "グループ",
     "groupNamePlaceholder": "グループ名",
     "deleteGroup": "グループを削除",
     "editGroup": "グループ名を編集",
@@ -319,7 +320,7 @@
     "delete": "削除",
     "smart": "スマート",
     "applyFilter": "このフィルター条件を適用",
-    "playAll": "▶ すべて再生",
+    "playAll": "すべて再生",
     "loading": "読み込み中...",
     "noVideos": "動画がありません。ライブラリから追加してください。",
     "removeFromPlaylist": "プレイリストから削除",
@@ -525,8 +526,8 @@
   "export": {
     "title": "エクスポート / インポート",
     "desc": "ライブラリのデータ（動画情報・タグ・プレイリスト）を JSON ファイルに保存/復元します。",
-    "exportButton": "📤 バックアップをエクスポート",
-    "importButton": "📥 バックアップからインポート",
+    "exportButton": "バックアップをエクスポート",
+    "importButton": "バックアップからインポート",
     "importWarning": "⚠ インポートすると現在のデータが上書きされます",
     "exporting": "エクスポート中...",
     "importing": "インポート中...",
@@ -596,10 +597,10 @@
     "playbackSettings": "再生設定",
     "shuffleOff": "シャッフル解除",
     "shuffleOn": "シャッフル再生",
-    "shuffleLabel": "⇄ シャッフル",
+    "shuffleLabel": "シャッフル",
     "loopOff": "ループ解除",
     "loopOn": "ループ再生",
-    "loopLabel": "↻ ループ",
+    "loopLabel": "ループ",
     "abSetA": "A点を設定",
     "abSetB": "B点を設定",
     "abLooping": "A-Bループ中",
@@ -608,7 +609,8 @@
     "screenshot": "スクリーンショット",
     "showQueue": "キューを表示",
     "miniPlayer": "ミニプレイヤーに切替",
-    "exit": "終了"
+    "exit": "終了",
+    "seek": "再生位置"
   },
   "queue": {
     "title": "キュー ({{count}}件)",

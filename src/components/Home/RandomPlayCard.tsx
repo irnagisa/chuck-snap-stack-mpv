@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { formatTime } from "../../utils/time";
 import type { Video } from "../../types";
+import { Play, Shuffle } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   onOpen: (video: Video) => void;
@@ -31,21 +33,10 @@ export function RandomPlayCard({ onOpen }: Props) {
     <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400">ランダム再生</h2>
-        <button
-          onClick={fetchRandom}
-          disabled={isLoading}
-          className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500
-                     hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-40 transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="16 3 21 3 21 8" />
-            <line x1="4" y1="20" x2="21" y2="3" />
-            <polyline points="21 16 21 21 16 21" />
-            <line x1="15" y1="15" x2="21" y2="21" />
-          </svg>
+        <Button size="xs" variant="ghost" onClick={fetchRandom} disabled={isLoading}>
+          <Shuffle aria-hidden />
           別の動画
-        </button>
+        </Button>
       </div>
 
       {isLoading && videos.length === 0 && (
@@ -88,16 +79,10 @@ export function RandomPlayCard({ onOpen }: Props) {
               <p className="text-xs font-medium leading-snug line-clamp-2 text-gray-800 dark:text-gray-200">
                 {video.title ?? fileName(video.path)}
               </p>
-              <button
-                onClick={() => onOpen(video)}
-                className="self-start flex items-center gap-1 px-2 py-1 text-xs font-medium rounded
-                           bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
+              <Button size="xs" variant="primary" className="self-start" onClick={() => onOpen(video)}>
+                <Play aria-hidden fill="currentColor" />
                 再生
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

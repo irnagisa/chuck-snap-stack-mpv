@@ -1,4 +1,6 @@
 import { useInboxStore } from "../../store/useInboxStore";
+import { Sparkles } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   onOrganize: () => void;
@@ -16,14 +18,10 @@ export function InboxSummaryCard({ onOrganize }: Props) {
             未整理ファイル {inboxCount}件
           </p>
         </div>
-        <button
-          type="button"
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm shrink-0 disabled:opacity-50"
-          disabled={inboxCount === 0}
-          onClick={onOrganize}
-        >
+        <Button variant="primary" size="md" disabled={inboxCount === 0} onClick={onOrganize}>
+          <Sparkles aria-hidden />
           整理を開始
-        </button>
+        </Button>
       </div>
     </section>
   );

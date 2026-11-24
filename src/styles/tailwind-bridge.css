@@ -1,0 +1,42 @@
+/*
+ * Tailwind ブリッジ (移行期間専用)
+ *
+ * 既存の Tailwind 画面 (bg-gray-* / text-blue-* など) にも新しいテーマを当てるため、
+ * Tailwind v4 のテーマ変数をこのアプリのパレットで上書きする。
+ * Tailwind のユーティリティは var(--color-gray-200) のように変数を参照するので、
+ * tokens レイヤー (theme レイヤーより後) で同名変数を定義すると一括で差し替わる。
+ *
+ *   gray  → ニュートラル (暖色寄り)
+ *   blue  → アクセント (ぶどう色)
+ *
+ * Tailwind を撤去したらこのファイルごと削除する。
+ */
+@layer tokens {
+  :root {
+    --color-gray-50: var(--palette-neutral-50);
+    --color-gray-100: var(--palette-neutral-100);
+    --color-gray-200: var(--palette-neutral-200);
+    --color-gray-300: var(--palette-neutral-300);
+    --color-gray-400: var(--palette-neutral-400);
+    --color-gray-500: var(--palette-neutral-500);
+    --color-gray-600: var(--palette-neutral-600);
+    --color-gray-700: var(--palette-neutral-700);
+    --color-gray-800: var(--palette-neutral-800);
+    --color-gray-900: var(--palette-neutral-900);
+    --color-gray-950: var(--palette-neutral-950);
+
+    --color-blue-50: var(--palette-accent-50);
+    --color-blue-100: var(--palette-accent-100);
+    --color-blue-200: var(--palette-accent-200);
+    --color-blue-300: var(--palette-accent-300);
+    --color-blue-400: var(--palette-accent-400);
+    --color-blue-500: var(--palette-accent-500);
+    --color-blue-600: var(--palette-accent-600);
+    --color-blue-700: var(--palette-accent-700);
+    --color-blue-800: var(--palette-accent-800);
+    --color-blue-900: var(--palette-accent-900);
+    --color-blue-950: var(--palette-accent-950);
+
+    /* フォントは tokens.css の --font-sans が Tailwind の preflight にもそのまま効く */
+  }
+}

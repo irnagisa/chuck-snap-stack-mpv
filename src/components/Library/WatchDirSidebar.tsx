@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useShallow } from 'zustand/shallow';
+import { Button } from "../ui";
+import { RefreshCw, RotateCw, X } from "lucide-react";
 
 interface Props {
   selectedDir: string | null;
@@ -29,15 +31,16 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
         <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
           {t('watchDir.title')}
         </h2>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           title={t('watchDir.rescanAll')}
+          aria-label={t('watchDir.rescanAll')}
           disabled={isScanning || isThumbnailGenerating || watchDirs.length === 0}
           onClick={() => rescanAllDirs()}
-          className="text-xs text-gray-400 hover:text-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {isScanning || isThumbnailGenerating ? '⟳' : '↺'}
-        </button>
+          <RefreshCw aria-hidden className={isScanning || isThumbnailGenerating ? 'animate-spin' : ''} />
+        </Button>
       </div>
 
       <button
@@ -73,23 +76,27 @@ export function WatchDirSidebar({ selectedDir, onSelectDir }: Props) {
             <span className="text-gray-400 dark:text-gray-500 shrink-0">📁</span>
             <span className="truncate">{basename(dir)}</span>
           </button>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="opacity-0 group-hover:opacity-100"
+            aria-label={t('watchDir.rescan')}
             title={t('watchDir.rescan')}
             disabled={isScanning || isThumbnailGenerating}
-            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 disabled:opacity-30 text-xs px-0.5 shrink-0 transition-colors"
             onClick={() => rescanAllDirs(dir)}
           >
-            ↺
-          </button>
-          <button
-            type="button"
+            <RotateCw aria-hidden />
+          </Button>
+          <Button
+            variant="danger-soft"
+            size="icon-sm"
+            className="opacity-0 group-hover:opacity-100"
+            aria-label={t('watchDir.unwatch')}
             title={t('watchDir.unwatch')}
-            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
             onClick={() => removeWatchDir(dir)}
           >
-            ×
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
       ))}
     </aside>

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTagStore, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { Button } from "../ui";
 
 interface Props {
   /** モード切替が完了したときのコールバック */
@@ -122,28 +123,31 @@ export function CategoryMigrationModal({ onDone, onCancel }: Props) {
 
             <div className="flex flex-col gap-2">
               {targets.length > 0 && (
-                <button
-                  type="button"
-                  className="w-full px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
+                <Button
+                  variant="primary"
+                  size="md"
+                  fullWidth
                   onClick={handleStartMigration}
                 >
                   {t('categoryMigration.startButton')}
-                </button>
+                </Button>
               )}
-              <button
-                type="button"
-                className="w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+              <Button
+                variant="secondary"
+                size="md"
+                fullWidth
                 onClick={handleSkipMigration}
               >
                 {targets.length > 0 ? t('categoryMigration.skipButton') : 'Sync モードに切り替え'}
-              </button>
-              <button
-                type="button"
-                className="w-full px-3 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded"
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                fullWidth
                 onClick={onCancel}
               >
                 {t('categoryMigration.cancelButton')}
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -181,13 +185,14 @@ export function CategoryMigrationModal({ onDone, onCancel }: Props) {
                 </li>
               )}
             </ul>
-            <button
-              type="button"
-              className="w-full px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
+            <Button
+              variant="primary"
+              size="md"
+              fullWidth
               onClick={onDone}
             >
               {t('categoryMigration.closeButton')}
-            </button>
+            </Button>
           </>
         )}
       </div>

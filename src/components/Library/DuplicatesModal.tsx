@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
+import { X } from "lucide-react";
+import { Button, RadioGroup, RadioGroupItem } from "../ui";
 
 interface VideoWithSize extends Video {
   fileSize: number | null;
@@ -147,22 +149,22 @@ export function DuplicatesModal({ onClose }: Props) {
     onDeleteFiles: () => void;
   }) => (
     <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="sm"
         disabled={isProcessing}
-        className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
         onClick={onRemoveLib}
       >
         {t('duplicates.removeOthersFromLibrary')}
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="danger"
+        size="sm"
         disabled={isProcessing}
-        className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
         onClick={onDeleteFiles}
       >
         {t('duplicates.deleteOthers')}
-      </button>
+      </Button>
       {isProcessing && (
         <span className="text-xs text-gray-400 dark:text-gray-500">{t('duplicates.processing')}</span>
       )}
@@ -187,13 +189,14 @@ export function DuplicatesModal({ onClose }: Props) {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {t('duplicates.title')}
           </h2>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-base leading-none"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="閉じる"
             onClick={onClose}
           >
-            ✕
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         {/* Body */}
@@ -235,7 +238,12 @@ export function DuplicatesModal({ onClose }: Props) {
                       <span>·</span>
                       <span>{fmtSize(group.fileSize)}</span>
                     </div>
-                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    <RadioGroup
+                      className="divide-y divide-gray-100 dark:divide-gray-700"
+                      aria-label={t('duplicates.keep')}
+                      value={String(keepId)}
+                      onValueChange={(v) => setKeepIds((prev) => new Map(prev).set(groupIdx, Number(v)))}
+                    >
                       {group.videos.map((video) => (
                         <label
                           key={video.id}
@@ -245,15 +253,7 @@ export function DuplicatesModal({ onClose }: Props) {
                               : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
                           }`}
                         >
-                          <input
-                            type="radio"
-                            name={`keep-${groupIdx}`}
-                            checked={keepId === video.id}
-                            onChange={() =>
-                              setKeepIds((prev) => new Map(prev).set(groupIdx, video.id))
-                            }
-                            className="accent-blue-600 shrink-0"
-                          />
+                          <RadioGroupItem value={String(video.id)} />
                           {video.thumbnail ? (
                             <img
                               src={convertFileSrc(video.thumbnail)}
@@ -278,7 +278,7 @@ export function DuplicatesModal({ onClose }: Props) {
                           )}
                         </label>
                       ))}
-                    </div>
+                    </RadioGroup>
                     <GroupActions
                       isProcessing={isProcessing}
                       onRemoveLib={() => handleRemoveOthers(groupIdx, false)}
@@ -293,13 +293,13 @@ export function DuplicatesModal({ onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 shrink-0 flex justify-end">
-          <button
-            type="button"
-            className="px-4 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={onClose}
           >
             {t('duplicates.close')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

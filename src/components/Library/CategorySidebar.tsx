@@ -4,8 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryDescendantIds } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
-import { Select } from '../common/Select';
+import { Select, Button, Input } from '../ui';
 import { MediaIcon, IconPicker } from '../../lib/mediaIcons';
+import { Pencil, Plus, Search, X } from "lucide-react";
 
 const COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -225,9 +226,9 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
     <div key={tag.id}>
       {editingTagId === tag.id ? (
         <div className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
-          <input
+          <Input
+            size="sm"
             autoFocus
-            className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
             value={editTagName}
             onChange={(e) => setEditTagName(e.target.value)}
             onKeyDown={(e) => {
@@ -250,30 +251,29 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
           </div>
           <IconPicker value={editTagIcon} onChange={setEditTagIcon} />
           <Select
-            variant="sm"
-            value={editTagCategoryId ?? ''}
-            onChange={(e) => setEditTagCategoryId(e.target.value === '' ? null : Number(e.target.value))}
-          >
-            <option value="">{t('category.none')}</option>
-            {tagCategories.map((tc) => (
-              <option key={tc.id} value={tc.id}>{tc.name}</option>
-            ))}
-          </Select>
+            fullWidth
+            value={editTagCategoryId == null ? '' : String(editTagCategoryId)}
+            onValueChange={(v) => setEditTagCategoryId(v === '' ? null : Number(v))}
+            options={[
+              { value: '', label: t('category.none') },
+              ...tagCategories.map((tc) => ({ value: String(tc.id), label: tc.name })),
+            ]}
+          />
           <div className="flex gap-1">
-            <button
-              type="button"
-              className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+            <Button
+              variant="primary"
+              size="xs"
               onClick={handleEditTagSave}
             >
               保存
-            </button>
-            <button
-              type="button"
-              className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => setEditingTagId(null)}
             >
               {t('category.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
@@ -292,22 +292,18 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
             </span>
             <span className="truncate">{tag.name}</span>
           </button>
-          <button
-            type="button"
-            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
+          <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.edit')}
             onClick={() => startEditTag(tag.id, tag.name, tag.color, tag.tag_category_id, tag.icon)}
             title={t('category.edit')}
           >
-            ✎
-          </button>
-          <button
-            type="button"
-            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
+            <Pencil aria-hidden />
+          </Button>
+          <Button variant="danger-soft" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.delete')}
             onClick={() => handleDeleteTag(tag.id)}
             title={t('category.delete')}
           >
-            ×
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
       )}
     </div>
@@ -333,9 +329,9 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
       if (editingId === cat.id) {
         rows.push(
           <div key={`edit-${cat.id}`} style={{ paddingLeft: indent }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
-            <input
+            <Input
+              size="sm"
               autoFocus
-              className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               onKeyDown={(e) => {
@@ -358,32 +354,32 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
             </div>
             <IconPicker value={editIcon} onChange={setEditIcon} />
             <Select
-              variant="sm"
-              value={editParentId ?? ''}
-              onChange={(e) => setEditParentId(e.target.value === '' ? null : Number(e.target.value))}
-            >
-              <option value="">{t('category.rootParent')}</option>
-              {editParentOptions.map(({ category: opt, depth: d }) => (
-                <option key={opt.id} value={opt.id}>
-                  {'　'.repeat(d)}{opt.name}
-                </option>
-              ))}
-            </Select>
+              fullWidth
+              value={editParentId == null ? '' : String(editParentId)}
+              onValueChange={(v) => setEditParentId(v === '' ? null : Number(v))}
+              options={[
+                { value: '', label: t('category.rootParent') },
+                ...editParentOptions.map(({ category: opt, depth: d }) => ({
+                  value: String(opt.id),
+                  label: `${'　'.repeat(d)}${opt.name}`,
+                })),
+              ]}
+            />
             <div className="flex gap-1">
-              <button
-                type="button"
-                className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+              <Button
+                variant="primary"
+                size="xs"
                 onClick={handleEditSave}
               >
                 保存
-              </button>
-              <button
-                type="button"
-                className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => setEditingId(null)}
               >
                 {t('category.cancel')}
-              </button>
+              </Button>
             </div>
           </div>
         );
@@ -428,9 +424,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
               </span>
               <span className="truncate">{cat.name}</span>
             </button>
-            <button
-              type="button"
-              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-green-500 text-xs px-0.5 shrink-0"
+            <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.addChild')}
               onClick={() => {
                 setCollapsedIds(prev => { const next = new Set(prev); next.delete(cat.id); return next; });
                 setAddingParentId(cat.id);
@@ -441,24 +435,20 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
               }}
               title={t('category.addChild')}
             >
-              +
-            </button>
-            <button
-              type="button"
-              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
+              <Plus aria-hidden />
+            </Button>
+            <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.edit')}
               onClick={() => startEdit(cat.id, cat.name, cat.color, cat.parent_id, cat.icon)}
               title={t('category.edit')}
             >
-              ✎
-            </button>
-            <button
-              type="button"
-              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
+              <Pencil aria-hidden />
+            </Button>
+            <Button variant="danger-soft" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.delete')}
               onClick={() => handleDelete(cat.id)}
               title={t('category.delete')}
             >
-              ×
-            </button>
+              <X aria-hidden />
+            </Button>
           </div>
         );
       }
@@ -466,9 +456,9 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
       if (addingParentId === cat.id && !isCollapsed) {
         rows.push(
           <div key={`add-child-${cat.id}`} style={{ paddingLeft: indent + 12 }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
-            <input
+            <Input
+              size="sm"
               autoFocus
-              className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
               placeholder={t('category.subnamePlaceholder')}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -492,20 +482,20 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
             </div>
             <IconPicker value={newIcon} onChange={setNewIcon} />
             <div className="flex gap-1">
-              <button
-                type="button"
-                className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+              <Button
+                variant="primary"
+                size="xs"
                 onClick={handleAdd}
               >
                 {t('category.add')}
-              </button>
-              <button
-                type="button"
-                className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => { setAddingParentId(undefined); setNewName(''); }}
               >
                 {t('category.cancel')}
-              </button>
+              </Button>
             </div>
           </div>
         );
@@ -518,29 +508,15 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
 
   return (
     <aside className="flex flex-col h-full min-h-0 w-full min-w-0">
-      <div className="relative mb-2 shrink-0">
-        <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-        </svg>
-        <input
-          type="text"
-          className="w-full pl-6 pr-6 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder={t('category.searchPlaceholder')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {search && (
-          <button
-            type="button"
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-            onClick={() => setSearch('')}
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-      </div>
+      <Input
+        size="xs"
+        className="w-full mb-2 shrink-0"
+        icon={<Search />}
+        placeholder={t('category.searchPlaceholder')}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        onClear={() => setSearch('')}
+      />
 
       <div
         ref={sectionsRef}
@@ -609,9 +585,9 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
 
       {addingParentId === null ? (
         <div className="mt-1 flex flex-col gap-1.5 px-1">
-          <input
+          <Input
+            size="sm"
             autoFocus
-            className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             placeholder={t('category.namePlaceholder')}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -635,30 +611,32 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
           </div>
           <IconPicker value={newIcon} onChange={setNewIcon} />
           <div className="flex gap-1">
-            <button
-              type="button"
-              className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+            <Button
+              variant="primary"
+              size="xs"
               onClick={handleAdd}
             >
               {t('category.add')}
-            </button>
-            <button
-              type="button"
-              className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => { setAddingParentId(undefined); setNewName(''); }}
             >
               {t('category.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : addingParentId === undefined ? (
-        <button
-          type="button"
-          className="text-left px-2 py-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="self-start"
           onClick={() => { setAddingParentId(null); setNewParentId(null); setNewName(''); setNewColor(COLORS[5]); setNewIcon('folder'); }}
         >
-          + {t('category.add')}
-        </button>
+          <Plus aria-hidden />
+          {t('category.add')}
+        </Button>
       ) : null}
       </div>
 
@@ -685,23 +663,22 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
                 {tags.length}
               </span>
             )}
-            <button
-              type="button"
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               title={t('category.addGroup')}
+              aria-label={t('category.addGroup')}
               onClick={() => setIsAddingTagCat(true)}
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
+              <Plus aria-hidden />
+            </Button>
           </div>
 
           {isAddingTagCat && (
             <div className="flex flex-col gap-1 px-1 mb-1">
-              <input
+              <Input
+                size="sm"
                 autoFocus
-                className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 placeholder={t('category.groupNamePlaceholder')}
                 value={newTagCatName}
                 onChange={(e) => setNewTagCatName(e.target.value)}
@@ -711,20 +688,20 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
                 }}
               />
               <div className="flex gap-1">
-                <button
-                  type="button"
-                  className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded"
+                <Button
+                  variant="primary"
+                  size="xs"
                   onClick={handleAddTagCat}
                 >
                   {t('category.add')}
-                </button>
-                <button
-                  type="button"
-                  className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => { setIsAddingTagCat(false); setNewTagCatName(''); }}
                 >
                   {t('category.cancel')}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -734,9 +711,9 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
               <div className="group flex items-center gap-0.5 px-1 py-2">
                 {editingTagCatId === category.id ? (
                   <div className="flex flex-col gap-1 flex-1 py-0.5">
-                    <input
+                    <Input
+                      size="xs"
                       autoFocus
-                      className="text-xs px-2 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                       value={editTagCatName}
                       onChange={(e) => setEditTagCatName(e.target.value)}
                       onKeyDown={(e) => {
@@ -745,8 +722,8 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
                       }}
                     />
                     <div className="flex gap-1">
-                      <button type="button" className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded" onClick={handleEditTagCatSave}>保存</button>
-                      <button type="button" className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" onClick={() => setEditingTagCatId(null)}>{t('category.cancel')}</button>
+                      <Button variant="primary" size="xs" onClick={handleEditTagCatSave}>保存</Button>
+                      <Button variant="ghost" size="xs" onClick={() => setEditingTagCatId(null)}>{t('category.cancel')}</Button>
                     </div>
                   </div>
                 ) : (
@@ -769,22 +746,18 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
                       {category.name}
                     </span>
                     <span className="text-xs text-gray-400 dark:text-gray-600 shrink-0 tabular-nums">{groupTags.length}</span>
-                    <button
-                      type="button"
-                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 text-xs px-0.5 shrink-0"
+                    <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.editGroup')}
                       onClick={() => { setEditingTagCatId(category.id); setEditTagCatName(category.name); }}
                       title={t('category.editGroup')}
                     >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-0.5 shrink-0"
+                      <Pencil aria-hidden />
+                    </Button>
+                    <Button variant="danger-soft" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.deleteGroup')}
                       onClick={() => handleDeleteTagCat(category.id)}
                       title={t('category.deleteGroup')}
                     >
-                      ×
-                    </button>
+                      <X aria-hidden />
+                    </Button>
                   </>
                 )}
               </div>

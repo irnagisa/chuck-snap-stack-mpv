@@ -5,6 +5,8 @@ import type { Playlist, SmartPlaylist } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { useLibraryStore, type SortBy, type SortOrder, type WatchedStatus, type RatingMode } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
+import { Check, Plus, X } from "lucide-react";
+import { Button, Input } from "../ui";
 
 interface Props {
   onOpenPlaylist: (playlist: Playlist) => void;
@@ -66,21 +68,23 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
           {t('playlist.title')}
         </span>
-        <button
-          type="button"
-          className="text-xs text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 leading-none"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('playlist.create')}
           title={t('playlist.create')}
           onClick={() => setIsCreating(true)}
         >
-          +
-        </button>
+          <Plus aria-hidden />
+        </Button>
       </div>
 
       {isCreating && (
         <div className="flex gap-1 mb-1">
-          <input
+          <Input
+            size="sm"
+            className="flex-1 min-w-0"
             autoFocus
-            type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -88,15 +92,15 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
               if (e.key === 'Escape') { setIsCreating(false); setNewName(''); }
             }}
             placeholder={t('playlist.namePlaceholder')}
-            className="flex-1 min-w-0 text-xs border border-gray-300 dark:border-gray-600 rounded px-1.5 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400"
           />
-          <button
-            type="button"
-            className="text-xs px-1.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 shrink-0"
+          <Button
+            variant="primary"
+            size="icon-sm"
+            aria-label="確定"
             onClick={handleCreate}
           >
-            ✓
-          </button>
+            <Check aria-hidden />
+          </Button>
         </div>
       )}
 
@@ -115,14 +119,16 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
           >
             {pl.name}
           </button>
-          <button
-            type="button"
-            className="opacity-0 group-hover:opacity-100 text-xs text-gray-400 hover:text-red-500 shrink-0 transition-opacity px-1"
+          <Button
+            variant="danger-soft"
+            size="icon-sm"
+            className="opacity-0 group-hover:opacity-100"
+            aria-label={t('playlist.delete')}
             onClick={() => deletePlaylist(pl.id)}
             title={t('playlist.delete')}
           >
-            ×
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
       ))}
 
@@ -144,14 +150,16 @@ export function PlaylistSidebar({ onOpenPlaylist }: Props) {
               >
                 🔍 {sp.name}
               </button>
-              <button
-                type="button"
-                className="opacity-0 group-hover:opacity-100 text-xs text-gray-400 hover:text-red-500 shrink-0 transition-opacity px-1"
+              <Button
+                variant="danger-soft"
+                size="icon-sm"
+                className="opacity-0 group-hover:opacity-100"
+                aria-label={t('playlist.delete')}
                 onClick={() => handleDeleteSmartPlaylist(sp.id)}
                 title={t('playlist.delete')}
               >
-                ×
-              </button>
+                <X aria-hidden />
+              </Button>
             </div>
           ))}
         </>

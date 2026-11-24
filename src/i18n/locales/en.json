@@ -2,9 +2,9 @@
   "app": {
     "title": "Chuck Snap Stack",
     "scanning": "Scanning...",
-    "addFolder": "+ Add Folder",
+    "addFolder": "Add Folder",
     "useDirAsCategory": "Use folder name as category",
-    "downloadUrl": "↓ URL",
+    "downloadUrl": "URL",
     "searchPlaceholder": "Search files...",
     "statsTitle": "Stats Dashboard",
     "exportTitle": "Export / Import",
@@ -25,9 +25,9 @@
     "transcodeStarting": "Starting...",
     "transcodeCancel": "Cancel",
     "transcodeDismiss": "✕",
-    "shuffleAll": "⇄ All",
+    "shuffleAll": "All",
     "shuffleAllTitle": "Shuffle play all {{count}} results",
-    "saveSmartPlaylist": "💾 Save",
+    "saveSmartPlaylist": "Save",
     "saveSmartPlaylistTitle": "Save current filter as smart playlist",
     "dropImport": "Drop videos to import",
     "dropFormats": "Supports mp4 / mkv / webm / avi / mov and more",
@@ -49,6 +49,7 @@
     "playlistTab": "Playlist"
   },
   "filters": {
+    "sortBy": "Sort by",
     "sortByCreatedAt": "Date added",
     "sortByDuration": "Duration",
     "sortByRating": "Rating",
@@ -98,8 +99,8 @@
     "moveDir": "Move to Folder"
   },
   "pagination": {
-    "prev": "← Prev",
-    "next": "Next →",
+    "prev": "Prev",
+    "next": "Next",
     "count": "({{count}} items)"
   },
   "settings": {
@@ -137,7 +138,7 @@
     "sectionScanPaths": "Scan Paths",
     "noScanPaths": "No scan folders configured",
     "removePath": "Remove this path",
-    "addFolder": "+ Add Folder",
+    "addFolder": "Add Folder",
     "sectionWebServer": "Web Server",
     "webServerDesc": "Browse and play your library from other devices on your LAN (phone, PC) via a browser.",
     "port": "Port",
@@ -199,7 +200,7 @@
   "detail": {
     "title": "Details",
     "viewImage": "🔍 Expand",
-    "play": "▶ Play",
+    "play": "Play",
     "openInBrowser": "Open in Browser",
     "viewer": "Viewer",
     "rescan": "Rescan",
@@ -304,7 +305,7 @@
     "cancel": "Cancel",
     "namePlaceholder": "Category name",
     "tagsTitle": "Tags",
-    "addGroup": "+ Group",
+    "addGroup": "Group",
     "groupNamePlaceholder": "Group name",
     "deleteGroup": "Delete group",
     "editGroup": "Edit group name",
@@ -319,7 +320,7 @@
     "delete": "Delete",
     "smart": "Smart",
     "applyFilter": "Apply this filter",
-    "playAll": "▶ Play all",
+    "playAll": "Play all",
     "loading": "Loading...",
     "noVideos": "No videos. Add some from the library.",
     "removeFromPlaylist": "Remove from playlist",
@@ -525,8 +526,8 @@
   "export": {
     "title": "Export / Import",
     "desc": "Save/restore your library data (videos, tags, playlists) to/from a JSON file.",
-    "exportButton": "📤 Export backup",
-    "importButton": "📥 Import backup",
+    "exportButton": "Export backup",
+    "importButton": "Import backup",
     "importWarning": "⚠ Importing will overwrite current data",
     "exporting": "Exporting...",
     "importing": "Importing...",
@@ -596,10 +597,10 @@
     "playbackSettings": "Playback settings",
     "shuffleOff": "Shuffle off",
     "shuffleOn": "Shuffle on",
-    "shuffleLabel": "⇄ Shuffle",
+    "shuffleLabel": "Shuffle",
     "loopOff": "Loop off",
     "loopOn": "Loop on",
-    "loopLabel": "↻ Loop",
+    "loopLabel": "Loop",
     "abSetA": "Set A point",
     "abSetB": "Set B point",
     "abLooping": "A-B looping",
@@ -608,7 +609,8 @@
     "screenshot": "Screenshot",
     "showQueue": "Show queue",
     "miniPlayer": "Mini player",
-    "exit": "Exit"
+    "exit": "Exit",
+    "seek": "Playback position"
   },
   "queue": {
     "title": "Queue ({{count}})",

@@ -41,8 +41,12 @@ import {
   layoutStyles as styles,
 } from "./components/Layout";
 import { useInboxStore } from "./store/useInboxStore";
+import { motion } from "motion/react";
+import { Collapse, motionPresets } from "./components/ui";
 
 type MainView = "home" | "library" | "inbox";
+
+const { viewEnter } = motionPresets;
 
 function App() {
   const { t } = useTranslation();
@@ -274,9 +278,11 @@ function App() {
   return (
     <main className={styles.app}>
       {isMiniPlayer ? (
-        <MiniPlayer />
+        <motion.div key="mini" className={styles.shell} {...viewEnter}>
+          <MiniPlayer />
+        </motion.div>
       ) : (
-        <>
+        <motion.div key="full" className={styles.shell} {...viewEnter}>
           <AppHeader
             mainView={mainView}
             inboxCount={inboxCount}
@@ -296,107 +302,115 @@ function App() {
 
           {/* ボディ */}
           <div className={styles.body}>
-            {mainView === "home" ? (
-              <ErrorBoundary>
-                <HomeView
-                  onNavigate={setMainView}
-                  onOpenVideo={handleHomeOpenVideo}
-                  onOpenFolder={handleHomeOpenFolder}
-                />
-              </ErrorBoundary>
-            ) : mainView === "inbox" ? (
-              <div className={styles.fill}>
+            {/* ビュー切替: key が変わるたびに新しいビューをフェードインさせる */}
+            <motion.div key={mainView} className={styles.fill} {...viewEnter}>
+              {mainView === "home" ? (
+                <ErrorBoundary>
+                  <HomeView
+                    onNavigate={setMainView}
+                    onOpenVideo={handleHomeOpenVideo}
+                    onOpenFolder={handleHomeOpenFolder}
+                  />
+                </ErrorBoundary>
+              ) : mainView === "inbox" ? (
                 <ErrorBoundary>
                   <InboxView />
                 </ErrorBoundary>
-              </div>
-            ) : (
-              <ThreePaneLayout
-                sidebar={isDbReady ? <LibrarySidebar /> : null}
-                detail={
-                  detailVideo ? (
-                    <VideoDetailModal
-                      key={detailVideo.id}
-                      video={detailVideo}
-                      onClose={() => { closeDetailVideo(); fetchVideos(); }}
-                      onViewImage={setViewingImage}
-                    />
-                  ) : (
-                    <DetailPlaceholder />
-                  )
-                }
-              >
-                {!isDbReady && !dbError && (
-                  <p className={styles.status}>{t("app.dbInitializing")}</p>
-                )}
-                {dbError && (
-                  <p className={styles.status} data-tone="error">
-                    {t("app.dbError", { error: dbError })}
-                  </p>
-                )}
-
-                {isDbReady && (
-                  <ErrorBoundary>
-                    <div className={styles.libraryColumn}>
-                      <LibraryFilterBar />
-
-                      <BatchActionBar
-                        selectedVideoIds={selectedVideoIds}
-                        isThumbnailGenerating={isThumbnailGenerating}
-                        onClearSelection={() => setSelectedVideoIds(new Set())}
+              ) : (
+                <ThreePaneLayout
+                  sidebar={isDbReady ? <LibrarySidebar /> : null}
+                  detailKey={detailVideo?.id ?? "empty"}
+                  detail={
+                    detailVideo ? (
+                      <VideoDetailModal
+                        key={detailVideo.id}
+                        video={detailVideo}
+                        onClose={() => { closeDetailVideo(); fetchVideos(); }}
+                        onViewImage={setViewingImage}
                       />
+                    ) : (
+                      <DetailPlaceholder />
+                    )
+                  }
+                >
+                  {!isDbReady && !dbError && (
+                    <p className={styles.status}>{t("app.dbInitializing")}</p>
+                  )}
+                  {dbError && (
+                    <p className={styles.status} data-tone="error">
+                      {t("app.dbError", { error: dbError })}
+                    </p>
+                  )}
 
-                      <div className={styles.libraryView}>
-                        {viewMode === "list" ? (
-                          <LibraryList
-                            ref={libraryRef}
-                            videos={videos}
-                            currentVideoId={currentVideo?.id ?? null}
-                            detailVideoId={detailVideo?.id ?? null}
-                            scrollResetKey={scrollResetKey}
-                            onPlay={handlePlay}
-                            onShowDetail={openDetailVideo}
-                            onAddToPlaylist={openAddToPlaylist}
-                            onSetTag={handleContextSetTag}
-                            onSetCategory={handleContextSetCategory}
-                            onMoveDir={handleContextMoveDir}
-                            selectedIds={selectedVideoIds}
-                            onSelectionChange={setSelectedVideoIds}
-                          />
-                        ) : (
-                          <LibraryGrid
-                            ref={libraryRef}
-                            videos={videos}
-                            currentVideoId={currentVideo?.id ?? null}
-                            detailVideoId={detailVideo?.id ?? null}
-                            scrollResetKey={scrollResetKey}
-                            onPlay={handlePlay}
-                            onShowDetail={openDetailVideo}
-                            onAddToPlaylist={openAddToPlaylist}
-                            onSetTag={handleContextSetTag}
-                            onSetCategory={handleContextSetCategory}
-                            onMoveDir={handleContextMoveDir}
-                            selectedIds={selectedVideoIds}
-                            onSelectionChange={setSelectedVideoIds}
-                          />
-                        )}
+                  {isDbReady && (
+                    <ErrorBoundary>
+                      <div className={styles.libraryColumn}>
+                        <LibraryFilterBar />
+
+                        <Collapse show={selectedVideoIds.size > 0} data={selectedVideoIds}>
+                          {(ids) => (
+                            <BatchActionBar
+                              selectedVideoIds={ids}
+                              isThumbnailGenerating={isThumbnailGenerating}
+                              onClearSelection={() => setSelectedVideoIds(new Set())}
+                            />
+                          )}
+                        </Collapse>
+
+                        <div className={styles.libraryView}>
+                          <motion.div key={viewMode} className={styles.viewSwap} {...viewEnter}>
+                            {viewMode === "list" ? (
+                              <LibraryList
+                                ref={libraryRef}
+                                videos={videos}
+                                currentVideoId={currentVideo?.id ?? null}
+                                detailVideoId={detailVideo?.id ?? null}
+                                scrollResetKey={scrollResetKey}
+                                onPlay={handlePlay}
+                                onShowDetail={openDetailVideo}
+                                onAddToPlaylist={openAddToPlaylist}
+                                onSetTag={handleContextSetTag}
+                                onSetCategory={handleContextSetCategory}
+                                onMoveDir={handleContextMoveDir}
+                                selectedIds={selectedVideoIds}
+                                onSelectionChange={setSelectedVideoIds}
+                              />
+                            ) : (
+                              <LibraryGrid
+                                ref={libraryRef}
+                                videos={videos}
+                                currentVideoId={currentVideo?.id ?? null}
+                                detailVideoId={detailVideo?.id ?? null}
+                                scrollResetKey={scrollResetKey}
+                                onPlay={handlePlay}
+                                onShowDetail={openDetailVideo}
+                                onAddToPlaylist={openAddToPlaylist}
+                                onSetTag={handleContextSetTag}
+                                onSetCategory={handleContextSetCategory}
+                                onMoveDir={handleContextMoveDir}
+                                selectedIds={selectedVideoIds}
+                                onSelectionChange={setSelectedVideoIds}
+                              />
+                            )}
+                          </motion.div>
+                        </div>
+
+                        <Pagination
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          totalCount={totalCount}
+                          onPageChange={handleSetPage}
+                        />
                       </div>
-
-                      <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        totalCount={totalCount}
-                        onPageChange={handleSetPage}
-                      />
-                    </div>
-                  </ErrorBoundary>
-                )}
-              </ThreePaneLayout>
-            )}
+                    </ErrorBoundary>
+                  )}
+                </ThreePaneLayout>
+              )}
+            </motion.div>
           </div>
 
           {mainView !== "inbox" && <PlayerControls />}
-        </>
+        </motion.div>
       )}
 
       {viewingImage && (

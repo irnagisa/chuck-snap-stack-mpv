@@ -2,6 +2,8 @@ import { useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Button } from '../ui';
 
 interface Props {
   video: Video;
@@ -63,36 +65,42 @@ export function ImageViewerModal({ video, allImages, onClose, onNavigate }: Prop
 
       {/* 前へボタン */}
       {idx > 0 && (
-        <button
-          type="button"
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-3xl leading-none bg-black/30 rounded-full w-10 h-10 flex items-center justify-center"
+        <Button
+          variant="inherit"
+          size="icon"
+          className="absolute left-4 top-1/2 -translate-y-1/2 size-10 bg-black/30 text-white"
           onClick={(e) => { e.stopPropagation(); goPrev(); }}
           title={t('imageViewer.prev')}
+          aria-label={t('imageViewer.prev')}
         >
-          ‹
-        </button>
+          <ChevronLeft aria-hidden />
+        </Button>
       )}
 
       {/* 次へボタン */}
       {idx < allImages.length - 1 && (
-        <button
-          type="button"
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-3xl leading-none bg-black/30 rounded-full w-10 h-10 flex items-center justify-center"
+        <Button
+          variant="inherit"
+          size="icon"
+          className="absolute right-4 top-1/2 -translate-y-1/2 size-10 bg-black/30 text-white"
           onClick={(e) => { e.stopPropagation(); goNext(); }}
           title={t('imageViewer.next')}
+          aria-label={t('imageViewer.next')}
         >
-          ›
-        </button>
+          <ChevronRight aria-hidden />
+        </Button>
       )}
 
-      <button
-        type="button"
-        className="absolute top-4 right-4 text-white/60 hover:text-white text-xl leading-none bg-black/30 rounded-full w-8 h-8 flex items-center justify-center"
+      <Button
+        variant="inherit"
+        size="icon"
+        className="absolute top-4 right-4 bg-black/30 text-white"
         onClick={onClose}
         title={t('imageViewer.close')}
+        aria-label={t('imageViewer.close')}
       >
-        ✕
-      </button>
+        <X aria-hidden />
+      </Button>
     </div>
   );
 }

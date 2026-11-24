@@ -29,16 +29,16 @@ describe('ConfirmModal', () => {
 
   // ---- confirm button styling ----
 
-  it('uses blue background for default (non-danger) confirm button', () => {
+  it('uses the primary variant for default (non-danger) confirm button', () => {
     render(<ConfirmModal message="msg" onConfirm={() => {}} onCancel={() => {}} confirmLabel="Confirm" />);
-    const confirmBtn = screen.getByText('Confirm');
-    expect(confirmBtn.className).toContain('bg-blue-600');
+    const confirmBtn = screen.getByRole('button', { name: 'Confirm' });
+    expect(confirmBtn).toHaveAttribute('data-variant', 'primary');
   });
 
-  it('uses red background when confirmDanger=true', () => {
+  it('uses the danger variant when confirmDanger=true', () => {
     render(<ConfirmModal message="msg" onConfirm={() => {}} onCancel={() => {}} confirmLabel="Delete" confirmDanger />);
-    const confirmBtn = screen.getByText('Delete');
-    expect(confirmBtn.className).toContain('bg-red-600');
+    const confirmBtn = screen.getByRole('button', { name: 'Delete' });
+    expect(confirmBtn).toHaveAttribute('data-variant', 'danger');
   });
 
   // ---- callbacks ----

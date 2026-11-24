@@ -18,7 +18,7 @@ function setupStore(theme: string, isLoaded = true) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  document.documentElement.classList.remove('dark');
+  document.documentElement.classList.remove('dark', 'light');
 });
 
 describe('useTheme', () => {
@@ -33,6 +33,12 @@ describe('useTheme', () => {
     setupStore('light');
     renderHook(() => useTheme());
     expect(document.documentElement.classList.contains('dark')).toBe(false);
+  });
+
+  it('adds "light" class (color-scheme 固定用) when theme is "light"', () => {
+    setupStore('light');
+    renderHook(() => useTheme());
+    expect(document.documentElement.classList.contains('light')).toBe(true);
   });
 
   it('does nothing when isLoaded is false', () => {
@@ -97,5 +103,28 @@ describe('useTheme', () => {
     unmount();
     // addEventListener と removeEventListener に渡された関数が同一であることを確認
     expect(removeEventListenerMock).toHaveBeenCalledWith('change', capturedListener);
+  });
+
+  it('follows OS appearance changes while theme is "auto"', () => {
+    let listener: ((e: { matches: boolean }) => void) | undefined;
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        media: '(prefers-color-scheme: dark)',
+        addEventListener: vi.fn((_e: string, fn: (e: { matches: boolean }) => void) => { listener = fn; }),
+        removeEventListener: vi.fn(),
+      })),
+    });
+
+    setupStore('auto');
+    renderHook(() => useTheme());
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+
+    listener?.({ matches: true });
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+
+    listener?.({ matches: false });
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 });

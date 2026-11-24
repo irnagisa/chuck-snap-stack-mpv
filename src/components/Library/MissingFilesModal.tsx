@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { X } from "lucide-react";
+import { Button, Checkbox } from "../ui";
 
 interface Props {
   onClose: () => void;
@@ -102,13 +104,14 @@ export function MissingFilesModal({ onClose }: Props) {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {t('missingFiles.title')}
           </h2>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-base leading-none"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="閉じる"
             onClick={onClose}
           >
-            ✕
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         {/* ボディ */}
@@ -140,13 +143,13 @@ export function MissingFilesModal({ onClose }: Props) {
                     </span>
                   )}
                 </p>
-                <button
-                  type="button"
-                  className="text-xs text-blue-500 dark:text-blue-400 hover:underline"
+                <Button
+                  variant="soft"
+                  size="xs"
                   onClick={toggleAll}
                 >
                   {selected.size === items.length ? t('missingFiles.deselectAll') : t('missingFiles.selectAll')}
-                </button>
+                </Button>
               </div>
 
               <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -160,11 +163,10 @@ export function MissingFilesModal({ onClose }: Props) {
                           : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
                       }`}
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selected.has(item.id)}
-                        onChange={() => toggleItem(item.id)}
-                        className="mt-0.5 accent-red-600 shrink-0"
+                        onCheckedChange={() => toggleItem(item.id)}
+                        className="mt-0.5"
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
@@ -193,31 +195,31 @@ export function MissingFilesModal({ onClose }: Props) {
 
         {/* フッター */}
         <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 shrink-0 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            className="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={detect}
             disabled={loading || removing}
           >
             {t('missingFiles.redetect')}
-          </button>
+          </Button>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="px-4 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={onClose}
             >
               {t('missingFiles.close')}
-            </button>
+            </Button>
             {items.length > 0 && (
-              <button
-                type="button"
+              <Button
+                variant="danger"
+                size="sm"
                 disabled={selected.size === 0 || removing}
-                className="px-4 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
                 onClick={handleRemove}
               >
                 {removing ? t('duplicates.processing') : t('missingFiles.removeSelected', { count: selectedCount })}
-              </button>
+              </Button>
             )}
           </div>
         </div>

@@ -19,6 +19,8 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Playlist, Video } from '../../types';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
+import { Play, X } from "lucide-react";
+import { Button } from "../ui";
 
 interface SortableItemProps {
   video: Video;
@@ -93,14 +95,16 @@ function SortableItem({ video, index, onPlay, onRemove }: SortableItemProps) {
       )}
 
       {/* 削除ボタン */}
-      <button
-        type="button"
-        className="opacity-0 group-hover:opacity-100 text-xs text-red-500 hover:text-red-400 shrink-0 transition-opacity"
+      <Button
+        variant="danger-soft"
+        size="icon-sm"
+        className="opacity-0 group-hover:opacity-100"
+        aria-label={t('playlist.removeFromPlaylist')}
         onClick={() => onRemove(video.id)}
         title={t('playlist.removeFromPlaylist')}
       >
-        ×
-      </button>
+        <X aria-hidden />
+      </Button>
     </div>
   );
 }
@@ -172,21 +176,23 @@ export function PlaylistModal({ playlist, onClose }: Props) {
           <h2 className="flex-1 text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
             {playlist.name}
           </h2>
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="sm"
             disabled={videos.length === 0}
-            className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded shrink-0"
             onClick={handlePlayAll}
           >
+            <Play aria-hidden fill="currentColor" />
             {t('playlist.playAll')}
-          </button>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="削除"
             onClick={onClose}
           >
-            ×
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         {/* 動画リスト */}

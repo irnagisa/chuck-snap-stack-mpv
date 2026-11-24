@@ -14,6 +14,8 @@ import { VideoContextMenu } from './VideoContextMenu';
 import { formatTime } from '../../utils/time';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { Play, Plus, Trash2 } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   videos: Video[];
@@ -254,31 +256,34 @@ const VideoRow = memo(function VideoRow({
       {/* アクションボタン */}
       <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {onAddToPlaylist && (
-          <button
-            type="button"
-            className="px-1.5 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            aria-label={t('library.addToPlaylist')}
             onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
             title={t('library.addToPlaylist')}
           >
-            +
-          </button>
+            <Plus aria-hidden />
+          </Button>
         )}
-        <button
-          type="button"
-          className="px-1.5 py-0.5 text-xs rounded bg-blue-600/80 hover:bg-blue-600 text-white"
+        <Button
+          variant="primary"
+          size="icon-sm"
           onClick={(e) => { e.stopPropagation(); onPlay(v); }}
           title={t('library.play')}
+          aria-label={t('library.play')}
         >
-          ▶
-        </button>
-        <button
-          type="button"
-          className="px-1.5 py-0.5 text-xs rounded bg-red-600/80 hover:bg-red-600 text-white"
+          <Play aria-hidden fill="currentColor" />
+        </Button>
+        <Button
+          variant="danger-soft"
+          size="icon-sm"
           onClick={(e) => { e.stopPropagation(); onDelete(v); }}
           title={t('library.deleteVideo')}
+          aria-label={t('library.deleteVideo')}
         >
-          削除
-        </button>
+          <Trash2 aria-hidden />
+        </Button>
       </div>
     </div>
   );

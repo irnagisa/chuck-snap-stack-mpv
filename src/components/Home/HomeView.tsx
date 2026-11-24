@@ -24,7 +24,7 @@ export function HomeView({ onNavigate, onOpenVideo, onOpenFolder }: Props) {
   }, [fetchHomeData]);
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-10">
+    <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-2 pb-20">
       <div className="max-w-3xl mx-auto flex flex-col gap-4">
         <InboxSummaryCard onOrganize={() => onNavigate("inbox")} />
         <TodayStatsCard />

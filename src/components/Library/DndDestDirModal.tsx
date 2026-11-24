@@ -1,5 +1,6 @@
 import { useModalStore } from '../../store/useModalStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { Button } from "../ui";
 
 function basename(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? path;
@@ -56,13 +57,13 @@ export function DndDestDirModal() {
           ))}
         </div>
         <div className="flex justify-end">
-          <button
-            type="button"
-            className="px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleCancel}
           >
             キャンセル
-          </button>
+          </Button>
         </div>
       </div>
     </div>

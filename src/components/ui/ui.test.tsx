@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { Button, ConfirmDialog, Dialog, Tabs } from '.';
+import { Button, ConfirmDialog, Dialog, Input, RadioGroup, RadioGroupItem, SegmentedControl, Select, Tabs } from '.';
 
 describe('Button', () => {
   it('defaults to type="button" with variant/size data attributes', () => {
@@ -114,5 +114,90 @@ describe('Tabs', () => {
     fireEvent.keyDown(b, { key: 'Enter' });
     expect(b).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('panel B')).toBeInTheDocument();
+  });
+});
+
+describe('Select', () => {
+  const options = [
+    { value: '', label: 'すべて' },
+    { value: '1', label: 'あり' },
+    { value: '0', label: 'なし' },
+  ];
+
+  it('shows the label of the current value, including the empty-string value', () => {
+    render(<Select value="" onValueChange={() => {}} options={options} title="音声" />);
+    const trigger = screen.getByRole('combobox', { name: '音声' });
+    expect(trigger).toHaveTextContent('すべて');
+    expect(trigger).toHaveAttribute('title', '音声');
+  });
+
+  it('opens from the keyboard and reports the chosen value', async () => {
+    const onValueChange = vi.fn();
+    render(<Select value="1" onValueChange={onValueChange} options={options} title="音声" />);
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('option', { name: 'なし' }));
+    expect(onValueChange).toHaveBeenCalledWith('0');
+  });
+
+  it('maps the internal placeholder back to an empty string', async () => {
+    const onValueChange = vi.fn();
+    render(<Select value="1" onValueChange={onValueChange} options={options} title="音声" />);
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('option', { name: 'すべて' }));
+    expect(onValueChange).toHaveBeenCalledWith('');
+  });
+});
+
+describe('Input', () => {
+  it('forwards props to the input and shows a clear button only when there is a value', () => {
+    const onClear = vi.fn();
+    const { rerender } = render(<Input value="" onChange={() => {}} onClear={onClear} placeholder="検索" />);
+    expect(screen.getByPlaceholderText('検索')).toHaveAttribute('type', 'text');
+    expect(screen.queryByRole('button', { name: 'クリア' })).not.toBeInTheDocument();
+
+    rerender(<Input value="cat" onChange={() => {}} onClear={onClear} placeholder="検索" />);
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+    expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  it('marks the field as invalid', () => {
+    render(<Input invalid aria-label="名前" />);
+    expect(screen.getByRole('textbox', { name: '名前' })).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
+describe('RadioGroup', () => {
+  it('reports the chosen value', () => {
+    const onValueChange = vi.fn();
+    render(
+      <RadioGroup value="a" onValueChange={onValueChange} aria-label="モード">
+        <label><RadioGroupItem value="a" />A</label>
+        <label><RadioGroupItem value="b" />B</label>
+      </RadioGroup>,
+    );
+    expect(screen.getByRole('radio', { name: 'A' })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: 'B' }));
+    expect(onValueChange).toHaveBeenCalledWith('b');
+  });
+});
+
+describe('SegmentedControl', () => {
+  it('changes value and ignores re-selecting the active item', () => {
+    const onValueChange = vi.fn();
+    render(
+      <SegmentedControl
+        value="grid"
+        onValueChange={onValueChange}
+        aria-label="表示"
+        options={[
+          { value: 'grid', label: 'グリッド' },
+          { value: 'list', label: 'リスト' },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('radio', { name: 'グリッド' }));
+    expect(onValueChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('radio', { name: 'リスト' }));
+    expect(onValueChange).toHaveBeenCalledWith('list');
   });
 });

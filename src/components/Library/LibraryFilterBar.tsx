@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/shallow";
-import { Select } from "../common/Select";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, LayoutGrid, List, Shuffle, X } from "lucide-react";
+import { Select, Button, SegmentedControl, Input } from "../ui";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useTagStore } from "../../store/useTagStore";
-import { useLibraryViewStore } from "../../store/useLibraryViewStore";
+import { useLibraryViewStore, type ListItemSize, type ViewMode } from "../../store/useLibraryViewStore";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import { useModalStore } from "../../store/useModalStore";
 import type {
@@ -159,9 +160,9 @@ export function LibraryFilterBar() {
                   </button>
                 ))}
               {filterTagIds.length >= 2 && (
-                <button
-                  type="button"
-                  className="px-2 py-0.5 rounded-full text-xs font-semibold border transition-colors border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                <Button
+                  variant="secondary"
+                  size="xs"
                   title={
                     filterTagMode === "and"
                       ? t("filters.tagFilterAnd")
@@ -172,36 +173,37 @@ export function LibraryFilterBar() {
                   }
                 >
                   {filterTagMode === "and" ? "AND" : "OR"}
-                </button>
+                </Button>
               )}
-              <button
-                type="button"
-                className="px-2 py-0.5 rounded-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600"
-                onClick={clearTagFilters}
-              >
+              <Button variant="ghost" size="xs" onClick={clearTagFilters}>
+                <X aria-hidden />
                 {t("filters.tagClear")}
-              </button>
+              </Button>
             </>
           )}
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <Select
-            variant="sm"
+          <Select<SortBy>
             value={filterSortBy}
-            onChange={(e) =>
-              setSort(e.target.value as SortBy, filterSortOrder)
-            }
-          >
-            <option value="created_at">{t("filters.sortByCreatedAt")}</option>
-            <option value="duration">{t("filters.sortByDuration")}</option>
-            <option value="rating">{t("filters.sortByRating")}</option>
-            <option value="file_size">{t("filters.sortByFileSize")}</option>
-          </Select>
-          <button
-            type="button"
-            className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-mono"
+            onValueChange={(v) => setSort(v, filterSortOrder)}
+            title={t("filters.sortBy")}
+            options={[
+              { value: "created_at", label: t("filters.sortByCreatedAt") },
+              { value: "duration", label: t("filters.sortByDuration") },
+              { value: "rating", label: t("filters.sortByRating") },
+              { value: "file_size", label: t("filters.sortByFileSize") },
+            ]}
+          />
+          <Button
+            variant="secondary"
+            size="icon"
             title={
+              filterSortOrder === "desc"
+                ? t("filters.sortDescTitle")
+                : t("filters.sortAscTitle")
+            }
+            aria-label={
               filterSortOrder === "desc"
                 ? t("filters.sortDescTitle")
                 : t("filters.sortAscTitle")
@@ -210,113 +212,113 @@ export function LibraryFilterBar() {
               setSort(filterSortBy, filterSortOrder === "desc" ? "asc" : "desc")
             }
           >
-            {filterSortOrder === "desc" ? "↓" : "↑"}
-          </button>
+            {filterSortOrder === "desc" ? <ArrowDownWideNarrow aria-hidden /> : <ArrowUpNarrowWide aria-hidden />}
+          </Button>
           {totalCount > 0 && (
-            <button
-              type="button"
-              className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-700 dark:hover:text-purple-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors"
+            <Button
+              variant="secondary"
+              size="sm"
               title={t("app.shuffleAllTitle", {
                 count: totalCount.toLocaleString(),
               })}
               onClick={playShuffleAll}
             >
+              <Shuffle aria-hidden />
               {t("app.shuffleAll")}
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-300 hover:border-amber-400 dark:hover:border-amber-600 transition-colors"
+          <Button
+            variant="secondary"
+            size="sm"
             title={t("app.saveSmartPlaylistTitle")}
             onClick={openSmartPlaylist}
           >
+            <BookmarkPlus aria-hidden />
             {t("app.saveSmartPlaylist")}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Row 2: 追加フィルタ */}
       <div className="flex items-center gap-1.5 flex-wrap">
         <Select
-          variant="sm"
-          value={filterMinRating}
-          onChange={(e) => setMinRating(Number(e.target.value))}
+          value={String(filterMinRating)}
+          onValueChange={(v) => setMinRating(Number(v))}
           title="評価フィルタ"
-        >
-          <option value={0}>{t("filters.ratingAll")}</option>
-          <option value={-1}>{t("filters.ratingUnrated")}</option>
-          <option value={1}>{t("filters.rating1")}</option>
-          <option value={2}>{t("filters.rating2")}</option>
-          <option value={3}>{t("filters.rating3")}</option>
-          <option value={4}>{t("filters.rating4")}</option>
-          <option value={5}>{t("filters.rating5")}</option>
-        </Select>
+          options={[
+            { value: "0", label: t("filters.ratingAll") },
+            { value: "-1", label: t("filters.ratingUnrated") },
+            { value: "1", label: t("filters.rating1") },
+            { value: "2", label: t("filters.rating2") },
+            { value: "3", label: t("filters.rating3") },
+            { value: "4", label: t("filters.rating4") },
+            { value: "5", label: t("filters.rating5") },
+          ]}
+        />
 
         {filterMinRating > 0 && (
-          <Select
-            variant="sm"
+          <Select<RatingMode>
             value={filterRatingMode}
-            onChange={(e) => setRatingMode(e.target.value as RatingMode)}
+            onValueChange={setRatingMode}
             title="評価の比較方法"
-          >
-            <option value="gte">{t("filters.ratingModeGte")}</option>
-            <option value="lte">{t("filters.ratingModeLte")}</option>
-            <option value="eq">{t("filters.ratingModeEq")}</option>
-          </Select>
+            options={[
+              { value: "gte", label: t("filters.ratingModeGte") },
+              { value: "lte", label: t("filters.ratingModeLte") },
+              { value: "eq", label: t("filters.ratingModeEq") },
+            ]}
+          />
         )}
 
         <Select
-          variant="sm"
           value={filterHasAudio === null ? "" : String(filterHasAudio)}
-          onChange={(e) => {
-            const v = e.target.value;
-            setHasAudio(v === "" ? null : Number(v));
-          }}
+          onValueChange={(v) => setHasAudio(v === "" ? null : Number(v))}
           title="音声フィルタ"
-        >
-          <option value="">{t("filters.audioAll")}</option>
-          <option value="1">{t("filters.audioYes")}</option>
-          <option value="0">{t("filters.audioNo")}</option>
-        </Select>
+          options={[
+            { value: "", label: t("filters.audioAll") },
+            { value: "1", label: t("filters.audioYes") },
+            { value: "0", label: t("filters.audioNo") },
+          ]}
+        />
 
-        <Select
-          variant="sm"
+        <Select<WatchedStatus>
           value={filterWatchedStatus}
-          onChange={(e) => setWatchedStatus(e.target.value as WatchedStatus)}
+          onValueChange={setWatchedStatus}
           title="視聴状態フィルタ"
-        >
-          <option value="all">{t("filters.watchedAll")}</option>
-          <option value="unwatched">{t("filters.unwatched")}</option>
-          <option value="watched">{t("filters.watched")}</option>
-        </Select>
+          options={[
+            { value: "all", label: t("filters.watchedAll") },
+            { value: "unwatched", label: t("filters.unwatched") },
+            { value: "watched", label: t("filters.watched") },
+          ]}
+        />
 
-        <Select
-          variant="sm"
+        <Select<MediaTypeFilter>
           value={filterMediaType}
-          onChange={(e) => setMediaType(e.target.value as MediaTypeFilter)}
+          onValueChange={setMediaType}
           title="メディアタイプフィルタ"
-        >
-          <option value="all">{t("filters.mediaAll")}</option>
-          <option value="video">{t("filters.mediaVideo")}</option>
-          <option value="audio">{t("filters.mediaAudio")}</option>
-          <option value="image">{t("filters.mediaImage")}</option>
-        </Select>
+          options={[
+            { value: "all", label: t("filters.mediaAll") },
+            { value: "video", label: t("filters.mediaVideo") },
+            { value: "audio", label: t("filters.mediaAudio") },
+            { value: "image", label: t("filters.mediaImage") },
+          ]}
+        />
 
-        <Select
-          variant="sm"
+        <Select<Av1Filter>
           value={filterAv1}
-          onChange={(e) => setAv1Filter(e.target.value as Av1Filter)}
+          onValueChange={setAv1Filter}
           title="AV1 変換済みフィルタ"
-        >
-          <option value="all">{t("filters.av1All")}</option>
-          <option value="only">{t("filters.av1Only")}</option>
-          <option value="exclude">{t("filters.av1Exclude")}</option>
-        </Select>
+          options={[
+            { value: "all", label: t("filters.av1All") },
+            { value: "only", label: t("filters.av1Only") },
+            { value: "exclude", label: t("filters.av1Exclude") },
+          ]}
+        />
 
         <div className="flex items-center gap-1">
-          <input
+          <Input
+            size="sm"
+            className="w-20"
             type="number"
-            className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
             value={durationInput}
             onChange={(e) => setDurationInput(e.target.value)}
             placeholder={t("filters.minDurationPlaceholder")}
@@ -326,9 +328,10 @@ export function LibraryFilterBar() {
           <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
             〜
           </span>
-          <input
+          <Input
+            size="sm"
+            className="w-20"
             type="number"
-            className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
             value={maxDurationInput}
             onChange={(e) => setMaxDurationInput(e.target.value)}
             placeholder={t("filters.maxDurationPlaceholder")}
@@ -342,92 +345,43 @@ export function LibraryFilterBar() {
 
         {/* 表示モード・グリッドサイズ */}
         <div className="flex items-center gap-1 ml-auto shrink-0">
-          <div className="flex gap-0.5 border border-gray-300 dark:border-gray-600 rounded p-0.5">
-            <button
-              type="button"
-              className={`p-1 rounded transition-colors ${
-                viewMode === "grid"
-                  ? "bg-blue-500 text-white"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-              }`}
-              onClick={() => setViewMode("grid")}
-              title="グリッド表示"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <rect x="1" y="1" width="6" height="6" rx="0.8" />
-                <rect x="9" y="1" width="6" height="6" rx="0.8" />
-                <rect x="1" y="9" width="6" height="6" rx="0.8" />
-                <rect x="9" y="9" width="6" height="6" rx="0.8" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={`p-1 rounded transition-colors ${
-                viewMode === "list"
-                  ? "bg-blue-500 text-white"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-              }`}
-              onClick={() => setViewMode("list")}
-              title="リスト表示"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <rect x="1" y="2" width="14" height="2.5" rx="0.8" />
-                <rect x="1" y="6.75" width="14" height="2.5" rx="0.8" />
-                <rect x="1" y="11.5" width="14" height="2.5" rx="0.8" />
-              </svg>
-            </button>
-          </div>
+          <SegmentedControl<ViewMode>
+            size="xs"
+            aria-label="表示モード"
+            value={viewMode}
+            onValueChange={setViewMode}
+            options={[
+              { value: "grid", label: <LayoutGrid aria-hidden />, "aria-label": "グリッド表示", title: "グリッド表示", iconOnly: true },
+              { value: "list", label: <List aria-hidden />, "aria-label": "リスト表示", title: "リスト表示", iconOnly: true },
+            ]}
+          />
 
-          {viewMode === "grid" &&
-            (
-              [
-                { label: "S", value: 120 },
-                { label: "M", value: 180 },
-                { label: "L", value: 240 },
-                { label: "XL", value: 320 },
-              ] as const
-            ).map(({ label, value }) => (
-              <button
-                key={value}
-                type="button"
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  gridItemMinWidth === value
-                    ? "bg-blue-500 text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
-                onClick={() => setGridItemMinWidth(value)}
-                title={`カードサイズ: ${label}`}
-              >
-                {label}
-              </button>
-            ))}
+          {viewMode === "grid" && (
+            <SegmentedControl
+              size="xs"
+              aria-label="カードサイズ"
+              value={String(gridItemMinWidth)}
+              onValueChange={(v) => setGridItemMinWidth(Number(v))}
+              options={(
+                [
+                  { label: "S", value: 120 },
+                  { label: "M", value: 180 },
+                  { label: "L", value: 240 },
+                  { label: "XL", value: 320 },
+                ] as const
+              ).map(({ label, value }) => ({ value: String(value), label, title: `カードサイズ: ${label}` }))}
+            />
+          )}
 
-          {viewMode === "list" &&
-            (["S", "M", "L", "XL"] as const).map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  listItemSize === size
-                    ? "bg-blue-500 text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
-                onClick={() => setListItemSize(size)}
-                title={`行サイズ: ${size}`}
-              >
-                {size}
-              </button>
-            ))}
+          {viewMode === "list" && (
+            <SegmentedControl<ListItemSize>
+              size="xs"
+              aria-label="行サイズ"
+              value={listItemSize}
+              onValueChange={setListItemSize}
+              options={(["S", "M", "L", "XL"] as const).map((size) => ({ value: size, label: size, title: `行サイズ: ${size}` }))}
+            />
+          )}
         </div>
       </div>
     </div>

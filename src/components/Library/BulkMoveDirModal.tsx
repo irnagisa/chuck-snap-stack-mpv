@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useTagStore, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { Button, RadioGroup, RadioGroupItem } from "../ui";
 
 interface Props {
   videoIds: number[];
@@ -71,24 +72,24 @@ export function BulkMoveDirModal({ videoIds, onClose, onDone }: Props) {
         {watchDirs.length === 0 ? (
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{t('bulkMoveDir.empty')}</p>
         ) : (
-          <div className="flex flex-col gap-0.5 mb-4 max-h-60 overflow-y-auto">
+          <RadioGroup
+            className="flex flex-col gap-0.5 mb-4 max-h-60 overflow-y-auto"
+            aria-label={t('bulkMoveDir.title')}
+            value={targetDir ?? ''}
+            onValueChange={setTargetDir}
+          >
             {watchDirs.map((dir) => (
               <label
                 key={dir}
                 className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1.5 rounded"
                 title={dir}
               >
-                <input
-                  type="radio"
-                  name="bulk-move-dir"
-                  checked={targetDir === dir}
-                  onChange={() => setTargetDir(dir)}
-                />
+                <RadioGroupItem value={dir} />
                 <span className="text-gray-400 dark:text-gray-500 shrink-0">📁</span>
                 <span className="text-sm text-gray-800 dark:text-gray-200 truncate">{basename(dir)}</span>
               </label>
             ))}
-          </div>
+          </RadioGroup>
         )}
 
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
@@ -104,22 +105,23 @@ export function BulkMoveDirModal({ videoIds, onClose, onDone }: Props) {
         )}
 
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
             disabled={loading || !targetDir}
-            className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
             onClick={handleApply}
           >
             {loading ? t('bulkMoveDir.applying') : t('bulkMoveDir.apply')}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            size="md"
             disabled={loading}
-            className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
             onClick={onClose}
           >
             {t('bulkMoveDir.cancel')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

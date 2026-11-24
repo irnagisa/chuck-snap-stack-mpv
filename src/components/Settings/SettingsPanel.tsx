@@ -11,6 +11,8 @@ import {
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { LANGUAGE_LABELS, type Language } from "../../i18n";
 import { CategoryMigrationModal } from "../Library/CategoryMigrationModal";
+import { FolderPlus, Keyboard, Moon, RotateCw, Sun, SunMoon, X } from "lucide-react";
+import { Button, SegmentedControl, Switch, Input, RadioGroup, RadioGroupItem } from "../ui";
 
 interface Props {
   onClose: () => void;
@@ -265,20 +267,21 @@ export function SettingsPanel({ onClose }: Props) {
             {t('settings.aiModelUninstallConfirmDesc')}
           </p>
           <div className="flex gap-2">
-            <button
-              type="button"
-              className="flex-1 px-3 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded"
+            <Button
+              variant="danger"
+              size="md"
+              className="flex-1"
               onClick={handleUninstallModel}
             >
               {t('settings.aiModelUninstallConfirm')}
-            </button>
-            <button
-              type="button"
-              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
               onClick={() => setConfirmUninstall(false)}
             >
               {t('confirm.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -294,20 +297,21 @@ export function SettingsPanel({ onClose }: Props) {
             {t('categoryModeChange.toVirtualDesc')}
           </p>
           <div className="flex gap-2">
-            <button
-              type="button"
-              className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
+            <Button
+              variant="primary"
+              size="md"
+              className="flex-1"
               onClick={handleVirtualConfirm}
             >
               {t('categoryModeChange.toVirtualConfirm')}
-            </button>
-            <button
-              type="button"
-              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
               onClick={() => setShowVirtualConfirm(false)}
             >
               {t('categoryModeChange.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -321,13 +325,14 @@ export function SettingsPanel({ onClose }: Props) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('settings.title')}</h2>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="閉じる"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
           >
-            ✕
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         {/* 本体 - スクロール可能 */}
@@ -340,22 +345,17 @@ export function SettingsPanel({ onClose }: Props) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               {t('settings.theme')}
             </label>
-            <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
-              {([['light', t('settings.themeLight')], ['dark', t('settings.themeDark')], ['auto', t('settings.themeAuto')]] as [Theme, string][]).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`px-4 py-1 rounded-md text-sm font-medium transition-all ${
-                    local.theme === value
-                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                  onClick={() => setLocal((prev) => ({ ...prev, theme: value }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl<Theme>
+              size="md"
+              aria-label={t('settings.theme')}
+              value={local.theme}
+              onValueChange={(v) => setLocal((prev) => ({ ...prev, theme: v }))}
+              options={[
+                { value: 'light', label: <><Sun aria-hidden />{t('settings.themeLight')}</> },
+                { value: 'dark', label: <><Moon aria-hidden />{t('settings.themeDark')}</> },
+                { value: 'auto', label: <><SunMoon aria-hidden />{t('settings.themeAuto')}</> },
+              ]}
+            />
           </div>
 
           {/* 言語 */}
@@ -363,22 +363,13 @@ export function SettingsPanel({ onClose }: Props) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               {t('settings.language')}
             </label>
-            <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
-              {(Object.entries(LANGUAGE_LABELS) as [Language, string][]).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`px-4 py-1 rounded-md text-sm font-medium transition-all ${
-                    local.language === value
-                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                  onClick={() => setLocal((prev) => ({ ...prev, language: value }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl<Language>
+              size="md"
+              aria-label={t('settings.language')}
+              value={local.language}
+              onValueChange={(v) => setLocal((prev) => ({ ...prev, language: v }))}
+              options={(Object.entries(LANGUAGE_LABELS) as [Language, string][]).map(([value, label]) => ({ value, label }))}
+            />
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />
@@ -394,21 +385,11 @@ export function SettingsPanel({ onClose }: Props) {
                 {t('settings.autoPlayNextDesc')}
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={local.autoPlayNext}
-              onClick={() => setLocal((prev) => ({ ...prev, autoPlayNext: !prev.autoPlayNext }))}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                local.autoPlayNext ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${
-                  local.autoPlayNext ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
+            <Switch
+              checked={local.autoPlayNext}
+              onCheckedChange={(v) => setLocal((prev) => ({ ...prev, autoPlayNext: v }))}
+              aria-label={t('settings.autoPlayNext')}
+            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -418,21 +399,11 @@ export function SettingsPanel({ onClose }: Props) {
                 {t('settings.hoverPreviewDesc')}
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={local.hoverPreviewEnabled}
-              onClick={() => setLocal((prev) => ({ ...prev, hoverPreviewEnabled: !prev.hoverPreviewEnabled }))}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                local.hoverPreviewEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${
-                  local.hoverPreviewEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
+            <Switch
+              checked={local.hoverPreviewEnabled}
+              onCheckedChange={(v) => setLocal((prev) => ({ ...prev, hoverPreviewEnabled: v }))}
+              aria-label={t('settings.hoverPreview')}
+            />
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />
@@ -442,7 +413,12 @@ export function SettingsPanel({ onClose }: Props) {
             {t('settings.sectionCategoryMode')}
           </p>
 
-          <div className="space-y-2">
+          <RadioGroup
+            className="space-y-2"
+            aria-label={t('settings.sectionCategoryMode')}
+            value={categoryMode}
+            onValueChange={(v) => handleCategoryModeSelect(v as CategoryMode)}
+          >
             {(['virtual', 'sync'] as CategoryMode[]).map((mode) => (
               <label
                 key={mode}
@@ -452,13 +428,7 @@ export function SettingsPanel({ onClose }: Props) {
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
-                <input
-                  type="radio"
-                  name="category-mode"
-                  checked={categoryMode === mode}
-                  onChange={() => handleCategoryModeSelect(mode)}
-                  className="mt-0.5 accent-blue-600"
-                />
+                <RadioGroupItem value={mode} className="mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
                     {t(`settings.categoryMode${mode.charAt(0).toUpperCase() + mode.slice(1)}`)}
@@ -469,7 +439,7 @@ export function SettingsPanel({ onClose }: Props) {
                 </div>
               </label>
             ))}
-          </div>
+          </RadioGroup>
 
           <hr className="border-gray-200 dark:border-gray-700" />
 
@@ -485,21 +455,11 @@ export function SettingsPanel({ onClose }: Props) {
                 {t('settings.aiEnabledDesc')}
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={local.aiEnabled}
-              onClick={() => setLocal((prev) => ({ ...prev, aiEnabled: !prev.aiEnabled }))}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                local.aiEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${
-                  local.aiEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
+            <Switch
+              checked={local.aiEnabled}
+              onCheckedChange={(v) => setLocal((prev) => ({ ...prev, aiEnabled: v }))}
+              aria-label={t('settings.aiEnabled')}
+            />
           </div>
 
           <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
@@ -509,6 +469,12 @@ export function SettingsPanel({ onClose }: Props) {
           {/* AIモデル選択・インストール/アンインストール */}
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.aiModelType')}</p>
+            <RadioGroup
+              className="space-y-2"
+              aria-label={t('settings.aiModelType')}
+              value={aiModelType}
+              onValueChange={(v) => setAiModelType(v as AiModelType)}
+            >
             {([
               ['wd-tagger', t('settings.aiModelWdTagger'), t('settings.aiModelWdTaggerDesc')],
               ['joytag',    t('settings.aiModelJoyTag'),   t('settings.aiModelJoyTagDesc')],
@@ -521,13 +487,7 @@ export function SettingsPanel({ onClose }: Props) {
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
-                <input
-                  type="radio"
-                  name="ai-model-type"
-                  checked={aiModelType === value}
-                  onChange={() => setAiModelType(value)}
-                  className="mt-0.5 accent-blue-600"
-                />
+                <RadioGroupItem value={value} className="mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{desc}</p>
@@ -552,28 +512,29 @@ export function SettingsPanel({ onClose }: Props) {
                         <span className="text-xs text-green-600 dark:text-green-400 font-medium">
                           {t('settings.aiModelInstalled')}
                         </span>
-                        <button
-                          type="button"
+                        <Button
+                          variant="danger-soft"
+                          size="xs"
                           disabled={aiModelUninstalling}
                           onClick={(e) => { e.preventDefault(); setConfirmUninstall(true); }}
-                          className="text-xs px-2 py-0.5 text-red-500 hover:text-red-700 dark:hover:text-red-400 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition-colors"
                         >
                           {aiModelUninstalling ? t('settings.aiModelUninstalling') : t('settings.aiModelUninstall')}
-                        </button>
+                        </Button>
                       </>
                     ) : !aiModelDownloading ? (
-                      <button
-                        type="button"
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={(e) => { e.preventDefault(); handleInstallModel(); }}
-                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                       >
                         {t('settings.aiModelInstall')}
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
                 )}
               </label>
             ))}
+            </RadioGroup>
           </div>
 
           <hr className="border-gray-200 dark:border-gray-700" />
@@ -588,20 +549,21 @@ export function SettingsPanel({ onClose }: Props) {
               {t('settings.mpvPath')}
             </label>
             <div className="flex gap-2">
-              <input
-                type="text"
+              <Input
+                size="md"
+                className="flex-1"
+                inputClassName="font-mono"
                 value={local.mpvPath}
                 onChange={(e) => setLocal((prev) => ({ ...prev, mpvPath: e.target.value }))}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
                 placeholder={t('settings.mpvPathPlaceholder')}
               />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={handlePickMpv}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
               >
                 {t('settings.browse')}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -610,11 +572,12 @@ export function SettingsPanel({ onClose }: Props) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {t('settings.ffmpegPath')}
             </label>
-            <input
-              type="text"
+            <Input
+              size="md"
+              className="w-full"
+              inputClassName="font-mono"
               value={local.ffmpegPath}
               onChange={(e) => setLocal((prev) => ({ ...prev, ffmpegPath: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
               placeholder={t('settings.ffmpegPlaceholder')}
             />
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -627,11 +590,12 @@ export function SettingsPanel({ onClose }: Props) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {t('settings.ffprobePath')}
             </label>
-            <input
-              type="text"
+            <Input
+              size="md"
+              className="w-full"
+              inputClassName="font-mono"
               value={local.ffprobePath}
               onChange={(e) => setLocal((prev) => ({ ...prev, ffprobePath: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
               placeholder={t('settings.ffprobePlaceholder')}
             />
           </div>
@@ -642,27 +606,28 @@ export function SettingsPanel({ onClose }: Props) {
               {t('settings.ytdlpPath')}
             </label>
             <div className="flex gap-2">
-              <input
-                type="text"
+              <Input
+                size="md"
+                className="flex-1"
+                inputClassName="font-mono"
                 value={local.ytdlpPath}
                 onChange={(e) => setLocal((prev) => ({ ...prev, ytdlpPath: e.target.value }))}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
                 placeholder={t('settings.ytdlpPlaceholder')}
               />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={handlePickYtdlp}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
               >
                 {t('settings.browse')}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={handleDetectYtdlp}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap"
               >
                 {t('settings.autoDetect')}
-              </button>
+              </Button>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
               {t('settings.ytdlpHelp')}
@@ -681,29 +646,31 @@ export function SettingsPanel({ onClose }: Props) {
               {t('settings.downloadDir')}
             </label>
             <div className="flex gap-2">
-              <input
-                type="text"
+              <Input
+                size="md"
+                className="flex-1 min-w-0"
+                inputClassName="font-mono"
                 readOnly
                 value={local.downloadDir}
                 placeholder={t('settings.downloadDirPlaceholder')}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
               />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={handlePickDownloadDir}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
               >
                 {t('settings.browse')}
-              </button>
+              </Button>
               {local.downloadDir && (
-                <button
-                  type="button"
+                <Button
+                  variant="danger-soft"
+                  size="icon-sm"
+                  aria-label={t('settings.reset')}
                   onClick={() => setLocal((prev) => ({ ...prev, downloadDir: "" }))}
-                  className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
                   title={t('settings.reset')}
                 >
-                  ✕
-                </button>
+                  <X aria-hidden />
+                </Button>
               )}
             </div>
           </div>
@@ -713,29 +680,31 @@ export function SettingsPanel({ onClose }: Props) {
               {t('settings.screenshotDir')}
             </label>
             <div className="flex gap-2">
-              <input
-                type="text"
+              <Input
+                size="md"
+                className="flex-1 min-w-0"
+                inputClassName="font-mono"
                 readOnly
                 value={local.screenshotDir}
                 placeholder={t('settings.screenshotDirPlaceholder')}
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 font-mono cursor-default min-w-0"
               />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={handlePickScreenshotDir}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm border border-gray-300 dark:border-gray-600 whitespace-nowrap shrink-0"
               >
                 {t('settings.browse')}
-              </button>
+              </Button>
               {local.screenshotDir && (
-                <button
-                  type="button"
+                <Button
+                  variant="danger-soft"
+                  size="icon-sm"
+                  aria-label={t('settings.reset')}
                   onClick={() => setLocal((prev) => ({ ...prev, screenshotDir: "" }))}
-                  className="px-2 py-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-sm shrink-0"
                   title={t('settings.reset')}
                 >
-                  ✕
-                </button>
+                  <X aria-hidden />
+                </Button>
               )}
             </div>
           </div>
@@ -761,28 +730,30 @@ export function SettingsPanel({ onClose }: Props) {
                   <span className="flex-1 text-xs font-mono text-gray-700 dark:text-gray-300 truncate" title={dir}>
                     {dir}
                   </span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="danger-soft"
+                    size="xs"
                     disabled={removingPath === dir}
                     onClick={() => handleRemoveScanPath(dir)}
-                    className="shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-xs px-1 disabled:opacity-40"
                     title={t('settings.removePath')}
                   >
-                    {removingPath === dir ? "…" : "✕"}
-                  </button>
+                    {removingPath === dir ? "…" : <X aria-hidden />}
+                  </Button>
                 </div>
               ))
             )}
           </div>
 
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="md"
+            fullWidth
             disabled={isScanning || isThumbnailGenerating}
             onClick={handleAddScanPath}
-            className="w-full py-1.5 text-sm border border-dashed border-gray-300 dark:border-gray-600 rounded text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 disabled:opacity-40 transition-colors"
           >
+            <FolderPlus aria-hidden />
             {isScanning || isThumbnailGenerating ? t('app.scanning') : t('settings.addFolder')}
-          </button>
+          </Button>
 
           <hr className="border-gray-200 dark:border-gray-700" />
 
@@ -798,33 +769,34 @@ export function SettingsPanel({ onClose }: Props) {
 
             <div className="flex items-center gap-2">
               <label className="text-sm text-gray-700 dark:text-gray-300 shrink-0">{t('settings.port')}</label>
-              <input
+              <Input
+                size="sm"
+                className="w-24"
                 type="number"
                 min={1024}
                 max={65535}
                 value={wsPort}
                 disabled={wsRunning}
                 onChange={(e) => setWsPort(Number(e.target.value))}
-                className="w-24 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
               />
               {wsRunning ? (
-                <button
-                  type="button"
+                <Button
+                  variant="danger"
+                  size="sm"
                   disabled={wsLoading}
                   onClick={handleStopWs}
-                  className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
                 >
                   {wsLoading ? t('settings.serverStopping') : t('settings.serverStop')}
-                </button>
+                </Button>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="sm"
                   disabled={wsLoading}
                   onClick={handleStartWs}
-                  className="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
                 >
                   {wsLoading ? t('settings.serverStarting') : t('settings.serverStart')}
-                </button>
+                </Button>
               )}
             </div>
 
@@ -851,13 +823,14 @@ export function SettingsPanel({ onClose }: Props) {
           {capturingAction && (
             <div className="px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-300 dark:border-blue-700 rounded text-xs text-blue-700 dark:text-blue-300 text-center">
               {t('settings.keybindingCapture', { action: t(KEY_ACTION_KEYS[capturingAction]) })}
-              <button
-                type="button"
-                className="ml-2 text-blue-500 hover:text-blue-700 dark:hover:text-blue-200 underline"
+              <Button
+                variant="soft"
+                size="sm"
+                className="ml-2"
                 onClick={() => setCapturingAction(null)}
               >
                 {t('settings.keybindingCancel')}
-              </button>
+              </Button>
             </div>
           )}
 
@@ -870,41 +843,40 @@ export function SettingsPanel({ onClose }: Props) {
                 <kbd className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-gray-700 dark:text-gray-300 min-w-14 text-center">
                   {formatKey(local.keybindings[action])}
                 </kbd>
-                <button
-                  type="button"
-                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                    capturingAction === action
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:hover:text-blue-400'
-                  }`}
+                <Button
+                  variant={capturingAction === action ? 'primary' : 'secondary'}
+                  size="xs"
+                  aria-pressed={capturingAction === action}
                   onClick={() => setCapturingAction(capturingAction === action ? null : action)}
                 >
+                  <Keyboard aria-hidden />
                   変更
-                </button>
+                </Button>
                 {local.keybindings[action] !== DEFAULT_KEYBINDINGS[action] && (
-                  <button
-                    type="button"
-                    className="text-xs text-gray-400 hover:text-orange-500 dark:hover:text-orange-400"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="デフォルトに戻す"
                     title="デフォルトに戻す"
                     onClick={() => setLocal((prev) => ({
                       ...prev,
                       keybindings: { ...prev.keybindings, [action]: DEFAULT_KEYBINDINGS[action] },
                     }))}
                   >
-                    ↺
-                  </button>
+                    <RotateCw aria-hidden />
+                  </Button>
                 )}
               </div>
             ))}
           </div>
 
-          <button
-            type="button"
-            className="text-xs text-gray-400 dark:text-gray-500 hover:text-orange-500 dark:hover:text-orange-400"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => setLocal((prev) => ({ ...prev, keybindings: DEFAULT_KEYBINDINGS }))}
           >
             {t('settings.keybindingReset')}
-          </button>
+          </Button>
 
           <hr className="border-gray-200 dark:border-gray-700" />
 
@@ -933,21 +905,21 @@ export function SettingsPanel({ onClose }: Props) {
 
         {/* フッター */}
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200 dark:border-gray-700 shrink-0">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="md"
             onClick={onClose}
-            className="px-4 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
           >
             {t('confirm.cancel')}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
             onClick={handleSave}
             disabled={isSaving}
-            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded disabled:opacity-50"
           >
             {isSaving ? t('smartPlaylist.saving') : t('smartPlaylist.save')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

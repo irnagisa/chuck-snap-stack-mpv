@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import { useLibraryStore } from '../../store/useLibraryStore';
 import type { Video } from '../../types';
+import { Select, Button, SegmentedControl, Input, Checkbox } from '../ui';
 
 type RenameMode = 'replace' | 'prefix' | 'suffix' | 'number';
 
@@ -161,21 +162,19 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
         </div>
 
         {/* モード選択 */}
-        <div className="px-5 pb-3 flex gap-1 shrink-0">
-          {(['replace', 'prefix', 'suffix', 'number'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`px-3 py-1 text-xs rounded border transition-colors ${
-                mode === m
-                  ? 'bg-blue-600 border-blue-600 text-white'
-                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-blue-400'
-              }`}
-              onClick={() => setMode(m)}
-            >
-              {m === 'replace' ? t('bulkRename.modeReplace') : m === 'prefix' ? t('bulkRename.modePrefix') : m === 'suffix' ? t('bulkRename.modeSuffix') : t('bulkRename.modeSequential')}
-            </button>
-          ))}
+        <div className="px-5 pb-3 shrink-0">
+          <SegmentedControl<RenameMode>
+            size="sm"
+            aria-label="モード"
+            value={mode}
+            onValueChange={setMode}
+            options={[
+              { value: 'replace', label: t('bulkRename.modeReplace') },
+              { value: 'prefix', label: t('bulkRename.modePrefix') },
+              { value: 'suffix', label: t('bulkRename.modeSuffix') },
+              { value: 'number', label: t('bulkRename.modeSequential') },
+            ]}
+          />
         </div>
 
         {/* モード設定 */}
@@ -184,22 +183,24 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 dark:text-gray-400 w-12 shrink-0">{t('bulkRename.searchLabel')}</label>
-                <input
-                  className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                <Input
+                  size="sm"
+                  className="flex-1"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t('bulkRename.searchPlaceholder')}
                   autoFocus
                 />
                 <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0 cursor-pointer">
-                  <input type="checkbox" checked={useRegex} onChange={(e) => setUseRegex(e.target.checked)} />
+                  <Checkbox checked={useRegex} onCheckedChange={(v) => setUseRegex(v === true)} />
                   {t('bulkRename.useRegex')}
                 </label>
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 dark:text-gray-400 w-12 shrink-0">{t('bulkRename.replaceLabel')}</label>
-                <input
-                  className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                <Input
+                  size="sm"
+                  className="flex-1"
                   value={replace}
                   onChange={(e) => setReplace(e.target.value)}
                   placeholder={t('bulkRename.replacePlaceholder')}
@@ -210,8 +211,9 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
           {mode === 'prefix' && (
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">{t('bulkRename.prefixLabel')}</label>
-              <input
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              <Input
+                size="sm"
+                className="flex-1"
                 value={prefix}
                 onChange={(e) => setPrefix(e.target.value)}
                 placeholder={t('bulkRename.prefixPlaceholder')}
@@ -222,8 +224,9 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
           {mode === 'suffix' && (
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">{t('bulkRename.suffixLabel')}</label>
-              <input
-                className="flex-1 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              <Input
+                size="sm"
+                className="flex-1"
                 value={suffix}
                 onChange={(e) => setSuffix(e.target.value)}
                 placeholder={t('bulkRename.suffixPlaceholder')}
@@ -235,9 +238,10 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.startNumLabel')}</label>
-                <input
+                <Input
+                  size="sm"
+                  className="w-16"
                   type="number"
-                  className="w-16 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={numStart}
                   min={0}
                   onChange={(e) => setNumStart(Number(e.target.value))}
@@ -245,9 +249,10 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
               </div>
               <div className="flex items-center gap-1.5">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.digitsLabel')}</label>
-                <input
+                <Input
+                  size="sm"
+                  className="w-14"
                   type="number"
-                  className="w-14 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={numDigits}
                   min={1}
                   max={8}
@@ -256,22 +261,24 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
               </div>
               <div className="flex items-center gap-1.5">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.separatorLabel')}</label>
-                <input
-                  className="w-12 border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                <Input
+                  size="sm"
+                  className="w-12"
                   value={numSep}
                   onChange={(e) => setNumSep(e.target.value)}
                 />
               </div>
               <div className="flex items-center gap-1.5">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t('bulkRename.positionLabel')}</label>
-                <select
-                  className="border border-gray-300 dark:border-gray-600 px-2 py-1 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                <Select<'prefix' | 'suffix'>
                   value={numPosition}
-                  onChange={(e) => setNumPosition(e.target.value as 'prefix' | 'suffix')}
-                >
-                  <option value="prefix">{t('bulkRename.positionPrepend')}</option>
-                  <option value="suffix">{t('bulkRename.positionAppend')}</option>
-                </select>
+                  onValueChange={setNumPosition}
+                  aria-label={t('bulkRename.positionLabel')}
+                  options={[
+                    { value: 'prefix', label: t('bulkRename.positionPrepend') },
+                    { value: 'suffix', label: t('bulkRename.positionAppend') },
+                  ]}
+                />
               </div>
             </div>
           )}
@@ -330,22 +337,22 @@ export function BulkRenameModal({ videos, onClose, onDone }: Props) {
             {hasConflict && <span className="text-red-500 ml-2">{t('bulkRename.hasDuplicate')}</span>}
           </p>
           <div className="flex gap-2">
-            <button
-              type="button"
-              className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={results ? onDone : onClose}
             >
               {results ? t('bulkRename.close') : t('bulkRename.cancel')}
-            </button>
+            </Button>
             {!results && (
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="sm"
                 disabled={loading || hasConflict || allUnchanged}
-                className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
                 onClick={handleApply}
               >
                 {loading ? t('bulkRename.renaming') : t('bulkRename.rename', { count: previews.filter(({ video, newName }) => getFileParts(video.path).basename !== newName).length })}
-              </button>
+              </Button>
             )}
           </div>
         </div>

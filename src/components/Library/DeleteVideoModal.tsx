@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
+import { Button } from "../ui";
 
 interface Props {
   video: Video;
@@ -72,41 +73,45 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
         </p>
 
         <div className="flex flex-col gap-2">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="md"
+            fullWidth
             disabled={loading}
-            className="w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded disabled:opacity-50"
             onClick={handleRemoveOnly}
           >
             {t('deleteVideo.removeFromLibrary')}
             <span className="block text-[10px] text-gray-400 dark:text-gray-500">{t('deleteVideo.removeFromLibraryDesc')}</span>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            fullWidth
             disabled={loading}
-            className="w-full px-3 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded disabled:opacity-50"
             onClick={handleTrashFile}
           >
             {t('deleteVideo.moveToTrash')}
             <span className="block text-[10px] text-amber-100">{t('deleteVideo.moveToTrashDesc')}</span>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="danger"
+            size="md"
+            fullWidth
             disabled={loading}
-            className="w-full px-3 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
             onClick={handleDeleteFile}
           >
             {t('deleteVideo.deleteFile')}
             <span className="block text-[10px] text-red-200">{t('deleteVideo.deleteFileDesc')}</span>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            fullWidth
             disabled={loading}
-            className="w-full px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             onClick={onClose}
           >
             {t('deleteVideo.cancel')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

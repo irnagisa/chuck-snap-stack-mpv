@@ -1,11 +1,13 @@
-import type { ComponentProps, ReactNode } from "react";
+import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
 import { DropdownMenu as RxDropdownMenu } from "radix-ui";
+import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronRight } from "lucide-react";
 import { cx } from "./cx";
+import { popover, presenceProps } from "./motion";
 import styles from "./Menu.module.css";
 
 /*
- * Radix DropdownMenu の薄いラッパー。構造はそのまま、見た目だけを与える。
+ * Radix DropdownMenu + Motion の開閉アニメーション。
  *
  * <DropdownMenu.Root>
  *   <DropdownMenu.Trigger asChild><Button>…</Button></DropdownMenu.Trigger>
@@ -15,13 +17,72 @@ import styles from "./Menu.module.css";
  *     <DropdownMenu.Item danger>削除</DropdownMenu.Item>
  *   </DropdownMenu.Content>
  * </DropdownMenu.Root>
+ *
+ * 退場アニメーションのため Root / Sub は開閉状態を内部で保持し、Content を forceMount で描画する。
  */
 
-function Content({ className, sideOffset = 4, ...props }: ComponentProps<typeof RxDropdownMenu.Content>) {
+/** 最も近い Root / Sub の開閉状態 */
+const OpenContext = createContext(false);
+
+function useOpenState(open: boolean | undefined, defaultOpen: boolean | undefined, onOpenChange?: (o: boolean) => void) {
+  const [inner, setInner] = useState(defaultOpen ?? false);
+  const isOpen = open ?? inner;
+  const setOpen = (o: boolean) => {
+    setInner(o);
+    onOpenChange?.(o);
+  };
+  return [isOpen, setOpen] as const;
+}
+
+function Root({ open, defaultOpen, onOpenChange, ...props }: ComponentProps<typeof RxDropdownMenu.Root>) {
+  const [isOpen, setOpen] = useOpenState(open, defaultOpen, onOpenChange);
   return (
-    <RxDropdownMenu.Portal>
-      <RxDropdownMenu.Content className={cx(styles.content, className)} sideOffset={sideOffset} {...props} />
-    </RxDropdownMenu.Portal>
+    <OpenContext.Provider value={isOpen}>
+      <RxDropdownMenu.Root open={isOpen} onOpenChange={setOpen} {...props} />
+    </OpenContext.Provider>
+  );
+}
+
+function Sub({ open, defaultOpen, onOpenChange, ...props }: ComponentProps<typeof RxDropdownMenu.Sub>) {
+  const [isOpen, setOpen] = useOpenState(open, defaultOpen, onOpenChange);
+  return (
+    <OpenContext.Provider value={isOpen}>
+      <RxDropdownMenu.Sub open={isOpen} onOpenChange={setOpen} {...props} />
+    </OpenContext.Provider>
+  );
+}
+
+function Content({ className, sideOffset = 4, children, ...props }: ComponentProps<typeof RxDropdownMenu.Content>) {
+  const open = useContext(OpenContext);
+  return (
+    <AnimatePresence>
+      {open && (
+        <RxDropdownMenu.Portal forceMount>
+          <RxDropdownMenu.Content asChild forceMount sideOffset={sideOffset} {...props}>
+            <motion.div className={cx(styles.content, className)} variants={popover} {...presenceProps}>
+              {children}
+            </motion.div>
+          </RxDropdownMenu.Content>
+        </RxDropdownMenu.Portal>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function SubContent({ className, children, ...props }: ComponentProps<typeof RxDropdownMenu.SubContent>) {
+  const open = useContext(OpenContext);
+  return (
+    <AnimatePresence>
+      {open && (
+        <RxDropdownMenu.Portal forceMount>
+          <RxDropdownMenu.SubContent asChild forceMount sideOffset={2} {...props}>
+            <motion.div className={cx(styles.content, className)} variants={popover} {...presenceProps}>
+              {children}
+            </motion.div>
+          </RxDropdownMenu.SubContent>
+        </RxDropdownMenu.Portal>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -80,20 +141,12 @@ function SubTrigger({ className, children, ...props }: ComponentProps<typeof RxD
   );
 }
 
-function SubContent({ className, ...props }: ComponentProps<typeof RxDropdownMenu.SubContent>) {
-  return (
-    <RxDropdownMenu.Portal>
-      <RxDropdownMenu.SubContent className={cx(styles.content, className)} sideOffset={2} {...props} />
-    </RxDropdownMenu.Portal>
-  );
-}
-
 export const DropdownMenu = {
-  Root: RxDropdownMenu.Root,
+  Root,
   Trigger: RxDropdownMenu.Trigger,
   Group: RxDropdownMenu.Group,
   RadioGroup: RxDropdownMenu.RadioGroup,
-  Sub: RxDropdownMenu.Sub,
+  Sub,
   Content,
   Item,
   CheckboxItem,

@@ -6,6 +6,8 @@ import { useTagStore } from '../../store/useTagStore';
 import { useTranscodeStore } from '../../store/useTranscodeStore';
 import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
+import { X } from "lucide-react";
+import { Button, Input, Checkbox, Slider } from "../ui";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -165,13 +167,14 @@ export function TranscodeModal({ video, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('transcode.title')}</h2>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="閉じる"
             onClick={onClose}
           >
-            ✕
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         <div className="p-5 flex flex-col gap-4">
@@ -213,21 +216,23 @@ export function TranscodeModal({ video, onClose }: Props) {
                   <span className="ml-1.5 font-normal text-gray-400">{t('transcode.crfHint')}</span>
                 </label>
                 <div className="flex items-center gap-3">
-                  <input
-                    type="range"
+                  <Slider
                     min={0}
                     max={63}
-                    value={crf}
-                    onChange={(e) => { setCrf(Number(e.target.value)); setCrfReasonKey(''); }}
+                    value={[crf]}
+                    onValueChange={([v]) => { setCrf(v); setCrfReasonKey(''); }}
+                    thumbLabel={t('transcode.crfLabel')}
                     className="flex-1"
                   />
-                  <input
+                  <Input
+                    size="sm"
+                    className="w-14"
+                    inputClassName="text-center"
                     type="number"
                     min={0}
                     max={63}
                     value={crf}
                     onChange={(e) => { setCrf(Math.min(63, Math.max(0, Number(e.target.value)))); setCrfReasonKey(''); }}
-                    className="w-14 px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   />
                 </div>
                 {crfReasonKey && (
@@ -269,10 +274,9 @@ export function TranscodeModal({ video, onClose }: Props) {
               {/* 元ファイルの扱い */}
               <div>
                 <label className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={trashOriginal}
-                    onChange={(e) => setTrashOriginal(e.target.checked)}
+                    onCheckedChange={(v) => setTrashOriginal(v === true)}
                     className="mt-0.5"
                   />
                   <span className="font-medium">{t('transcode.trashOriginal')}</span>
@@ -297,21 +301,21 @@ export function TranscodeModal({ video, onClose }: Props) {
           )}
 
           <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              className="px-4 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+            <Button
+              variant="ghost"
+              size="md"
               onClick={onClose}
             >
               {t('transcode.close')}
-            </button>
+            </Button>
             {!isQueued && (
-              <button
-                type="button"
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded font-medium"
+              <Button
+                variant="primary"
+                size="md"
                 onClick={handleStart}
               >
                 {isBusy ? t('transcode.addToQueue') : t('transcode.start')}
-              </button>
+              </Button>
             )}
           </div>
         </div>

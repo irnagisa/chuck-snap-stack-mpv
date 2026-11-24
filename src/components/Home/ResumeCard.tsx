@@ -1,5 +1,7 @@
 import { useHomeStore } from "../../store/useHomeStore";
 import type { Video } from "../../types";
+import { Play } from "lucide-react";
+import { Button } from "../ui";
 
 interface Props {
   onOpen: (video: Video) => void;
@@ -33,13 +35,10 @@ export function ResumeCard({ onOpen }: Props) {
             {new Date(lastViewedAt).toLocaleString()}
           </p>
         </div>
-        <button
-          type="button"
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm shrink-0"
-          onClick={() => onOpen(video)}
-        >
+        <Button variant="primary" size="md" onClick={() => onOpen(video)}>
+          <Play aria-hidden fill="currentColor" />
           再開
-        </button>
+        </Button>
       </div>
     </section>
   );
