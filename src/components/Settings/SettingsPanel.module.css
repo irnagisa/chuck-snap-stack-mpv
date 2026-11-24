@@ -1,0 +1,250 @@
+/* 設定ダイアログの中身 */
+@layer ui {
+  .root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  /* ---- セクション ---- */
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+
+    & + & {
+      padding-top: var(--space-5);
+      border-top: 1px solid var(--color-border);
+    }
+  }
+  .sectionTitle {
+    margin: 0;
+    color: var(--color-fg-subtle);
+    font-size: 0.6875rem;
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* ---- 行・項目 ---- */
+  .settingRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+  .settingText {
+    flex: 1;
+    min-width: 0;
+  }
+  .settingTitle {
+    margin: 0;
+    color: var(--color-fg);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+  .help {
+    margin: 2px 0 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+  }
+  .fieldLabel {
+    color: var(--color-fg);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+  .inlineLabel {
+    flex-shrink: 0;
+    color: var(--color-fg);
+    font-size: var(--text-sm);
+  }
+  .inputRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .fullWidth {
+    width: 100%;
+  }
+  .portInput {
+    width: 6rem;
+  }
+  .mono {
+    font-family: var(--font-mono);
+  }
+
+  .warning {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-lg);
+    background: oklch(76.9% 0.188 70.08 / 0.14);
+    color: light-dark(oklch(55.5% 0.163 48.998), var(--palette-amber-400));
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+  }
+
+  /* ---- 選択肢カード (カテゴリモード・AI モデル) ---- */
+  .choiceList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .choice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    transition:
+      border-color var(--duration-fast) ease,
+      background-color var(--duration-fast) ease;
+
+    &:hover {
+      border-color: var(--color-border-strong);
+    }
+    &[data-selected] {
+      border-color: var(--color-accent);
+      background: var(--color-accent-soft);
+    }
+  }
+  .choiceRadio {
+    margin-top: 2px;
+  }
+  .choiceActions {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-1-5);
+  }
+  .installed {
+    color: light-dark(oklch(52.7% 0.154 150.069), oklch(79.2% 0.209 151.711));
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+  }
+  .download {
+    margin-top: var(--space-2);
+  }
+  .meter {
+    height: 0.375rem;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-active);
+    overflow: hidden;
+  }
+  .meterBar {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent);
+    transition: width var(--duration-normal) var(--ease-out);
+  }
+
+  /* ---- スキャンパス ---- */
+  .pathList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pathItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1-5) var(--space-1-5) var(--space-1-5) var(--space-3);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-hover);
+  }
+  .pathText {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-fg);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---- ウェブサーバー ---- */
+  .serverInfo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2-5) var(--space-3);
+    border-radius: var(--radius-lg);
+    background: oklch(72.3% 0.219 149.579 / 0.12);
+    color: light-dark(oklch(52.7% 0.154 150.069), oklch(79.2% 0.209 151.711));
+    font-size: var(--text-xs);
+
+    & p {
+      margin: 0;
+    }
+    & .settingTitle {
+      color: inherit;
+    }
+  }
+
+  /* ---- キーボードショートカット ---- */
+  .capture {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-lg);
+    background: var(--color-accent-soft);
+    color: var(--color-accent-fg);
+    font-size: var(--text-xs);
+  }
+  .keyList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .keyRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .keyName {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-fg);
+    font-size: var(--text-sm);
+  }
+  .kbd {
+    min-width: 3.5rem;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--color-border-strong);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-fg);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-align: center;
+  }
+  /* リセットボタンの有無で列がずれないよう幅を確保 */
+  .keyReset {
+    display: inline-flex;
+    justify-content: center;
+    width: 1.5rem;
+  }
+}

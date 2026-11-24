@@ -1,71 +1,69 @@
+import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Folder } from 'lucide-react';
 import { useModalStore } from '../../store/useModalStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
-import { Button } from "../ui";
+import { Button, Dialog } from "../ui";
+import styles from "./LibraryModal.module.css";
 
 function basename(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? path;
 }
 
+/** ドラッグ&ドロップで取り込むファイルのコピー先 (監視フォルダ) を選ぶ */
 export function DndDestDirModal() {
+  const { t } = useTranslation();
   const { dndPendingFiles, dndOnSelect, closeDndDestDir } = useModalStore();
   const watchDirs = useLibraryStore((s) => s.watchDirs);
 
-  if (!dndPendingFiles || !dndOnSelect) return null;
-
-  const fileCount = dndPendingFiles.length;
+  const open = dndPendingFiles != null && dndOnSelect != null;
+  // 退場アニメーション中もファイル数を表示し続けるため、最後の値を保持する
+  const lastCount = useRef(0);
+  if (dndPendingFiles) lastCount.current = dndPendingFiles.length;
 
   const handleSelect = (dir: string) => {
-    dndOnSelect(dir);
+    dndOnSelect?.(dir);
     closeDndDestDir();
   };
 
   const handleCancel = () => {
-    dndOnSelect(null);
+    dndOnSelect?.(null);
     closeDndDestDir();
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      role="dialog"
-      aria-modal="true"
-      onClick={handleCancel}
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) handleCancel();
+      }}
+      size="sm"
+      title={t('dndDestDir.title')}
+      description={t('dndDestDir.desc', { count: lastCount.current })}
+      showClose={false}
+      footer={
+        <Button variant="secondary" onClick={handleCancel}>
+          {t('dndDestDir.cancel')}
+        </Button>
+      }
     >
-      <div
-        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl px-6 py-5 w-full max-w-sm mx-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-1">
-          コピー先フォルダを選択
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          {fileCount}件のファイルを選択したフォルダの <code className="font-mono">Unsorted</code> サブフォルダにコピーして登録します。
-        </p>
-        <div className="flex flex-col gap-1.5 mb-4">
-          {watchDirs.map((dir) => (
-            <button
-              key={dir}
-              type="button"
-              className="w-full text-left px-3 py-2 rounded-lg text-sm border border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 dark:hover:border-blue-500 transition-colors truncate"
-              title={dir}
-              onClick={() => handleSelect(dir)}
-            >
-              <span className="mr-2 text-gray-400">📁</span>
-              <span className="text-gray-800 dark:text-gray-100">{basename(dir)}/Unsorted</span>
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500 truncate">{dir}/Unsorted</span>
-            </button>
-          ))}
-        </div>
-        <div className="flex justify-end">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleCancel}
+      <div className={styles.stackTight}>
+        {watchDirs.map((dir) => (
+          <button
+            key={dir}
+            type="button"
+            className={styles.pickRow}
+            title={`${dir}/Unsorted`}
+            onClick={() => handleSelect(dir)}
           >
-            キャンセル
-          </Button>
-        </div>
+            <Folder className={styles.optionIcon} aria-hidden />
+            <span className={styles.fileText}>
+              <span className={styles.fileName}>{basename(dir)}/Unsorted</span>
+              <span className={styles.filePath}>{dir}/Unsorted</span>
+            </span>
+          </button>
+        ))}
       </div>
-    </div>
+    </Dialog>
   );
 }

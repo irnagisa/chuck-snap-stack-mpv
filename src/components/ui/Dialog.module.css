@@ -36,6 +36,9 @@
   .content[data-size="lg"] {
     max-width: 48rem;
   }
+  .content[data-size="xl"] {
+    max-width: 60rem;
+  }
 
   .header {
     display: flex;
@@ -47,6 +50,7 @@
   .heading {
     flex: 1;
     min-width: 0;
+    align-self: center;
   }
 
   .title {
@@ -71,6 +75,10 @@
     overflow-y: auto;
     font-size: var(--text-sm);
     line-height: var(--leading-normal);
+
+    &[data-flush] {
+      padding: var(--space-3) 0;
+    }
   }
 
   .footer {

@@ -6,8 +6,8 @@ import { useTagStore } from '../../store/useTagStore';
 import { useTranscodeStore } from '../../store/useTranscodeStore';
 import { toast } from '../../store/useToastStore';
 import type { Video } from '../../types';
-import { X } from "lucide-react";
-import { Button, Input, Checkbox, Slider } from "../ui";
+import { Button, Checkbox, Dialog, Input, Slider, useDialogClose } from "../ui";
+import styles from "./LibraryModal.module.css";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -57,6 +57,7 @@ export function TranscodeModal({ video, onClose }: Props) {
   const [preset, setPreset] = useState<number>(8);
   const [crfReasonKey, setCrfReasonKey] = useState<string>('');
   const [trashOriginal, setTrashOriginal] = useState(false);
+  const dialog = useDialogClose(onClose);
 
   const PRESET_OPTIONS = [
     { value: 13, labelKey: 'transcode.preset13Label', descKey: 'transcode.preset13Desc' },
@@ -149,177 +150,135 @@ export function TranscodeModal({ video, onClose }: Props) {
       return;
     }
     if (isBusy) toast.success(t('transcode.queued', { count: pendingCount + 1 }));
-    onClose();
+    dialog.close();
   };
 
   return (
-    <div
-      className="fixed inset-0 flex items-center justify-center bg-black/40"
-      role="dialog"
-      aria-modal="true"
-      style={{ zIndex: 70 }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('transcode.title')}</h2>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="閉じる"
-            onClick={onClose}
-          >
-            <X aria-hidden />
+    <Dialog
+      {...dialog.props}
+      size="md"
+      title={t('transcode.title')}
+      closeLabel={t('confirm.close')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => dialog.close()}>
+            {t('transcode.close')}
           </Button>
-        </div>
-
-        <div className="p-5 flex flex-col gap-4">
-          {isQueued ? (
-            <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-4 py-3">
-              {t('transcode.alreadyQueued')}
-            </div>
-          ) : (
-            <>
-              {/* ファイル情報 */}
-              <div className="text-sm text-gray-700 dark:text-gray-300">
-                <p className="font-medium mb-1 truncate">{displayName}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{video.path}</p>
-              </div>
-
-              {/* エンコード情報 */}
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                <p><span className="font-medium">{t('transcode.encoder')}</span> {t('transcode.encoderValue')}</p>
-                <p>
-                  <span className="font-medium">{t('transcode.inputSize')}</span>{' '}
-                  {inputSizeBytes != null ? (
-                    <>
-                      {formatSize(inputSizeBytes)}
-                      {video.duration && video.duration > 0 && (
-                        <span className="text-gray-400 dark:text-gray-500 ml-2">
-                          ({((inputSizeBytes * 8) / 1000 / video.duration).toFixed(0)} kbps)
-                        </span>
-                      )}
-                    </>
-                  ) : t('transcode.loadingSize')}
-                </p>
-                <p><span className="font-medium">{t('transcode.output')}</span> <span className="break-all">{previewOutput}</span></p>
-              </div>
-
-              {/* CRF */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  {t('transcode.crfLabel')}
-                  <span className="ml-1.5 font-normal text-gray-400">{t('transcode.crfHint')}</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  <Slider
-                    min={0}
-                    max={63}
-                    value={[crf]}
-                    onValueChange={([v]) => { setCrf(v); setCrfReasonKey(''); }}
-                    thumbLabel={t('transcode.crfLabel')}
-                    className="flex-1"
-                  />
-                  <Input
-                    size="sm"
-                    className="w-14"
-                    inputClassName="text-center"
-                    type="number"
-                    min={0}
-                    max={63}
-                    value={crf}
-                    onChange={(e) => { setCrf(Math.min(63, Math.max(0, Number(e.target.value)))); setCrfReasonKey(''); }}
-                  />
-                </div>
-                {crfReasonKey && (
-                  <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                    {t('transcode.crfSuggestion', { crf, reason: t(crfReasonKey) })}
-                  </p>
-                )}
-                {inputSizeBytes != null && video.duration && video.duration > 0 && (
-                  <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                    {t('transcode.crfEstimate', { min: formatSize(inputSizeBytes * 0.4), max: formatSize(inputSizeBytes * 0.6) })}
-                  </p>
-                )}
-              </div>
-
-              {/* Preset */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  {t('transcode.presetLabel')}
-                </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {PRESET_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setPreset(opt.value)}
-                      className={`px-3 py-2 rounded-lg border text-left transition-colors ${
-                        preset === opt.value
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-gray-700 dark:text-gray-300'
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{t(opt.labelKey)}</div>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{t(opt.descKey)}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 元ファイルの扱い */}
-              <div>
-                <label className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <Checkbox
-                    checked={trashOriginal}
-                    onCheckedChange={(v) => setTrashOriginal(v === true)}
-                    className="mt-0.5"
-                  />
-                  <span className="font-medium">{t('transcode.trashOriginal')}</span>
-                </label>
-                {trashOriginal && (
-                  <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
-                    {t('transcode.trashOriginalNote')}
-                  </p>
-                )}
-              </div>
-
-              <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                {t('transcode.timeEstimate')}
-              </p>
-
-              {isBusy && (
-                <p className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg px-3 py-2">
-                  {t('transcode.queueNote', { count: pendingCount + 1 })}
-                </p>
-              )}
-            </>
-          )}
-
-          <div className="flex gap-2 justify-end">
-            <Button
-              variant="ghost"
-              size="md"
-              onClick={onClose}
-            >
-              {t('transcode.close')}
+          {!isQueued && (
+            <Button variant="primary" onClick={handleStart}>
+              {isBusy ? t('transcode.addToQueue') : t('transcode.start')}
             </Button>
-            {!isQueued && (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={handleStart}
-              >
-                {isBusy ? t('transcode.addToQueue') : t('transcode.start')}
-              </Button>
+          )}
+        </>
+      }
+    >
+      {isQueued ? (
+        <p className={styles.callout} data-tone="warning">{t('transcode.alreadyQueued')}</p>
+      ) : (
+        <div className={styles.stack}>
+          {/* ファイル情報 */}
+          <div className={styles.fileText}>
+            <span className={styles.fileName}>{displayName}</span>
+            <span className={styles.note}>{video.path}</span>
+          </div>
+
+          {/* エンコード情報 */}
+          <ul className={styles.infoBox}>
+            <li><b>{t('transcode.encoder')}</b> {t('transcode.encoderValue')}</li>
+            <li>
+              <b>{t('transcode.inputSize')}</b>{' '}
+              {inputSizeBytes != null ? (
+                <>
+                  {formatSize(inputSizeBytes)}
+                  {video.duration && video.duration > 0 && (
+                    <span className={styles.labelHint}>
+                      ({((inputSizeBytes * 8) / 1000 / video.duration).toFixed(0)} kbps)
+                    </span>
+                  )}
+                </>
+              ) : t('transcode.loadingSize')}
+            </li>
+            <li><b>{t('transcode.output')}</b> {previewOutput}</li>
+          </ul>
+
+          {/* CRF */}
+          <div>
+            <p className={styles.label}>
+              {t('transcode.crfLabel')}
+              <span className={styles.labelHint}>{t('transcode.crfHint')}</span>
+            </p>
+            <div className={styles.row}>
+              <Slider
+                min={0}
+                max={63}
+                value={[crf]}
+                onValueChange={([v]) => { setCrf(v); setCrfReasonKey(''); }}
+                thumbLabel={t('transcode.crfLabel')}
+                className={styles.grow}
+              />
+              <Input
+                size="sm"
+                className={styles.numberInput}
+                inputClassName={styles.center}
+                type="number"
+                min={0}
+                max={63}
+                value={crf}
+                onChange={(e) => { setCrf(Math.min(63, Math.max(0, Number(e.target.value)))); setCrfReasonKey(''); }}
+                aria-label={t('transcode.crfLabel')}
+              />
+            </div>
+            {crfReasonKey && (
+              <p className={styles.hintAccent}>
+                {t('transcode.crfSuggestion', { crf, reason: t(crfReasonKey) })}
+              </p>
+            )}
+            {inputSizeBytes != null && video.duration && video.duration > 0 && (
+              <p className={styles.note}>
+                {t('transcode.crfEstimate', { min: formatSize(inputSizeBytes * 0.4), max: formatSize(inputSizeBytes * 0.6) })}
+              </p>
             )}
           </div>
+
+          {/* Preset */}
+          <div>
+            <p className={styles.label}>{t('transcode.presetLabel')}</p>
+            <div className={styles.cardGrid} role="radiogroup" aria-label={t('transcode.presetLabel')}>
+              {PRESET_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={preset === opt.value}
+                  className={styles.optionCard}
+                  data-selected={preset === opt.value || undefined}
+                  onClick={() => setPreset(opt.value)}
+                >
+                  <span className={styles.optionCardTitle}>{t(opt.labelKey)}</span>
+                  <span className={styles.optionCardDesc}>{t(opt.descKey)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 元ファイルの扱い */}
+          <div className={styles.stackTight}>
+            <label className={styles.option}>
+              <Checkbox checked={trashOriginal} onCheckedChange={(v) => setTrashOriginal(v === true)} />
+              <span className={styles.strong}>{t('transcode.trashOriginal')}</span>
+            </label>
+            {trashOriginal && (
+              <p className={styles.callout} data-tone="warning">{t('transcode.trashOriginalNote')}</p>
+            )}
+          </div>
+
+          <p className={styles.note}>{t('transcode.timeEstimate')}</p>
+
+          {isBusy && (
+            <p className={styles.callout}>{t('transcode.queueNote', { count: pendingCount + 1 })}</p>
+          )}
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }

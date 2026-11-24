@@ -6,7 +6,7 @@ import { Button } from "./Button";
 import { fade, popIn, presenceProps, transitions } from "./motion";
 import styles from "./Dialog.module.css";
 
-export type DialogSize = "sm" | "md" | "lg";
+export type DialogSize = "sm" | "md" | "lg" | "xl";
 
 interface DialogProps {
   open: boolean;
@@ -22,6 +22,10 @@ interface DialogProps {
   closeLabel?: string;
   /** 退場アニメーションが終わったとき (useDialogClose と組み合わせる) */
   onExitComplete?: () => void;
+  /** ヘッダー右側 (× の左) に置く操作 */
+  headerActions?: ReactNode;
+  /** 本文の内側余白をなくす (一覧を端まで広げるとき) */
+  flush?: boolean;
 }
 
 /**
@@ -39,6 +43,8 @@ export function Dialog({
   showClose = true,
   closeLabel = "Close",
   onExitComplete,
+  headerActions,
+  flush = false,
 }: DialogProps) {
   return (
     <RxDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -72,6 +78,7 @@ export function Dialog({
                       <RxDialog.Description className={styles.description}>{description}</RxDialog.Description>
                     )}
                   </div>
+                  {headerActions}
                   {showClose && (
                     <RxDialog.Close asChild>
                       <Button variant="ghost" size="icon" aria-label={closeLabel}>
@@ -80,7 +87,11 @@ export function Dialog({
                     </RxDialog.Close>
                   )}
                 </div>
-                {children != null && <div className={styles.body}>{children}</div>}
+                {children != null && (
+                  <div className={styles.body} data-flush={flush || undefined}>
+                    {children}
+                  </div>
+                )}
                 {footer != null && <div className={styles.footer}>{footer}</div>}
               </motion.div>
             </RxDialog.Content>
@@ -101,7 +112,8 @@ export function Dialog({
  * <Dialog {...dialog.props} title="…">…<Button onClick={() => dialog.close(onDone)} /></Dialog>
  * ```
  */
-export function useDialogClose(onClosed: () => void) {
+export function useDialogClose(onClosed: () => void, options: { locked?: boolean } = {}) {
+  const { locked = false } = options;
   const [open, setOpen] = useState(true);
   const after = useRef<(() => void) | null>(null);
   const onClosedRef = useRef(onClosed);
@@ -116,8 +128,9 @@ export function useDialogClose(onClosed: () => void) {
 
   const props = {
     open,
+    // locked の間 (処理中など) は Esc・背景クリック・× で閉じない
     onOpenChange: (next: boolean) => {
-      if (!next) close();
+      if (!next && !locked) close();
     },
     onExitComplete: () => {
       (after.current ?? onClosedRef.current)();

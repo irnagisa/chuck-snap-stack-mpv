@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../store/useToastStore';
 import { useTagStore } from '../../store/useTagStore';
-import { Button, Checkbox } from "../ui";
+import { Button, Checkbox, Dialog, useDialogClose } from "../ui";
+import styles from "./LibraryModal.module.css";
 
 interface Props {
   videoIds: number[];
@@ -15,6 +16,7 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
   const { tags, addTagToMultiple } = useTagStore();
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
+  const dialog = useDialogClose(onClose, { locked: loading });
 
   const toggleTag = (tagId: number) => {
     setSelectedTagIds((prev) => {
@@ -32,7 +34,7 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
       for (const tagId of selectedTagIds) {
         await addTagToMultiple(videoIds, tagId);
       }
-      onDone();
+      dialog.close(onDone);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -41,61 +43,43 @@ export function BulkTagModal({ videoIds, onClose, onDone }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-72 max-w-[90vw]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-          {t('bulkTag.title')}
-        </h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          {t('bulkTag.desc', { count: videoIds.length })}
-        </p>
-
-        {tags.length === 0 ? (
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{t('bulkTag.noTags')}</p>
-        ) : (
-          <div className="flex flex-col gap-1.5 mb-4 max-h-60 overflow-y-auto">
-            {tags.map((tag) => (
-              <label
-                key={tag.id}
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 rounded"
-              >
-                <Checkbox
-                  checked={selectedTagIds.has(tag.id)}
-                  onCheckedChange={() => toggleTag(tag.id)}
-                />
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: tag.color }}
-                />
-                <span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2">
+    <Dialog
+      {...dialog.props}
+      size="sm"
+      title={t('bulkTag.title')}
+      description={t('bulkTag.desc', { count: videoIds.length })}
+      showClose={false}
+      footer={
+        <>
+          <Button variant="secondary" disabled={loading} onClick={() => dialog.close()}>
+            {t('bulkTag.cancel')}
+          </Button>
           <Button
             variant="primary"
-            size="md"
-            className="flex-1"
             disabled={loading || selectedTagIds.size === 0}
             onClick={handleApply}
           >
             {loading ? t('bulkTag.applying') : t('bulkTag.apply', { count: selectedTagIds.size })}
           </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            disabled={loading}
-            onClick={onClose}
-          >
-            {t('bulkTag.cancel')}
-          </Button>
+        </>
+      }
+    >
+      {tags.length === 0 ? (
+        <p className={styles.note}>{t('bulkTag.noTags')}</p>
+      ) : (
+        <div className={styles.optionList}>
+          {tags.map((tag) => (
+            <label key={tag.id} className={styles.option}>
+              <Checkbox
+                checked={selectedTagIds.has(tag.id)}
+                onCheckedChange={() => toggleTag(tag.id)}
+              />
+              <span className={styles.dot} style={{ backgroundColor: tag.color }} />
+              <span className={styles.optionText}>{tag.name}</span>
+            </label>
+          ))}
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }

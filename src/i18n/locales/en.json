@@ -166,6 +166,8 @@
     "keybindingCapture": "Press a key for \"{{action}}\"...",
     "keybindingCancel": "Cancel",
     "keybindingReset": "Reset all to defaults",
+    "keybindingChange": "Change",
+    "keybindingResetOne": "Reset to default",
     "sectionCategoryMode": "Category Mode",
     "categoryModeVirtual": "Virtual Mode",
     "categoryModeVirtualDesc": "Categories are stored in DB only. Files are not moved. Works with read-only and network drives.",
@@ -420,7 +422,10 @@
     "resultSkipped": "{{count}} skipped (outside watch dir)",
     "resultFailed": "{{count}} failed to move",
     "closeButton": "Close",
-    "switchConfirm": "Switch to Sync mode.\nFiles will be automatically moved when categories change.\nProceed?"
+    "switchConfirm": "Switch to Sync mode.\nFiles will be automatically moved when categories change.\nProceed?",
+    "targetCount": "{{count}} files will be moved",
+    "noTargets": "No files need to be moved",
+    "switchOnly": "Switch to Sync mode"
   },
   "categoryModeChange": {
     "toVirtualTitle": "Switch to Virtual Mode",
@@ -461,7 +466,11 @@
     "cancel": "Cancel",
     "close": "Close",
     "rename": "Rename {{count}}",
-    "renaming": "Renaming..."
+    "renaming": "Renaming...",
+    "skippedDuplicate": "{{name}} → skipped (duplicate)",
+    "resultDone": "Renamed {{count}} files",
+    "resultFailed": ", {{count}} failed",
+    "modeLabel": "Rename method"
   },
   "duplicates": {
     "title": "Detect Duplicate Videos",
@@ -663,5 +672,10 @@
     "failed": "Failed to move {{count}} file(s)",
     "syncModeNote": "Sync mode: the category directory will be created in the destination if missing",
     "virtualModeNote": "Virtual mode: files are moved directly into the selected folder"
+  },
+  "dndDestDir": {
+    "title": "Choose a destination folder",
+    "desc": "{{count}} files will be copied into the Unsorted subfolder of the folder you choose and added to the library.",
+    "cancel": "Cancel"
   }
 }

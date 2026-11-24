@@ -166,6 +166,8 @@
     "keybindingCapture": "「{{action}}」に割り当てるキーを押してください...",
     "keybindingCancel": "キャンセル",
     "keybindingReset": "すべてデフォルトに戻す",
+    "keybindingChange": "変更",
+    "keybindingResetOne": "デフォルトに戻す",
     "sectionCategoryMode": "カテゴリモード",
     "categoryModeVirtual": "Virtual モード",
     "categoryModeVirtualDesc": "カテゴリは DB にのみ記録し、ファイルは移動しません。読み取り専用・ネットワークドライブでも使用可能。",
@@ -420,7 +422,10 @@
     "resultSkipped": "{{count}} 件はウォッチディレクトリ外でスキップ",
     "resultFailed": "{{count}} 件の移動に失敗しました",
     "closeButton": "閉じる",
-    "switchConfirm": "Sync モードに切り替えます。\nカテゴリを変更するたびにファイルが自動移動されます。\nよろしいですか？"
+    "switchConfirm": "Sync モードに切り替えます。\nカテゴリを変更するたびにファイルが自動移動されます。\nよろしいですか？",
+    "targetCount": "{{count}} 件のファイルを移動します",
+    "noTargets": "移動が必要なファイルはありません",
+    "switchOnly": "Sync モードに切り替え"
   },
   "categoryModeChange": {
     "toVirtualTitle": "Virtual モードに切り替え",
@@ -461,7 +466,11 @@
     "cancel": "キャンセル",
     "close": "閉じる",
     "rename": "{{count}} 件リネーム",
-    "renaming": "リネーム中..."
+    "renaming": "リネーム中...",
+    "skippedDuplicate": "{{name}} → 重複のためスキップ",
+    "resultDone": "{{count}} 件リネーム完了",
+    "resultFailed": "、{{count}} 件失敗",
+    "modeLabel": "リネーム方法"
   },
   "duplicates": {
     "title": "重複動画の検出",
@@ -663,5 +672,10 @@
     "failed": "{{count}} 件のファイル移動に失敗しました",
     "syncModeNote": "Sync モード: カテゴリのディレクトリが移動先になければ作成して格納します",
     "virtualModeNote": "Virtual モード: 選択したフォルダの直下に移動します"
+  },
+  "dndDestDir": {
+    "title": "コピー先フォルダを選択",
+    "desc": "{{count}} 件のファイルを、選んだフォルダの Unsorted サブフォルダにコピーして登録します。",
+    "cancel": "キャンセル"
   }
 }

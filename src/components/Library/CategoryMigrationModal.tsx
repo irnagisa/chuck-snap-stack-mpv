@@ -2,7 +2,9 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTagStore, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
-import { Button } from "../ui";
+import { Check, CircleX, Redo2 } from "lucide-react";
+import { Button, Dialog, useDialogClose } from "../ui";
+import styles from "./LibraryModal.module.css";
 
 interface Props {
   /** モード切替が完了したときのコールバック */
@@ -49,6 +51,8 @@ export function CategoryMigrationModal({ onDone, onCancel }: Props) {
   const [movedCount, setMovedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
+  // 実行中は閉じない。完了後に閉じたら onDone (モード切替を確定) を呼ぶ
+  const dialog = useDialogClose(onCancel, { locked: phase === 'running' });
 
   const handleStartMigration = async () => {
     setPhase('running');
@@ -86,116 +90,78 @@ export function CategoryMigrationModal({ onDone, onCancel }: Props) {
 
   const handleSkipMigration = () => {
     // 移行せずに Sync モードに切り替え
-    onDone();
+    dialog.close(onDone);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" role="dialog" aria-modal="true" onClick={phase === 'confirm' ? onCancel : undefined}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-96 max-w-[90vw]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
-          {t('categoryMigration.title')}
-        </h2>
-
-        {phase === 'confirm' && (
+    <Dialog
+      {...dialog.props}
+      // 完了後は × や Esc で閉じても切替を確定させる
+      onExitComplete={phase === 'done' ? onDone : dialog.props.onExitComplete}
+      size="sm"
+      title={t('categoryMigration.title')}
+      showClose={false}
+      footer={
+        phase === 'confirm' ? (
           <>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-              {t('categoryMigration.desc')}
-            </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2 mb-2">
-              {t('categoryMigration.warning')}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              {t('categoryMigration.watchDirNote')}
-            </p>
-
-            {targets.length > 0 ? (
-              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-4">
-                {targets.length} 件のファイルを移動します
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                移動が必要なファイルはありません
-              </p>
-            )}
-
-            <div className="flex flex-col gap-2">
-              {targets.length > 0 && (
-                <Button
-                  variant="primary"
-                  size="md"
-                  fullWidth
-                  onClick={handleStartMigration}
-                >
-                  {t('categoryMigration.startButton')}
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                size="md"
-                fullWidth
-                onClick={handleSkipMigration}
-              >
-                {targets.length > 0 ? t('categoryMigration.skipButton') : 'Sync モードに切り替え'}
-              </Button>
-              <Button
-                variant="ghost"
-                size="md"
-                fullWidth
-                onClick={onCancel}
-              >
-                {t('categoryMigration.cancelButton')}
-              </Button>
-            </div>
-          </>
-        )}
-
-        {phase === 'running' && (
-          <>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-              {t('categoryMigration.running', { done, total: targets.length })}
-            </p>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-3">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
-                style={{ width: `${targets.length > 0 ? (done / targets.length) * 100 : 0}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              {done} / {targets.length}
-            </p>
-          </>
-        )}
-
-        {phase === 'done' && (
-          <>
-            <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-3">
-              {t('categoryMigration.done')}
-            </p>
-            <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1 mb-4">
-              <li>✓ {t('categoryMigration.resultMoved', { count: movedCount })}</li>
-              {skippedCount > 0 && (
-                <li>↷ {t('categoryMigration.resultSkipped', { count: skippedCount })}</li>
-              )}
-              {failedCount > 0 && (
-                <li className="text-red-500 dark:text-red-400">
-                  ✗ {t('categoryMigration.resultFailed', { count: failedCount })}
-                </li>
-              )}
-            </ul>
-            <Button
-              variant="primary"
-              size="md"
-              fullWidth
-              onClick={onDone}
-            >
-              {t('categoryMigration.closeButton')}
+            <Button variant="ghost" className={styles.footerLead} onClick={() => dialog.close()}>
+              {t('categoryMigration.cancelButton')}
             </Button>
+            <Button variant="secondary" onClick={handleSkipMigration}>
+              {targets.length > 0 ? t('categoryMigration.skipButton') : t('categoryMigration.switchOnly')}
+            </Button>
+            {targets.length > 0 && (
+              <Button variant="primary" onClick={handleStartMigration}>
+                {t('categoryMigration.startButton')}
+              </Button>
+            )}
           </>
-        )}
-      </div>
-    </div>
+        ) : phase === 'done' ? (
+          <Button variant="primary" onClick={() => dialog.close(onDone)}>
+            {t('categoryMigration.closeButton')}
+          </Button>
+        ) : undefined
+      }
+    >
+      {phase === 'confirm' && (
+        <div className={styles.stackTight}>
+          <p className={styles.muted}>{t('categoryMigration.desc')}</p>
+          <p className={styles.callout} data-tone="warning">{t('categoryMigration.warning')}</p>
+          <p className={styles.note}>{t('categoryMigration.watchDirNote')}</p>
+          <p className={targets.length > 0 ? styles.strong : styles.note}>
+            {targets.length > 0
+              ? t('categoryMigration.targetCount', { count: targets.length })
+              : t('categoryMigration.noTargets')}
+          </p>
+        </div>
+      )}
+
+      {phase === 'running' && (
+        <div className={styles.stackTight}>
+          <p className={styles.muted}>{t('categoryMigration.running', { done, total: targets.length })}</p>
+          <div className={styles.meter}>
+            <div
+              className={styles.meterBar}
+              style={{ width: `${targets.length > 0 ? (done / targets.length) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {phase === 'done' && (
+        <div className={styles.stackTight}>
+          <p className={styles.callout} data-tone="success">{t('categoryMigration.done')}</p>
+          <ul className={styles.resultList}>
+            <li><Check aria-hidden />{t('categoryMigration.resultMoved', { count: movedCount })}</li>
+            {skippedCount > 0 && (
+              <li><Redo2 aria-hidden />{t('categoryMigration.resultSkipped', { count: skippedCount })}</li>
+            )}
+            {failedCount > 0 && (
+              <li data-tone="danger"><CircleX aria-hidden />{t('categoryMigration.resultFailed', { count: failedCount })}</li>
+            )}
+          </ul>
+        </div>
+      )}
+    </Dialog>
   );
 }
