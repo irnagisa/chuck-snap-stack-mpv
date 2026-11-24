@@ -1,0 +1,104 @@
+/* DropdownMenu / ContextMenu / Select で共有するポップアップメニューのスタイル */
+@layer ui {
+  .content {
+    z-index: var(--z-popover);
+    min-width: 10rem;
+    max-height: var(--radix-dropdown-menu-content-available-height, var(--radix-context-menu-content-available-height, 24rem));
+    padding: var(--space-1);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-raised);
+    color: var(--color-fg);
+    box-shadow: var(--shadow-lg);
+    overflow-y: auto;
+    font-size: var(--text-xs);
+    animation: menu-in var(--duration-fast) var(--ease-out);
+    transform-origin: var(
+      --radix-dropdown-menu-content-transform-origin,
+      var(--radix-context-menu-content-transform-origin, var(--radix-select-content-transform-origin))
+    );
+  }
+
+  .item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 1.75rem;
+    padding: var(--space-1) var(--space-2);
+    padding-inline-start: 1.75rem;
+    border-radius: var(--radius-sm);
+    outline: none;
+    cursor: default;
+    user-select: none;
+
+    &[data-highlighted] {
+      background: var(--color-bg-hover);
+    }
+    &[data-disabled] {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    &[data-danger] {
+      color: var(--color-danger-fg);
+    }
+    &[data-danger][data-highlighted] {
+      background: var(--color-danger);
+      color: var(--color-fg-on-accent);
+    }
+  }
+
+  .icon {
+    position: absolute;
+    left: var(--space-2);
+    display: inline-flex;
+    width: 0.875rem;
+    height: 0.875rem;
+
+    & svg {
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  .shortcut {
+    margin-inline-start: auto;
+    padding-inline-start: var(--space-4);
+    color: var(--color-fg-subtle);
+    font-size: 0.6875rem;
+  }
+
+  .label {
+    padding: var(--space-1) var(--space-2);
+    padding-inline-start: 1.75rem;
+    color: var(--color-fg-muted);
+    font-size: 0.6875rem;
+    font-weight: var(--weight-semibold);
+  }
+
+  .separator {
+    height: 1px;
+    margin: var(--space-1) calc(var(--space-1) * -1);
+    background: var(--color-border);
+  }
+
+  .subTriggerChevron {
+    margin-inline-start: auto;
+    width: 0.875rem;
+    height: 0.875rem;
+    color: var(--color-fg-subtle);
+  }
+
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .content {
+      animation: none;
+    }
+  }
+}

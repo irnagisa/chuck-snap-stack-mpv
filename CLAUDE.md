@@ -8,7 +8,10 @@ Tauri v2 製のメディア管理・ビューワーデスクトップアプリ�
 |---|---|
 | デスクトップフレームワーク | Tauri v2 |
 | フロントエンド | React 19 + TypeScript + Vite |
-| スタイリング | Tailwind CSS v4 |
+| UI プリミティブ | Radix UI (`radix-ui` 統合パッケージ) |
+| スタイリング | Native CSS (CSS Modules + カスケードレイヤー + デザイントークン)。既存画面は Tailwind CSS v4 から段階移行中 |
+| アイコン | Lucide React |
+| アニメーション | Motion (`motion/react`) |
 | 状態管理 | Zustand |
 | バックエンド | Rust (Tauri コマンド) |
 | メディア再生 | mpv (IPC ソケット経由サブプロセス) |
@@ -194,6 +197,16 @@ CREATE TABLE settings (
   value TEXT NOT NULL
 );
 ```
+
+## UI 構成 (Radix UI + Native CSS + Lucide + Motion)
+
+- `src/styles/tokens.css` — デザイントークン (`--color-*`, `--space-*`, `--radius-*` 等)。ダークモードは `:root.dark` で上書き
+- `src/components/ui/` — Radix ベースの共通プリミティブ (Button, Dialog, ConfirmDialog, DropdownMenu, ContextMenu, Select, Tooltip, Tabs, Switch, Checkbox, Slider, ScrollArea)。`import { Button } from "../ui"`
+- `src/components/Layout/` — アプリシェル・3 ペインレイアウト (ThreePaneLayout, PaneResizer, Pagination 等)
+- コンポーネントのスタイルは隣接する `*.module.css` に `@layer ui { … }` で書き、値はトークンを使う。状態は `data-*` 属性 (Radix の `data-state` 等) でスタイルする
+- レイヤー順序は `theme, base, tokens, components, ui, utilities` (`src/index.css`)。`index.css` は `main.tsx` で最初に import すること (順序が崩れると Tailwind preflight が ui を上書きする)
+- アニメーションは `src/components/ui/motion.ts` のプリセットを使う。`prefers-reduced-motion` は `<MotionConfig reducedMotion="user">` で一括対応
+- 新規・改修するコンポーネントは新構成で書く。既存の Tailwind コンポーネントは触る機会に移行し、全移行後に Tailwind を削除する
 
 ## 開発コマンド
 

@@ -33,6 +33,13 @@ import { LibraryFilterBar } from "./components/Library/LibraryFilterBar";
 import { BatchActionBar } from "./components/Library/BatchActionBar";
 import InboxView from "./components/Inbox/InboxView";
 import { HomeView } from "./components/Home/HomeView";
+import {
+  DetailPlaceholder,
+  DropOverlay,
+  Pagination,
+  ThreePaneLayout,
+  layoutStyles as styles,
+} from "./components/Layout";
 import { useInboxStore } from "./store/useInboxStore";
 
 type MainView = "home" | "library" | "inbox";
@@ -124,43 +131,6 @@ function App() {
 
   const libraryRef = useRef<LibraryViewHandle>(null);
   const pendingScrollIdRef = useRef<number | null>(null);
-
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem("librarySidebarWidth");
-    return saved ? Number(saved) : 176;
-  });
-  const isSidebarDragging = useRef(false);
-  const sidebarDragStartX = useRef(0);
-  const sidebarDragStartWidth = useRef(176);
-
-  const handleSidebarDividerMouseDown = (e: React.MouseEvent) => {
-    isSidebarDragging.current = true;
-    sidebarDragStartX.current = e.clientX;
-    sidebarDragStartWidth.current = sidebarWidth;
-    e.preventDefault();
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isSidebarDragging.current) return;
-      const delta = e.clientX - sidebarDragStartX.current;
-      const newWidth = Math.max(120, Math.min(400, sidebarDragStartWidth.current + delta));
-      setSidebarWidth(newWidth);
-      sidebarDragStartWidth.current = newWidth;
-      sidebarDragStartX.current = e.clientX;
-    };
-    const handleMouseUp = () => {
-      if (!isSidebarDragging.current) return;
-      isSidebarDragging.current = false;
-      localStorage.setItem("librarySidebarWidth", String(sidebarDragStartWidth.current));
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -302,7 +272,7 @@ function App() {
   );
 
   return (
-    <main className="flex flex-col h-screen overflow-hidden bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <main className={styles.app}>
       {isMiniPlayer ? (
         <MiniPlayer />
       ) : (
@@ -325,7 +295,7 @@ function App() {
           <WatchDirRemovedAlert />
 
           {/* ボディ */}
-          <div className="flex flex-1 min-h-0">
+          <div className={styles.body}>
             {mainView === "home" ? (
               <ErrorBoundary>
                 <HomeView
@@ -335,121 +305,16 @@ function App() {
                 />
               </ErrorBoundary>
             ) : mainView === "inbox" ? (
-              <div className="flex flex-1 min-h-0 min-w-0">
+              <div className={styles.fill}>
                 <ErrorBoundary>
                   <InboxView />
                 </ErrorBoundary>
               </div>
             ) : (
-              <div className="flex flex-1 px-4 pt-4 pb-10 min-h-0">
-                {isDbReady && (
-                  <div style={{ width: sidebarWidth }} className="shrink-0 min-h-0 flex flex-col">
-                    <LibrarySidebar />
-                  </div>
-                )}
-
-                {isDbReady && (
-                  <div
-                    className="relative shrink-0 w-4 self-stretch cursor-col-resize group select-none -mt-4"
-                    onMouseDown={handleSidebarDividerMouseDown}
-                  >
-                    <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-400 dark:group-hover:bg-blue-600 transition-colors" />
-                  </div>
-                )}
-
-                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden pt-4 -mt-4 pl-2 -ml-2 pr-2">
-                  {!isDbReady && !dbError && (
-                    <p className="text-gray-500 text-sm dark:text-gray-400">
-                      {t("app.dbInitializing")}
-                    </p>
-                  )}
-                  {dbError && (
-                    <p className="text-red-500 text-sm dark:text-red-400">
-                      {t("app.dbError", { error: dbError })}
-                    </p>
-                  )}
-
-                  {isDbReady && (
-                    <ErrorBoundary>
-                      <div className="flex flex-col flex-1 min-h-0">
-                        <LibraryFilterBar />
-
-                        <BatchActionBar
-                          selectedVideoIds={selectedVideoIds}
-                          isThumbnailGenerating={isThumbnailGenerating}
-                          onClearSelection={() => setSelectedVideoIds(new Set())}
-                        />
-
-                        <div className="flex-1 min-h-0 pt-4 -mt-4">
-                          {viewMode === "list" ? (
-                            <LibraryList
-                              ref={libraryRef}
-                              videos={videos}
-                              currentVideoId={currentVideo?.id ?? null}
-                              detailVideoId={detailVideo?.id ?? null}
-                              scrollResetKey={scrollResetKey}
-                              onPlay={handlePlay}
-                              onShowDetail={openDetailVideo}
-                              onAddToPlaylist={openAddToPlaylist}
-                              onSetTag={handleContextSetTag}
-                              onSetCategory={handleContextSetCategory}
-                              onMoveDir={handleContextMoveDir}
-                              selectedIds={selectedVideoIds}
-                              onSelectionChange={setSelectedVideoIds}
-                            />
-                          ) : (
-                            <LibraryGrid
-                              ref={libraryRef}
-                              videos={videos}
-                              currentVideoId={currentVideo?.id ?? null}
-                              detailVideoId={detailVideo?.id ?? null}
-                              scrollResetKey={scrollResetKey}
-                              onPlay={handlePlay}
-                              onShowDetail={openDetailVideo}
-                              onAddToPlaylist={openAddToPlaylist}
-                              onSetTag={handleContextSetTag}
-                              onSetCategory={handleContextSetCategory}
-                              onMoveDir={handleContextMoveDir}
-                              selectedIds={selectedVideoIds}
-                              onSelectionChange={setSelectedVideoIds}
-                            />
-                          )}
-                        </div>
-
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-center gap-3 py-2 shrink-0 border-t border-gray-100 dark:border-gray-800">
-                            <button
-                              type="button"
-                              className="px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              disabled={currentPage <= 1}
-                              onClick={() => handleSetPage(currentPage - 1)}
-                            >
-                              {t("pagination.prev")}
-                            </button>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                              {currentPage} / {totalPages}
-                              <span className="ml-2 text-gray-400 dark:text-gray-500">
-                                {t("pagination.count", { count: totalCount.toLocaleString() })}
-                              </span>
-                            </span>
-                            <button
-                              type="button"
-                              className="px-2.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              disabled={currentPage >= totalPages}
-                              onClick={() => handleSetPage(currentPage + 1)}
-                            >
-                              {t("pagination.next")}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </ErrorBoundary>
-                  )}
-                </div>
-
-                {/* 詳細パネル */}
-                <div className="w-80 shrink-0 border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden -my-4 -mr-4">
-                  {detailVideo ? (
+              <ThreePaneLayout
+                sidebar={isDbReady ? <LibrarySidebar /> : null}
+                detail={
+                  detailVideo ? (
                     <VideoDetailModal
                       key={detailVideo.id}
                       video={detailVideo}
@@ -457,23 +322,76 @@ function App() {
                       onViewImage={setViewingImage}
                     />
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600 select-none gap-2">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="w-10 h-10 opacity-40"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={1.2}
-                      >
-                        <rect x="3" y="5" width="18" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M10 9l5 3-5 3V9z" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      <p className="text-xs">動画を選択してください</p>
+                    <DetailPlaceholder />
+                  )
+                }
+              >
+                {!isDbReady && !dbError && (
+                  <p className={styles.status}>{t("app.dbInitializing")}</p>
+                )}
+                {dbError && (
+                  <p className={styles.status} data-tone="error">
+                    {t("app.dbError", { error: dbError })}
+                  </p>
+                )}
+
+                {isDbReady && (
+                  <ErrorBoundary>
+                    <div className={styles.libraryColumn}>
+                      <LibraryFilterBar />
+
+                      <BatchActionBar
+                        selectedVideoIds={selectedVideoIds}
+                        isThumbnailGenerating={isThumbnailGenerating}
+                        onClearSelection={() => setSelectedVideoIds(new Set())}
+                      />
+
+                      <div className={styles.libraryView}>
+                        {viewMode === "list" ? (
+                          <LibraryList
+                            ref={libraryRef}
+                            videos={videos}
+                            currentVideoId={currentVideo?.id ?? null}
+                            detailVideoId={detailVideo?.id ?? null}
+                            scrollResetKey={scrollResetKey}
+                            onPlay={handlePlay}
+                            onShowDetail={openDetailVideo}
+                            onAddToPlaylist={openAddToPlaylist}
+                            onSetTag={handleContextSetTag}
+                            onSetCategory={handleContextSetCategory}
+                            onMoveDir={handleContextMoveDir}
+                            selectedIds={selectedVideoIds}
+                            onSelectionChange={setSelectedVideoIds}
+                          />
+                        ) : (
+                          <LibraryGrid
+                            ref={libraryRef}
+                            videos={videos}
+                            currentVideoId={currentVideo?.id ?? null}
+                            detailVideoId={detailVideo?.id ?? null}
+                            scrollResetKey={scrollResetKey}
+                            onPlay={handlePlay}
+                            onShowDetail={openDetailVideo}
+                            onAddToPlaylist={openAddToPlaylist}
+                            onSetTag={handleContextSetTag}
+                            onSetCategory={handleContextSetCategory}
+                            onMoveDir={handleContextMoveDir}
+                            selectedIds={selectedVideoIds}
+                            onSelectionChange={setSelectedVideoIds}
+                          />
+                        )}
+                      </div>
+
+                      <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalCount={totalCount}
+                        onPageChange={handleSetPage}
+                      />
                     </div>
-                  )}
-                </div>
-              </div>
+                  </ErrorBoundary>
+                )}
+              </ThreePaneLayout>
             )}
           </div>
 
@@ -512,20 +430,7 @@ function App() {
         />
       )}
 
-      {isDragging && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none">
-          <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-400/20 backdrop-blur-[2px]" />
-          <div className="relative flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed border-blue-500 dark:border-blue-400 bg-white/80 dark:bg-gray-900/80 shadow-2xl">
-            <span className="text-4xl">🎬</span>
-            <p className="text-lg font-semibold text-blue-700 dark:text-blue-300">
-              {t("app.dropImport")}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {t("app.dropFormats")}
-            </p>
-          </div>
-        </div>
-      )}
+      <DropOverlay visible={isDragging} />
     </main>
   );
 }

@@ -1,0 +1,18 @@
+/*
+ * ベーススタイル (リセットは Tailwind の preflight に任せている。
+ * Tailwind を外すタイミングで最小リセットをここへ移す)
+ */
+@layer tokens {
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-bg-app);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* キーボード操作時のみフォーカスリングを出す共通スタイル */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+}

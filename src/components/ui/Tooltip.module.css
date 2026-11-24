@@ -1,0 +1,41 @@
+@layer ui {
+  .content {
+    z-index: var(--z-tooltip);
+    max-width: 18rem;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--palette-gray-900);
+    color: var(--palette-gray-50);
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+    box-shadow: var(--shadow-md);
+    user-select: none;
+    transform-origin: var(--radix-tooltip-content-transform-origin);
+    animation: tooltip-in var(--duration-fast) var(--ease-out);
+  }
+
+  :global(.dark) .content {
+    background: var(--palette-gray-100);
+    color: var(--palette-gray-900);
+  }
+
+  .arrow {
+    fill: var(--palette-gray-900);
+  }
+  :global(.dark) .arrow {
+    fill: var(--palette-gray-100);
+  }
+
+  @keyframes tooltip-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .content {
+      animation: none;
+    }
+  }
+}

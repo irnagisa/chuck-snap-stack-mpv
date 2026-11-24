@@ -1,0 +1,160 @@
+/*
+ * デザイントークン
+ *
+ * - プリミティブ (--palette-*) は直接使わず、セマンティックトークン経由で参照する
+ * - ダークモードは useTheme が <html class="dark"> を付け外しするので :root.dark で上書き
+ * - 色値は Tailwind v4 の既定パレットと揃えてあり、移行途中でも見た目が揃う
+ */
+@layer tokens {
+  :root {
+    /* ---- palette (primitive) ---- */
+    --palette-gray-50: oklch(98.5% 0.002 247.839);
+    --palette-gray-100: oklch(96.7% 0.003 264.542);
+    --palette-gray-200: oklch(92.8% 0.006 264.531);
+    --palette-gray-300: oklch(87.2% 0.01 258.338);
+    --palette-gray-400: oklch(70.7% 0.022 261.325);
+    --palette-gray-500: oklch(55.1% 0.027 264.364);
+    --palette-gray-600: oklch(44.6% 0.03 256.802);
+    --palette-gray-700: oklch(37.3% 0.034 259.733);
+    --palette-gray-800: oklch(27.8% 0.033 256.848);
+    --palette-gray-900: oklch(21% 0.034 264.665);
+    --palette-gray-950: oklch(13% 0.028 261.692);
+
+    --palette-blue-300: oklch(80.9% 0.105 251.813);
+    --palette-blue-400: oklch(70.7% 0.165 254.624);
+    --palette-blue-500: oklch(62.3% 0.214 259.815);
+    --palette-blue-600: oklch(54.6% 0.245 262.881);
+    --palette-blue-700: oklch(48.8% 0.243 264.376);
+
+    --palette-red-400: oklch(70.4% 0.191 22.216);
+    --palette-red-500: oklch(63.7% 0.237 25.331);
+    --palette-red-600: oklch(57.7% 0.245 27.325);
+    --palette-red-700: oklch(50.5% 0.213 27.518);
+
+    --palette-white: #fff;
+    --palette-black: #000;
+
+    /* ---- semantic: surface ---- */
+    --color-bg-app: var(--palette-white);
+    --color-bg-surface: var(--palette-white);
+    --color-bg-raised: var(--palette-white);
+    --color-bg-subtle: var(--palette-gray-50);
+    --color-bg-hover: var(--palette-gray-100);
+    --color-bg-active: var(--palette-gray-200);
+    --color-overlay: oklch(0% 0 0 / 0.4);
+
+    /* ---- semantic: text ---- */
+    --color-fg: var(--palette-gray-900);
+    --color-fg-muted: var(--palette-gray-500);
+    --color-fg-subtle: var(--palette-gray-400);
+    --color-fg-on-accent: var(--palette-white);
+
+    /* ---- semantic: border ---- */
+    --color-border: var(--palette-gray-200);
+    --color-border-subtle: var(--palette-gray-100);
+    --color-border-strong: var(--palette-gray-300);
+
+    /* ---- semantic: accent / status ---- */
+    --color-accent: var(--palette-blue-600);
+    --color-accent-hover: var(--palette-blue-700);
+    --color-accent-soft: oklch(62.3% 0.214 259.815 / 0.12);
+    --color-accent-fg: var(--palette-blue-700);
+    --color-accent-line: var(--palette-blue-400);
+
+    --color-danger: var(--palette-red-600);
+    --color-danger-hover: var(--palette-red-700);
+    --color-danger-fg: var(--palette-red-500);
+
+    --color-focus-ring: var(--palette-blue-500);
+
+    /* ---- typography ---- */
+    /* html は 13px 基準 (index.css)。rem はそれに追従する */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-md: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --leading-tight: 1.25;
+    --leading-normal: 1.5;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+
+    /* ---- spacing (0.25rem 刻み) ---- */
+    --space-0-5: 0.125rem;
+    --space-1: 0.25rem;
+    --space-1-5: 0.375rem;
+    --space-2: 0.5rem;
+    --space-2-5: 0.625rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+
+    /* ---- radius ---- */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
+    --radius-2xl: 1rem;
+    --radius-full: 9999px;
+
+    /* ---- shadow ---- */
+    --shadow-sm: 0 1px 2px 0 oklch(0% 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px oklch(0% 0 0 / 0.1), 0 2px 4px -2px oklch(0% 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px oklch(0% 0 0 / 0.1), 0 4px 6px -4px oklch(0% 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px oklch(0% 0 0 / 0.1), 0 8px 10px -6px oklch(0% 0 0 / 0.1);
+
+    /* ---- z-index ---- */
+    --z-dropdown: 40;
+    --z-dialog: 50;
+    --z-popover: 60;
+    --z-tooltip: 70;
+    --z-toast: 80;
+    --z-drop-overlay: 200;
+
+    /* ---- motion (CSS トランジション用。Motion 側は src/components/ui/motion.ts) ---- */
+    --duration-fast: 120ms;
+    --duration-normal: 180ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* ---- layout ---- */
+    --pane-detail-width: 20rem;
+
+    color-scheme: light;
+  }
+
+  :root.dark {
+    --color-bg-app: var(--palette-gray-950);
+    --color-bg-surface: var(--palette-gray-900);
+    --color-bg-raised: var(--palette-gray-800);
+    --color-bg-subtle: var(--palette-gray-900);
+    --color-bg-hover: var(--palette-gray-800);
+    --color-bg-active: var(--palette-gray-700);
+    --color-overlay: oklch(0% 0 0 / 0.6);
+
+    --color-fg: var(--palette-gray-100);
+    --color-fg-muted: var(--palette-gray-400);
+    --color-fg-subtle: var(--palette-gray-500);
+
+    --color-border: var(--palette-gray-800);
+    --color-border-subtle: var(--palette-gray-800);
+    --color-border-strong: var(--palette-gray-600);
+
+    --color-accent-soft: oklch(70.7% 0.165 254.624 / 0.16);
+    --color-accent-fg: var(--palette-blue-300);
+    --color-accent-line: var(--palette-blue-600);
+
+    --color-danger-fg: var(--palette-red-400);
+
+    --color-focus-ring: var(--palette-blue-400);
+
+    --shadow-lg: 0 10px 15px -3px oklch(0% 0 0 / 0.4), 0 4px 6px -4px oklch(0% 0 0 / 0.4);
+    --shadow-xl: 0 20px 25px -5px oklch(0% 0 0 / 0.5), 0 8px 10px -6px oklch(0% 0 0 / 0.5);
+
+    color-scheme: dark;
+  }
+}

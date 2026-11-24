@@ -1,0 +1,86 @@
+@layer ui {
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-dialog);
+    background: var(--color-overlay);
+  }
+
+  /* transform は Motion が使うので、中央寄せは inset + margin:auto で行う */
+  .content {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-dialog);
+    display: flex;
+    flex-direction: column;
+    width: calc(100% - var(--space-8));
+    height: fit-content;
+    max-height: calc(100dvh - var(--space-10));
+    margin: auto;
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-surface);
+    color: var(--color-fg);
+    box-shadow: var(--shadow-xl);
+    overflow: hidden;
+
+    &:focus {
+      outline: none;
+    }
+  }
+  .content[data-size="sm"] {
+    max-width: 24rem;
+  }
+  .content[data-size="md"] {
+    max-width: 32rem;
+  }
+  .content[data-size="lg"] {
+    max-width: 48rem;
+  }
+
+  .header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5) 0;
+  }
+
+  .heading {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .title {
+    flex: 1;
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
+  }
+
+  .description {
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-fg-muted);
+    line-height: var(--leading-normal);
+  }
+
+  .body {
+    flex: 1;
+    min-height: 0;
+    padding: var(--space-4) var(--space-5);
+    overflow-y: auto;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+  }
+
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: 0 var(--space-5) var(--space-4);
+  }
+  /* 本文なしでヘッダー直下に並ぶ場合 (ConfirmDialog) */
+  .footer[data-standalone] {
+    padding-top: var(--space-5);
+  }
+}
