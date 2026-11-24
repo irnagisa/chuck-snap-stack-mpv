@@ -32,6 +32,7 @@
     "dropImport": "Drop videos to import",
     "dropFormats": "Supports mp4 / mkv / webm / avi / mov and more",
     "confirmImport": "Found {{count}} files.\nAdd all?",
+    "confirmImportTitle": "Add this folder?",
     "confirmImportButton": "Add",
     "watchDirRemoved": "Folder not found",
     "watchDirRemovedAction": "Mark as Missing",
@@ -642,7 +643,8 @@
     "cancel": "Cancel"
   },
   "confirm": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "about": {
     "sectionTitle": "About",

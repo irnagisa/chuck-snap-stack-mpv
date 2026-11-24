@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog as RxDialog } from "radix-ui";
 import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
@@ -20,6 +20,8 @@ interface DialogProps {
   /** 閉じるボタン (×) を出すか */
   showClose?: boolean;
   closeLabel?: string;
+  /** 退場アニメーションが終わったとき (useDialogClose と組み合わせる) */
+  onExitComplete?: () => void;
 }
 
 /**
@@ -36,10 +38,11 @@ export function Dialog({
   size = "md",
   showClose = true,
   closeLabel = "Close",
+  onExitComplete,
 }: DialogProps) {
   return (
     <RxDialog.Root open={open} onOpenChange={onOpenChange}>
-      <AnimatePresence>
+      <AnimatePresence onExitComplete={onExitComplete}>
         {open && (
           <RxDialog.Portal forceMount>
             <RxDialog.Overlay asChild forceMount>
@@ -86,4 +89,40 @@ export function Dialog({
       </AnimatePresence>
     </RxDialog.Root>
   );
+}
+
+/**
+ * 親が `{x && <Modal onClose={...} />}` のように条件付きでマウントするモーダル用。
+ * 閉じるときはまず open=false にして退場アニメーションを再生し、終わってから
+ * onClosed (または close に渡したコールバック) を呼んで親にアンマウントさせる。
+ *
+ * ```tsx
+ * const dialog = useDialogClose(onClose);
+ * <Dialog {...dialog.props} title="…">…<Button onClick={() => dialog.close(onDone)} /></Dialog>
+ * ```
+ */
+export function useDialogClose(onClosed: () => void) {
+  const [open, setOpen] = useState(true);
+  const after = useRef<(() => void) | null>(null);
+  const onClosedRef = useRef(onClosed);
+  useEffect(() => {
+    onClosedRef.current = onClosed;
+  });
+
+  const close = useCallback((then?: () => void) => {
+    after.current = then ?? null;
+    setOpen(false);
+  }, []);
+
+  const props = {
+    open,
+    onOpenChange: (next: boolean) => {
+      if (!next) close();
+    },
+    onExitComplete: () => {
+      (after.current ?? onClosedRef.current)();
+    },
+  };
+
+  return { open, close, props };
 }

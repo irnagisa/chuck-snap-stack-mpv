@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { Button, ConfirmDialog, Dialog, Input, RadioGroup, RadioGroupItem, SegmentedControl, Select, Tabs } from '.';
+import { Button, ConfirmDialog, Dialog, Input, RadioGroup, RadioGroupItem, SegmentedControl, Select, Tabs, useDialogClose } from '.';
 
 describe('Button', () => {
   it('defaults to type="button" with variant/size data attributes', () => {
@@ -51,6 +51,37 @@ describe('Dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     expect(onChange).toHaveBeenCalledWith(false);
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});
+
+describe('useDialogClose', () => {
+  function Modal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+    const dialog = useDialogClose(onClose);
+    return (
+      <Dialog {...dialog.props} title="条件付きモーダル" closeLabel="閉じる">
+        <Button onClick={() => dialog.close(onDone)}>完了</Button>
+      </Dialog>
+    );
+  }
+
+  it('calls onClose only after the exit animation when dismissed', async () => {
+    const onClose = vi.fn();
+    const onDone = vi.fn();
+    render(<Modal onClose={onClose} onDone={onDone} />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onDone).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('runs the callback passed to close() instead of onClose', async () => {
+    const onClose = vi.fn();
+    const onDone = vi.fn();
+    render(<Modal onClose={onClose} onDone={onDone} />);
+    fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 

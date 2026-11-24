@@ -10,7 +10,7 @@ export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from ".
 export { Checkbox } from "./Checkbox";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { ContextMenu } from "./ContextMenu";
-export { Dialog, type DialogSize } from "./Dialog";
+export { Dialog, useDialogClose, type DialogSize } from "./Dialog";
 export { DropdownMenu } from "./DropdownMenu";
 export { EmptyState } from "./EmptyState";
 export { Input, type InputProps } from "./Input";

@@ -22,7 +22,6 @@ import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { ImageViewerModal } from "./components/Library/ImageViewerModal";
-import { ConfirmModal } from "./components/common/ConfirmModal";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { AppHeader } from "./components/AppHeader";
 import { ThumbnailProgressBar } from "./components/ThumbnailProgressBar";
@@ -42,7 +41,7 @@ import {
 } from "./components/Layout";
 import { useInboxStore } from "./store/useInboxStore";
 import { motion } from "motion/react";
-import { Button, Collapse, EmptyState, motionPresets } from "./components/ui";
+import { Button, Collapse, ConfirmDialog, EmptyState, motionPresets } from "./components/ui";
 import { FolderPlus, SearchX } from "lucide-react";
 
 type MainView = "home" | "library" | "inbox";
@@ -194,6 +193,11 @@ function App() {
   }, [videos]);
 
   const IMPORT_CONFIRM_THRESHOLD = 300;
+
+  // 確認ダイアログの退場アニメーション中も件数を表示し続けるため、最後の値を保持する
+  const lastPendingImport = useRef(pendingImport);
+  if (pendingImport) lastPendingImport.current = pendingImport;
+  const shownImport = pendingImport ?? lastPendingImport.current;
 
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false });
@@ -468,18 +472,22 @@ function App() {
       <DownloadQueuePanel />
       <ToastContainer />
 
-      {pendingImport && (
-        <ConfirmModal
-          message={t("app.confirmImport", { count: pendingImport.fileCount.toLocaleString() })}
-          confirmLabel={t("app.confirmImportButton")}
-          onConfirm={() => {
-            const { path, useDirAsCategory: udc } = pendingImport;
-            setPendingImport(null);
-            scanAndImport(path, udc);
-          }}
-          onCancel={() => setPendingImport(null)}
-        />
-      )}
+      <ConfirmDialog
+        open={pendingImport !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingImport(null);
+        }}
+        title={t("app.confirmImportTitle")}
+        description={t("app.confirmImport", { count: (shownImport?.fileCount ?? 0).toLocaleString() })}
+        confirmLabel={t("app.confirmImportButton")}
+        cancelLabel={t("confirm.cancel")}
+        onConfirm={() => {
+          if (!pendingImport) return;
+          const { path, useDirAsCategory: udc } = pendingImport;
+          setPendingImport(null);
+          scanAndImport(path, udc);
+        }}
+      />
 
       <DropOverlay visible={isDragging} />
     </main>

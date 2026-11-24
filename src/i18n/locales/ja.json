@@ -32,6 +32,7 @@
     "dropImport": "動画をドロップしてインポート",
     "dropFormats": "mp4 / mkv / webm / avi / mov などに対応",
     "confirmImport": "{{count}} 件のファイルが見つかりました。\nすべて追加しますか？",
+    "confirmImportTitle": "フォルダの中身を追加しますか？",
     "confirmImportButton": "追加",
     "watchDirRemoved": "フォルダが見つかりません",
     "watchDirRemovedAction": "Missing にする",
@@ -642,7 +643,8 @@
     "cancel": "キャンセル"
   },
   "confirm": {
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "close": "閉じる"
   },
   "about": {
     "sectionTitle": "このアプリについて",

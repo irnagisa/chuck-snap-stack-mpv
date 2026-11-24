@@ -4,7 +4,9 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Video } from '../../types';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
-import { Button } from "../ui";
+import { Button, Dialog, useDialogClose } from "../ui";
+import { DeleteChoices } from "./DeleteChoices";
+import styles from "./LibraryModal.module.css";
 
 interface Props {
   video: Video;
@@ -16,13 +18,14 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
   const { t } = useTranslation();
   const { removeVideo } = useLibraryStore();
   const [loading, setLoading] = useState(false);
+  const dialog = useDialogClose(onClose);
   const displayName = video.title ?? video.path.split('/').pop();
 
   const handleRemoveOnly = async () => {
     setLoading(true);
     try {
       await removeVideo(video.id);
-      onRemoved();
+      dialog.close(onRemoved);
     } finally {
       setLoading(false);
     }
@@ -33,7 +36,7 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
     try {
       await invoke('trash_video_file', { path: video.path });
       await removeVideo(video.id);
-      onRemoved();
+      dialog.close(onRemoved);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('ゴミ箱移動失敗:', e);
@@ -49,7 +52,7 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
     try {
       await invoke('delete_video_file', { path: video.path });
       await removeVideo(video.id);
-      onRemoved();
+      dialog.close(onRemoved);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('ファイル削除失敗:', e);
@@ -61,59 +64,37 @@ export function DeleteVideoModal({ video, onClose, onRemoved }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-80 max-w-[90vw]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">{t('deleteVideo.title')}</h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 break-all">{displayName}</p>
-        <p className="text-xs text-gray-600 dark:text-gray-300 mb-4">
-          {t('deleteVideo.question')}
-        </p>
-
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="secondary"
-            size="md"
-            fullWidth
-            disabled={loading}
-            onClick={handleRemoveOnly}
-          >
-            {t('deleteVideo.removeFromLibrary')}
-            <span className="block text-[10px] text-gray-400 dark:text-gray-500">{t('deleteVideo.removeFromLibraryDesc')}</span>
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            fullWidth
-            disabled={loading}
-            onClick={handleTrashFile}
-          >
-            {t('deleteVideo.moveToTrash')}
-            <span className="block text-[10px] text-amber-100">{t('deleteVideo.moveToTrashDesc')}</span>
-          </Button>
-          <Button
-            variant="danger"
-            size="md"
-            fullWidth
-            disabled={loading}
-            onClick={handleDeleteFile}
-          >
-            {t('deleteVideo.deleteFile')}
-            <span className="block text-[10px] text-red-200">{t('deleteVideo.deleteFileDesc')}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            fullWidth
-            disabled={loading}
-            onClick={onClose}
-          >
-            {t('deleteVideo.cancel')}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog
+      {...dialog.props}
+      size="sm"
+      title={t('deleteVideo.title')}
+      description={t('deleteVideo.question')}
+      showClose={false}
+      footer={
+        <Button variant="ghost" disabled={loading} onClick={() => dialog.close()}>
+          {t('deleteVideo.cancel')}
+        </Button>
+      }
+    >
+      <p className={styles.subject}>{displayName}</p>
+      <DeleteChoices
+        disabled={loading}
+        removeOnly={{
+          label: t('deleteVideo.removeFromLibrary'),
+          description: t('deleteVideo.removeFromLibraryDesc'),
+          onSelect: handleRemoveOnly,
+        }}
+        moveToTrash={{
+          label: t('deleteVideo.moveToTrash'),
+          description: t('deleteVideo.moveToTrashDesc'),
+          onSelect: handleTrashFile,
+        }}
+        deleteFile={{
+          label: t('deleteVideo.deleteFile'),
+          description: t('deleteVideo.deleteFileDesc'),
+          onSelect: handleDeleteFile,
+        }}
+      />
+    </Dialog>
   );
 }
