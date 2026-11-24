@@ -209,7 +209,8 @@
     "play": "再生",
     "openUrl": "URLを開く",
     "deleteVideo": "動画を削除",
-    "playing": "再生中"
+    "playing": "再生中",
+    "select": "選択"
   },
   "detail": {
     "title": "詳細",

@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { formatTime } from "../../utils/time";
+import { invoke } from "@tauri-apps/api/core";
 import type { Video } from "../../types";
 import { Play, Shuffle } from "lucide-react";
 import { Button } from "../ui";
+import homeStyles from "./Home.module.css";
+import cardStyles from "../Library/VideoCard.module.css";
+import { MediaThumb } from "../Library/MediaThumb";
 
 interface Props {
   onOpen: (video: Video) => void;
@@ -30,7 +32,7 @@ export function RandomPlayCard({ onOpen }: Props) {
   const fileName = (path: string) => path.split("/").pop() ?? path;
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400">ランダム再生</h2>
         <Button size="xs" variant="ghost" onClick={fetchRandom} disabled={isLoading}>
@@ -52,37 +54,24 @@ export function RandomPlayCard({ onOpen }: Props) {
       )}
 
       {videos.length > 0 && (
-        <ul className="flex gap-3 overflow-x-auto pb-1">
+        <ul className={homeStyles.strip}>
           {videos.map((video) => (
-            <li key={video.id} className="flex flex-col shrink-0 w-36 gap-1.5">
-              {/* サムネイル */}
-              <div className="relative w-full aspect-video bg-gray-200 dark:bg-gray-700 rounded overflow-hidden">
-                {video.thumbnail ? (
-                  <img
-                    src={convertFileSrc(video.thumbnail)}
-                    alt={video.title ?? ""}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-xl">
-                    {video.media_type === "audio" ? "♪" : "▶"}
-                  </div>
-                )}
-                {video.duration != null && (
-                  <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/70 text-white text-[9px] leading-4 tabular-nums">
-                    {formatTime(video.duration)}
-                  </span>
-                )}
-              </div>
-
-              {/* タイトル + 再生ボタン */}
-              <p className="text-xs font-medium leading-snug line-clamp-2 text-gray-800 dark:text-gray-200">
+            <li key={video.id} className={cardStyles.tile} onClick={() => onOpen(video)}>
+              <MediaThumb video={video} compact>
+                <button
+                  type="button"
+                  className={`${cardStyles.playButton} ${cardStyles.hoverOnly}`}
+                  data-size="sm"
+                  onClick={(e) => { e.stopPropagation(); onOpen(video); }}
+                  aria-label="再生"
+                  title="再生"
+                >
+                  <Play aria-hidden fill="currentColor" />
+                </button>
+              </MediaThumb>
+              <p className={cardStyles.tileTitle} title={video.title ?? fileName(video.path)}>
                 {video.title ?? fileName(video.path)}
               </p>
-              <Button size="xs" variant="primary" className="self-start" onClick={() => onOpen(video)}>
-                <Play aria-hidden fill="currentColor" />
-                再生
-              </Button>
             </li>
           ))}
         </ul>

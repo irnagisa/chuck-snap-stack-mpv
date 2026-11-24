@@ -58,6 +58,8 @@
     --color-bg-app: light-dark(var(--palette-neutral-100), var(--palette-neutral-950));
     --color-bg-surface: light-dark(var(--palette-white), var(--palette-neutral-900));
     --color-bg-raised: light-dark(var(--palette-white), var(--palette-neutral-800));
+    /* パネルの上に並ぶカード (ダークではパネルより一段明るく) */
+    --color-bg-card: light-dark(var(--palette-white), oklch(24.5% 0.01 52));
     --color-bg-subtle: light-dark(var(--palette-neutral-50), var(--palette-neutral-900));
     --color-bg-hover: light-dark(var(--palette-neutral-100), var(--palette-neutral-800));
     --color-bg-active: light-dark(var(--palette-neutral-200), var(--palette-neutral-700));

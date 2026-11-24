@@ -1,4 +1,5 @@
 import { useHomeStore } from "../../store/useHomeStore";
+import homeStyles from "./Home.module.css";
 
 export function TodayStatsCard() {
   const libraryStats = useHomeStore((s) => s.libraryStats);
@@ -7,7 +8,7 @@ export function TodayStatsCard() {
   const todayWatched = libraryStats?.todayWatched ?? 0;
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">今日の活動</h2>
       <div className="grid grid-cols-2 divide-x divide-gray-100 dark:divide-gray-800">
         <div className="flex flex-col items-center justify-center py-3">

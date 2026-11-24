@@ -209,7 +209,8 @@
     "play": "播放",
     "openUrl": "打开链接",
     "deleteVideo": "删除视频",
-    "playing": "播放中"
+    "playing": "播放中",
+    "select": "选择"
   },
   "detail": {
     "title": "详情",

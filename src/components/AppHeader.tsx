@@ -139,13 +139,13 @@ export function AppHeader({
           {isBusy ? t("app.scanning") : t("app.addFolder")}
         </Button>
 
-        <label className={styles.checkLabel} htmlFor={checkboxId}>
+        <label className={styles.checkLabel} htmlFor={checkboxId} title={t("app.useDirAsCategory")}>
           <Checkbox
             id={checkboxId}
             checked={useDirAsCategory}
             onCheckedChange={(v) => onUseDirAsCategoryChange(v === true)}
           />
-          {t("app.useDirAsCategory")}
+          <span className={styles.srOnlyNarrow}>{t("app.useDirAsCategory")}</span>
         </label>
 
         <Button variant="soft" disabled={!isDbReady} onClick={openDownload}>

@@ -2,6 +2,9 @@ import { useHomeStore } from "../../store/useHomeStore";
 import type { Video } from "../../types";
 import { Play } from "lucide-react";
 import { Button } from "../ui";
+import homeStyles from "./Home.module.css";
+import cardStyles from "../Library/VideoCard.module.css";
+import { MediaThumb } from "../Library/MediaThumb";
 
 interface Props {
   onOpen: (video: Video) => void;
@@ -23,10 +26,13 @@ export function ResumeCard({ onOpen }: Props) {
   const { video, lastViewedAt } = lastViewed;
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">続きから整理</h2>
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
+      <div className="flex items-center gap-4">
+        <button type="button" className={`${cardStyles.tile} w-36`} onClick={() => onOpen(video)}>
+          <MediaThumb video={video} compact />
+        </button>
+        <div className="min-w-0 flex-1">
           <p className="font-bold truncate">{dirName(video.path)}</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
             最後に閲覧: {video.title ?? fileName(video.path)}

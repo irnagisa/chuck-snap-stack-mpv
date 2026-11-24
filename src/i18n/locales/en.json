@@ -209,7 +209,8 @@
     "play": "Play",
     "openUrl": "Open URL",
     "deleteVideo": "Delete video",
-    "playing": "Playing"
+    "playing": "Playing",
+    "select": "Select"
   },
   "detail": {
     "title": "Details",

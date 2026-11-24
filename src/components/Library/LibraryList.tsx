@@ -1,12 +1,11 @@
 import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
 import type { LibraryViewHandle } from './LibraryGrid';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
 import { useShallow } from 'zustand/shallow';
-import { TagBadge } from './TagBadge';
 import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
@@ -14,8 +13,10 @@ import { VideoContextMenu } from './VideoContextMenu';
 import { formatTime } from '../../utils/time';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { Play, Plus, Trash2 } from "lucide-react";
+import { Check, FileX, ListPlus, Play, Star, Trash2 } from "lucide-react";
 import { Button } from "../ui";
+import { MediaThumb, MediaTypeIcon } from "./MediaThumb";
+import styles from "./VideoCard.module.css";
 
 interface Props {
   videos: Video[];
@@ -81,10 +82,6 @@ const VideoRow = memo(function VideoRow({
   const { videoRef, isPreviewPlaying: isVideoPreviewPlaying, onMouseEnter: videoMouseEnter, onMouseLeave: videoMouseLeave } = useVideoPreview(v.path, isVideo && previewEnabled && listRowSize !== 'S');
   const onMouseEnter = useCallback(() => { audioMouseEnter(); videoMouseEnter(); }, [audioMouseEnter, videoMouseEnter]);
   const onMouseLeave = useCallback(() => { audioMouseLeave(); videoMouseLeave(); }, [audioMouseLeave, videoMouseLeave]);
-  const progressPercent =
-    v.duration && v.duration > 0
-      ? Math.min((v.progress / v.duration) * 100, 100)
-      : null;
 
   const rowRef = useRef<HTMLDivElement>(null);
   const [fileMissing, setFileMissing] = useState(false);
@@ -115,88 +112,51 @@ const VideoRow = memo(function VideoRow({
     ? `${pathParts[pathParts.length - 3]}/${pathParts[pathParts.length - 2]}`
     : pathParts[pathParts.length - 2] ?? '';
 
-  const thumbClass = { S: 'w-10', M: 'w-16', L: 'w-24', XL: 'w-32' }[listRowSize];
   const compact = listRowSize === 'S';
 
   return (
     <div
       ref={rowRef}
+      className={styles.row}
+      data-compact={compact || undefined}
+      data-selected={isSelected || undefined}
+      data-playing={isPlaying || undefined}
+      data-detail={isDetailVideo || undefined}
+      data-missing={fileMissing || undefined}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, v); }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={`group flex items-center gap-2 px-2 rounded-lg border transition-all cursor-pointer min-w-0 ${
-        compact ? 'py-1' : 'py-1.5'
-      } ${
-        fileMissing
-          ? 'border-red-500/60 opacity-60'
-          : isSelected
-            ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-950/30'
-            : isPlaying
-              ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/20'
-              : isDetailVideo
-                ? 'border-sky-400 dark:border-sky-500 bg-sky-50/60 dark:bg-sky-950/20'
-                : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50'
-      }`}
       onClick={() => onShowDetail(v)}
       onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}
     >
-      {/* チェックボックス */}
-      <div
-        className={`shrink-0 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+      {/* 選択チェック (hover か選択中に表示) */}
+      <button
+        type="button"
+        className={`${styles.check} ${styles.rowCheck} ${styles.hoverOnly}`}
+        data-checked={isSelected || undefined}
+        aria-label={t('library.select')}
+        aria-pressed={isSelected}
         onClick={(e) => { e.stopPropagation(); onCheckbox(e, v, idx); }}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
-        <div
-          className={`w-4 h-4 rounded border-2 flex items-center justify-center text-white text-[9px] font-bold transition-colors ${
-            isSelected
-              ? 'bg-blue-500 border-blue-500'
-              : 'bg-white dark:bg-gray-800 border-gray-400 dark:border-gray-500 hover:bg-gray-100'
-          }`}
-        >
-          {isSelected && '✓'}
-        </div>
-      </div>
-
-      {/* カテゴリカラーバー */}
-      {category ? (
-        <div className="w-1 self-stretch rounded-full shrink-0" style={{ backgroundColor: category.color }} />
-      ) : (
-        <div className="w-1 shrink-0" />
-      )}
+        {isSelected && <Check aria-hidden />}
+      </button>
 
       {/* サムネイル */}
-      <div className={`relative bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0 aspect-video ${thumbClass}`}>
-        {v.thumbnail ? (
-          <img
-            src={convertFileSrc(v.thumbnail)}
-            alt={title}
-            className={`w-full h-full ${isImage ? 'object-contain bg-black' : 'object-cover'}`}
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-base">
-            {isImage ? '🖼' : isAudio ? '♪' : '▶'}
-          </div>
-        )}
-        {progressPercent !== null && progressPercent > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-300/40">
-            <div className="h-full bg-blue-500" style={{ width: `${progressPercent}%` }} />
-          </div>
-        )}
-        {isPlaying && (
-          <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
-            <span className="text-white text-[8px] font-semibold bg-blue-500 px-1 rounded leading-tight">
-              {t('library.playing')}
-            </span>
-          </div>
-        )}
+      <MediaThumb
+        video={v}
+        compact
+        showDuration={false}
+        className={styles.rowThumb}
+        data-size={listRowSize}
+      >
         {isVideo && (
           <video
             ref={videoRef}
             muted
             playsInline
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 pointer-events-none ${
-              isVideoPreviewPlaying ? 'opacity-100' : 'opacity-0'
-            }`}
+            className={styles.preview}
+            data-active={isVideoPreviewPlaying || undefined}
           />
         )}
         {isAudio && isAudioPreviewPlaying && (
@@ -210,79 +170,92 @@ const VideoRow = memo(function VideoRow({
             ))}
           </div>
         )}
-      </div>
+      </MediaThumb>
 
-      {/* タイトル・親ディレクトリ・タグ */}
-      <div className="flex-1 min-w-0">
-        <p className={`font-medium truncate text-gray-800 dark:text-gray-200 ${compact ? 'text-[11px]' : 'text-xs'}`}>
-          {title}
-        </p>
+      {/* タイトル・カテゴリ・タグ・フォルダ */}
+      <div className={styles.rowBody}>
+        <p className={styles.title} title={title}>{title}</p>
         {!compact && (
-          <p className="text-[10px] truncate text-gray-400 dark:text-gray-500" title={v.path}>
-            {parentDir}
-          </p>
-        )}
-        {!compact && tags.length > 0 && (
-          <div className="flex flex-wrap gap-0.5 mt-0.5">
-            {tags.slice(0, 4).map((tag) => (
-              <TagBadge key={tag.id} tag={tag} />
-            ))}
-            {tags.length > 4 && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">+{tags.length - 4}</span>
+          <div className={styles.meta}>
+            {category && (
+              <span className={styles.category}>
+                <span className={styles.dot} style={{ backgroundColor: category.color }} />
+                {category.name}
+              </span>
             )}
+            {tags.slice(0, 3).map((tag) => (
+              <span key={tag.id} className={styles.tag} style={{ backgroundColor: tag.color }}>
+                {tag.name}
+              </span>
+            ))}
+            {tags.length > 3 && <span className={styles.more}>+{tags.length - 3}</span>}
+            <span className={styles.sub} title={v.path}>{parentDir}</span>
           </div>
         )}
       </div>
 
-      {/* ファイルなしバッジ */}
+      {/* 状態バッジ */}
+      {isPlaying && (
+        <span className={styles.softPill} data-tone="accent">
+          <span className={styles.eq} aria-hidden><span /><span /><span /></span>
+          {t('library.playing')}
+        </span>
+      )}
       {fileMissing && (
-        <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-600/80 text-white">
+        <span className={styles.softPill} data-tone="danger">
+          <FileX aria-hidden />
           {t('library.noFile')}
         </span>
       )}
-
-      {/* メディアタイプバッジ */}
       {(isImage || isAudio) && (
-        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+        <span className={styles.softPill}>
+          <MediaTypeIcon type={v.media_type} />
           {isImage ? t('library.imageType') : t('library.audioType')}
         </span>
       )}
 
-      {/* 再生時間 */}
-      <span className="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-gray-400 w-14 text-right">
-        {v.duration != null ? formatTime(v.duration) : ''}
-      </span>
+      {v.rating > 0 && (
+        <span className={styles.rating} aria-label={`★${v.rating}`}>
+          <Star aria-hidden fill="currentColor" />
+          {v.rating}
+        </span>
+      )}
 
-      {/* アクションボタン */}
-      <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <span className={styles.duration}>{v.duration != null ? formatTime(v.duration) : ''}</span>
+
+      {/* 操作ボタン (hover で表示) */}
+      <div className={`${styles.rowActions} ${styles.hoverOnly}`}>
         {onAddToPlaylist && (
           <Button
-            variant="secondary"
+            variant="ghost"
             size="icon-sm"
             aria-label={t('library.addToPlaylist')}
-            onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
             title={t('library.addToPlaylist')}
+            onClick={(e) => { e.stopPropagation(); onAddToPlaylist(v); }}
+            onDoubleClick={(e) => e.stopPropagation()}
           >
-            <Plus aria-hidden />
+            <ListPlus aria-hidden />
           </Button>
         )}
-        <Button
-          variant="primary"
-          size="icon-sm"
-          onClick={(e) => { e.stopPropagation(); onPlay(v); }}
-          title={t('library.play')}
-          aria-label={t('library.play')}
-        >
-          <Play aria-hidden fill="currentColor" />
-        </Button>
         <Button
           variant="danger-soft"
           size="icon-sm"
           onClick={(e) => { e.stopPropagation(); onDelete(v); }}
+          onDoubleClick={(e) => e.stopPropagation()}
           title={t('library.deleteVideo')}
           aria-label={t('library.deleteVideo')}
         >
           <Trash2 aria-hidden />
+        </Button>
+        <Button
+          variant="primary"
+          size="icon-sm"
+          onClick={(e) => { e.stopPropagation(); onPlay(v); }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          title={t('library.play')}
+          aria-label={t('library.play')}
+        >
+          <Play aria-hidden fill="currentColor" />
         </Button>
       </div>
     </div>

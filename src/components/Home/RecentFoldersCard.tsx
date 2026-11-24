@@ -1,4 +1,5 @@
 import { useHomeStore } from "../../store/useHomeStore";
+import homeStyles from "./Home.module.css";
 
 interface Props {
   onSelect: (dir: string) => void;
@@ -14,7 +15,7 @@ export function RecentFoldersCard({ onSelect }: Props) {
   if (recentFolders.length === 0) return null;
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">最近開いたフォルダ</h2>
       <div className="flex flex-col gap-0.5">
         {recentFolders.map((f) => (

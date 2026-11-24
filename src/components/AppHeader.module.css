@@ -148,4 +148,26 @@
     padding-inline-start: var(--space-2);
     border-inline-start: 1px solid var(--color-border);
   }
+
+  /*
+   * 狭いウィンドウ (最小 900px) でも 1 行に収める。
+   * 文字を隠すだけで操作は残す (アプリ名はロゴ、チェックボックスは title で補う)
+   */
+  .srOnlyNarrow {
+    display: inline;
+  }
+  @media (max-width: 1120px) {
+    .title,
+    .srOnlyNarrow {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .header {
+      gap: var(--space-2);
+    }
+  }
 }

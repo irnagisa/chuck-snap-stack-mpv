@@ -1,6 +1,7 @@
 import { useInboxStore } from "../../store/useInboxStore";
 import { Sparkles } from "lucide-react";
 import { Button } from "../ui";
+import homeStyles from "./Home.module.css";
 
 interface Props {
   onOrganize: () => void;
@@ -10,7 +11,7 @@ export function InboxSummaryCard({ onOrganize }: Props) {
   const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
 
   return (
-    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+    <section className={homeStyles.section}>
       <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">ライブラリ</h2>
       <div className="flex items-center justify-between gap-4">
         <div>
