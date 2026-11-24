@@ -84,7 +84,21 @@
     "av1Exclude": "Exclude AV1",
     "minDurationPlaceholder": "min secs",
     "maxDurationPlaceholder": "max secs",
-    "durationSuffix": "sec"
+    "durationSuffix": "sec",
+    "title": "Filters",
+    "reset": "Reset",
+    "rating": "Rating",
+    "audio": "Audio",
+    "watchedStatus": "Watched",
+    "mediaType": "Type",
+    "av1": "AV1",
+    "duration": "Length",
+    "all": "All",
+    "unrated": "Unrated",
+    "audioYesShort": "Yes",
+    "audioNoShort": "No",
+    "av1OnlyShort": "Converted",
+    "av1ExcludeShort": "Exclude"
   },
   "batch": {
     "selectedCount": "{{count}} selected",

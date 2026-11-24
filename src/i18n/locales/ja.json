@@ -84,7 +84,21 @@
     "av1Exclude": "AV1 変換済みを除外",
     "minDurationPlaceholder": "最短秒数",
     "maxDurationPlaceholder": "最長秒数",
-    "durationSuffix": "秒"
+    "durationSuffix": "秒",
+    "title": "絞り込み",
+    "reset": "リセット",
+    "rating": "評価",
+    "audio": "音声",
+    "watchedStatus": "視聴状態",
+    "mediaType": "種別",
+    "av1": "AV1 変換",
+    "duration": "長さ",
+    "all": "すべて",
+    "unrated": "未評価",
+    "audioYesShort": "あり",
+    "audioNoShort": "なし",
+    "av1OnlyShort": "変換済み",
+    "av1ExcludeShort": "除外"
   },
   "batch": {
     "selectedCount": "{{count}} 件選択中",

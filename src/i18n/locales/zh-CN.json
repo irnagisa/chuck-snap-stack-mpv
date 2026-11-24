@@ -84,7 +84,21 @@
     "av1Exclude": "排除 AV1 已转换",
     "minDurationPlaceholder": "最短秒数",
     "maxDurationPlaceholder": "最长秒数",
-    "durationSuffix": "秒"
+    "durationSuffix": "秒",
+    "title": "筛选",
+    "reset": "重置",
+    "rating": "评分",
+    "audio": "音频",
+    "watchedStatus": "观看状态",
+    "mediaType": "类型",
+    "av1": "AV1 转换",
+    "duration": "时长",
+    "all": "全部",
+    "unrated": "未评分",
+    "audioYesShort": "有",
+    "audioNoShort": "无",
+    "av1OnlyShort": "已转换",
+    "av1ExcludeShort": "排除"
   },
   "batch": {
     "selectedCount": "已选 {{count}} 个",

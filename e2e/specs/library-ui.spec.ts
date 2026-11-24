@@ -5,10 +5,10 @@
  */
 describe('Chuck Snap Stack - Library UI', () => {
   before(async () => {
-    // ライブラリビューに遷移し、DB 準備完了まで待機 (評価フィルターの出現で判定)
+    // ライブラリビューに遷移し、DB 準備完了まで待機 (「絞り込み」ボタンの出現で判定)
     const libBtn = await $('button=ライブラリ')
     await libBtn.click()
-    await $('button[title="評価フィルタ"]').waitForExist({ timeout: 15000 })
+    await $('button[title="絞り込み"]').waitForExist({ timeout: 15000 })
   })
 
   // ────────────────────────────────────────────
@@ -16,9 +16,12 @@ describe('Chuck Snap Stack - Library UI', () => {
   // ────────────────────────────────────────────
   describe('フィルターバー', () => {
     it('ソートセレクトに「追加日」「長さ」「評価」の選択肢がある', async () => {
-      await expect(await $('option=追加日')).toExist()
-      await expect(await $('option=長さ')).toExist()
-      await expect(await $('option=評価')).toExist()
+      // Radix Select: トリガーを開くと role="option" の選択肢が出る
+      await (await $('button[title="並び順"]')).click()
+      await expect(await $('[role="option"]*=追加日')).toExist()
+      await expect(await $('[role="option"]*=長さ')).toExist()
+      await expect(await $('[role="option"]*=評価')).toExist()
+      await browser.keys('Escape')
     })
 
     it('ソート順切り替えボタンが存在する', async () => {
@@ -30,25 +33,36 @@ describe('Chuck Snap Stack - Library UI', () => {
       expect(descExists || ascExists).toBe(true)
     })
 
-    it('評価フィルターが存在する', async () => {
-      await expect(await $('button[title="評価フィルタ"]')).toExist()
-    })
+    describe('絞り込みポップオーバー', () => {
+      before(async () => {
+        await (await $('button[title="絞り込み"]')).click()
+        await $('[role="dialog"]').waitForExist({ timeout: 5000 })
+      })
 
-    it('音声フィルターセレクトが存在する', async () => {
-      await expect(await $('button[title="音声フィルタ"]')).toExist()
-    })
+      after(async () => {
+        await browser.keys('Escape')
+      })
 
-    it('視聴状態フィルターセレクトが存在する', async () => {
-      await expect(await $('button[title="視聴状態フィルタ"]')).toExist()
-    })
+      it('評価フィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="評価フィルタ"]')).toExist()
+      })
 
-    it('メディアタイプフィルターセレクトが存在する', async () => {
-      await expect(await $('button[title="メディアタイプフィルタ"]')).toExist()
-    })
+      it('音声フィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="音声フィルタ"]')).toExist()
+      })
 
-    it('最短・最長秒数の数値入力欄が存在する', async () => {
-      await expect(await $('input[title="最小長さ (秒)"]')).toExist()
-      await expect(await $('input[title="最大長さ (秒)"]')).toExist()
+      it('視聴状態フィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="視聴状態フィルタ"]')).toExist()
+      })
+
+      it('メディアタイプフィルターが存在する', async () => {
+        await expect(await $('[role="radiogroup"][aria-label="メディアタイプフィルタ"]')).toExist()
+      })
+
+      it('最短・最長秒数の数値入力欄が存在する', async () => {
+        await expect(await $('input[title="最小長さ (秒)"]')).toExist()
+        await expect(await $('input[title="最大長さ (秒)"]')).toExist()
+      })
     })
   })
 

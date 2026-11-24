@@ -1,13 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { LibraryFilterBar } from './LibraryFilterBar';
 import type { Tag } from '../../types';
+import { TooltipProvider } from '../ui';
 import '../../i18n';
 
-/** Radix Select をキーボードで開き、表示名で選択肢を選ぶ */
-async function chooseOption(triggerTitle: string, optionName: string) {
-  fireEvent.keyDown(screen.getByTitle(triggerTitle), { key: 'Enter' });
-  fireEvent.click(await screen.findByRole('option', { name: optionName }));
+// ツールバーのアイコンボタンは Tooltip を使うので Provider で包んで描画する
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: TooltipProvider });
+
+/** 「絞り込み」ポップオーバーを開く */
+async function openFilters() {
+  fireEvent.click(screen.getByRole('button', { name: /絞り込み/ }));
+  return screen.findByRole('dialog');
+}
+
+/** ポップオーバー内のセグメントコントロールで選択肢を選ぶ */
+async function chooseSegment(groupLabel: string, optionName: string) {
+  const dialog = await openFilters();
+  const group = within(dialog).getByRole('radiogroup', { name: groupLabel });
+  fireEvent.click(within(group).getByRole('radio', { name: optionName }));
 }
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useTagStore } from '../../store/useTagStore';
@@ -169,7 +181,7 @@ describe('LibraryFilterBar — 視聴状態フィルター', () => {
     const setWatchedStatus = vi.fn();
     setupMocks({ filterWatchedStatus: 'all', setWatchedStatus });
     render(<LibraryFilterBar />);
-    await chooseOption('視聴状態フィルタ', '視聴済み');
+    await chooseSegment('視聴状態フィルタ', '視聴済み');
     expect(setWatchedStatus).toHaveBeenCalledWith('watched');
   });
 });
@@ -179,7 +191,7 @@ describe('LibraryFilterBar — メディアタイプフィルター', () => {
     const setMediaType = vi.fn();
     setupMocks({ filterMediaType: 'all', setMediaType });
     render(<LibraryFilterBar />);
-    await chooseOption('メディアタイプフィルタ', '音声');
+    await chooseSegment('メディアタイプフィルタ', '音声');
     expect(setMediaType).toHaveBeenCalledWith('audio');
   });
 });
@@ -189,21 +201,23 @@ describe('LibraryFilterBar — AV1 フィルター', () => {
     const setAv1Filter = vi.fn();
     setupMocks({ filterAv1: 'all', setAv1Filter });
     render(<LibraryFilterBar />);
-    await chooseOption('AV1 変換済みフィルタ', 'AV1 変換済みを除外');
+    await chooseSegment('AV1 変換済みフィルタ', '除外');
     expect(setAv1Filter).toHaveBeenCalledWith('exclude');
   });
 });
 
 describe('LibraryFilterBar — 長さフィルター', () => {
-  it('min duration input updates its value when changed', () => {
+  it('min duration input updates its value when changed', async () => {
     render(<LibraryFilterBar />);
+    await openFilters();
     const input = screen.getByTitle('最小長さ (秒)') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '60' } });
     expect(input.value).toBe('60');
   });
 
-  it('max duration input updates its value when changed', () => {
+  it('max duration input updates its value when changed', async () => {
     render(<LibraryFilterBar />);
+    await openFilters();
     const input = screen.getByTitle('最大長さ (秒)') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '300' } });
     expect(input.value).toBe('300');
@@ -241,5 +255,39 @@ describe('LibraryFilterBar — 表示モード', () => {
     render(<LibraryFilterBar />);
     fireEvent.click(screen.getByTitle('行サイズ: XL'));
     expect(setListItemSize).toHaveBeenCalledWith('XL');
+  });
+});
+
+describe('LibraryFilterBar — 絞り込みポップオーバー', () => {
+  it('keeps detailed filters out of the toolbar until opened', () => {
+    render(<LibraryFilterBar />);
+    expect(screen.queryByRole('radiogroup', { name: '評価フィルタ' })).not.toBeInTheDocument();
+  });
+
+  it('shows the number of active filters on the trigger', () => {
+    setupMocks({ filterWatchedStatus: 'watched', filterMediaType: 'audio' });
+    render(<LibraryFilterBar />);
+    expect(screen.getByRole('button', { name: /絞り込み/ })).toHaveTextContent('2');
+  });
+
+  it('shows a chip for each active filter and clears it', () => {
+    const setWatchedStatus = vi.fn();
+    setupMocks({ filterWatchedStatus: 'watched', setWatchedStatus });
+    render(<LibraryFilterBar />);
+    fireEvent.click(screen.getByRole('button', { name: '視聴済み をクリア' }));
+    expect(setWatchedStatus).toHaveBeenCalledWith('all');
+  });
+
+  it('reset clears all detailed filters', async () => {
+    const setWatchedStatus = vi.fn();
+    const setMediaType = vi.fn();
+    const setMinRating = vi.fn();
+    setupMocks({ filterWatchedStatus: 'watched', setWatchedStatus, setMediaType, setMinRating });
+    render(<LibraryFilterBar />);
+    const dialog = await openFilters();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'リセット' }));
+    expect(setWatchedStatus).toHaveBeenCalledWith('all');
+    expect(setMediaType).toHaveBeenCalledWith('all');
+    expect(setMinRating).toHaveBeenCalledWith(0);
   });
 });

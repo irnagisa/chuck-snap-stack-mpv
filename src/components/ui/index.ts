@@ -14,6 +14,7 @@ export { Dialog, type DialogSize } from "./Dialog";
 export { DropdownMenu } from "./DropdownMenu";
 export { Input, type InputProps } from "./Input";
 export { Collapse, useFrozenWhileExiting } from "./presence";
+export { Popover } from "./Popover";
 export { RadioGroup, RadioGroupItem } from "./RadioGroup";
 export { ScrollArea } from "./ScrollArea";
 export { SegmentedControl, type SegmentedOption } from "./SegmentedControl";
