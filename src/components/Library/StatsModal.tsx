@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { LoaderCircle, Star } from 'lucide-react';
 import { Dialog, useDialogClose } from '../ui';
 import styles from './StatsModal.module.css';
@@ -17,11 +18,12 @@ interface Stats {
   topTags: { name: string; count: number }[];
 }
 
-function formatDuration(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  if (h > 0) return `${h}時間${m}分`;
-  return `${m}分`;
+function formatDuration(sec: number, t: TFunction): string {
+  const hours = Math.floor(sec / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  return hours > 0
+    ? t('stats.durationHours', { hours, minutes })
+    : t('stats.durationMinutes', { minutes });
 }
 
 function BarChart({ items, max }: { items: { label: string; value: number }[]; max: number }) {
@@ -86,7 +88,7 @@ export function StatsModal({ onClose }: Props) {
           <div className={styles.summary}>
             {[
               { label: t('stats.totalVideos'), value: `${stats.totalVideos}${t('stats.totalVideosUnit')}` },
-              { label: t('stats.totalDuration'), value: formatDuration(stats.totalDurationSec) },
+              { label: t('stats.totalDuration'), value: formatDuration(stats.totalDurationSec, t) },
               { label: t('stats.watched'), value: `${stats.watchedCount}${t('stats.watchedUnit')} (${watchedPct}%)` },
               { label: t('stats.avgRating'), value: stats.avgRating > 0 ? `★ ${stats.avgRating.toFixed(1)}` : '—' },
             ].map((card) => (

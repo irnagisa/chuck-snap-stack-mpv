@@ -281,7 +281,27 @@
     "similarRedetect": "Re-search",
     "similarNotRun": "Similar video search has not been run yet",
     "similarDetect": "Search for similar videos",
-    "aiNsfwWarning": "⚠ AI tag suggestions may include tags describing sexual content."
+    "aiNsfwWarning": "⚠ AI tag suggestions may include tags describing sexual content.",
+    "aiTitle": "AI tag suggestions",
+    "aiEnable": "Enable AI tagging ({{size}})",
+    "aiDownloading": "Downloading… {{percent}}%",
+    "aiAnalyze": "Analyze tags",
+    "aiAnalyzing": "Analyzing…",
+    "aiNeedThumbnail": "A thumbnail is required",
+    "aiMatched": "Matching tags",
+    "aiNew": "New tag ideas",
+    "aiScore": "Score: {{score}}%",
+    "newTagTitle": "Create a new tag",
+    "newTagDesc": "Check the tag name, then create it.",
+    "newTagCreate": "Create and add",
+    "newTagCancel": "Cancel",
+    "close": "Close",
+    "similarFailed": "Similar search failed: {{error}}",
+    "renameFailed": "Failed to rename the file: {{error}}",
+    "captureFailed": "Failed to capture the thumbnail: {{error}}",
+    "subtitleFailed": "Failed to load the subtitle: {{error}}",
+    "revealFailed": "Failed to show in Finder: {{error}}",
+    "openUrlFailed": "Could not open the URL: {{error}}"
   },
   "download": {
     "title": "Download from URL",
@@ -581,7 +601,9 @@
     "topRated": "Top 5 rated",
     "recentWatched": "Recently watched",
     "topPlayed": "Top 5 played",
-    "playCountUnit": " plays"
+    "playCountUnit": " plays",
+    "durationHours": "{{hours}}h {{minutes}}m",
+    "durationMinutes": "{{minutes}}m"
   },
   "smartPlaylist": {
     "title": "Save Smart Playlist",

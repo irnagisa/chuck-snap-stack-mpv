@@ -281,7 +281,27 @@
     "similarRedetect": "再検索",
     "similarNotRun": "類似動画の検索はまだ実行されていません",
     "similarDetect": "類似動画を検索する",
-    "aiNsfwWarning": "⚠ AIタグ提案には性的な内容を示すタグが含まれる場合があります。"
+    "aiNsfwWarning": "⚠ AIタグ提案には性的な内容を示すタグが含まれる場合があります。",
+    "aiTitle": "AI タグ提案",
+    "aiEnable": "AI タグ機能を有効にする ({{size}})",
+    "aiDownloading": "ダウンロード中… {{percent}}%",
+    "aiAnalyze": "タグを分析する",
+    "aiAnalyzing": "分析中…",
+    "aiNeedThumbnail": "サムネイルが必要です",
+    "aiMatched": "既存タグ候補",
+    "aiNew": "新規タグ候補",
+    "aiScore": "スコア: {{score}}%",
+    "newTagTitle": "新しいタグを作成",
+    "newTagDesc": "タグ名を確認して作成してください。",
+    "newTagCreate": "作成して追加",
+    "newTagCancel": "キャンセル",
+    "close": "閉じる",
+    "similarFailed": "類似検索に失敗しました: {{error}}",
+    "renameFailed": "ファイルのリネームに失敗しました: {{error}}",
+    "captureFailed": "サムネイルの取得に失敗しました: {{error}}",
+    "subtitleFailed": "字幕の読み込みに失敗しました: {{error}}",
+    "revealFailed": "Finder での表示に失敗しました: {{error}}",
+    "openUrlFailed": "URL を開けませんでした: {{error}}"
   },
   "download": {
     "title": "URL からダウンロード",
@@ -581,7 +601,9 @@
     "topRated": "高評価 Top5",
     "recentWatched": "最近視聴",
     "topPlayed": "再生回数 Top5",
-    "playCountUnit": "回"
+    "playCountUnit": "回",
+    "durationHours": "{{hours}}時間{{minutes}}分",
+    "durationMinutes": "{{minutes}}分"
   },
   "smartPlaylist": {
     "title": "スマートプレイリストを保存",

@@ -281,7 +281,27 @@
     "similarRedetect": "重新搜索",
     "similarNotRun": "尚未执行相似视频搜索",
     "similarDetect": "搜索相似视频",
-    "aiNsfwWarning": "⚠ AI 标签建议可能包含涉及性内容的标签。"
+    "aiNsfwWarning": "⚠ AI 标签建议可能包含涉及性内容的标签。",
+    "aiTitle": "AI 标签建议",
+    "aiEnable": "启用 AI 标签功能（{{size}}）",
+    "aiDownloading": "下载中… {{percent}}%",
+    "aiAnalyze": "分析标签",
+    "aiAnalyzing": "分析中…",
+    "aiNeedThumbnail": "需要缩略图",
+    "aiMatched": "已有标签候选",
+    "aiNew": "新标签候选",
+    "aiScore": "得分：{{score}}%",
+    "newTagTitle": "创建新标签",
+    "newTagDesc": "请确认标签名称后创建。",
+    "newTagCreate": "创建并添加",
+    "newTagCancel": "取消",
+    "close": "关闭",
+    "similarFailed": "相似搜索失败：{{error}}",
+    "renameFailed": "重命名文件失败：{{error}}",
+    "captureFailed": "获取缩略图失败：{{error}}",
+    "subtitleFailed": "加载字幕失败：{{error}}",
+    "revealFailed": "无法在访达中显示：{{error}}",
+    "openUrlFailed": "无法打开 URL：{{error}}"
   },
   "download": {
     "title": "从 URL 下载",
@@ -581,7 +601,9 @@
     "topRated": "Top 5 评分",
     "recentWatched": "最近观看",
     "topPlayed": "Top 5 播放",
-    "playCountUnit": " 次"
+    "playCountUnit": " 次",
+    "durationHours": "{{hours}}小时{{minutes}}分钟",
+    "durationMinutes": "{{minutes}}分钟"
   },
   "smartPlaylist": {
     "title": "保存智能播放列表",

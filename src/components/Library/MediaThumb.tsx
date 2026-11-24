@@ -35,11 +35,13 @@ export function MediaTypeIcon({ type }: { type: Video["media_type"] }) {
  * (state を使わず DOM 属性で切り替え、一覧の再レンダリングを増やさない)。
  * キャッシュ済みで onLoad より先に読み終わっている場合は ref で拾う。
  */
-export function ThumbImage({ src, alt }: { src: string; alt: string }) {
+export function ThumbImage({ src, alt, version }: { src: string; alt: string; version?: number }) {
+  // version: 同じパスの画像を差し替えたとき (サムネイル再取得) にキャッシュを避けるための値
+  const url = convertFileSrc(src) + (version ? `?t=${version}` : "");
   return (
     <img
-      key={src}
-      src={convertFileSrc(src)}
+      key={url}
+      src={url}
       alt={alt}
       loading="lazy"
       ref={(el) => {
