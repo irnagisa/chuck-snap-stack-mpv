@@ -31,6 +31,41 @@ export function MediaTypeIcon({ type }: { type: Video["media_type"] }) {
 }
 
 /**
+ * サムネイル画像。読み込み完了で data-loaded を付けてフェードインさせる
+ * (state を使わず DOM 属性で切り替え、一覧の再レンダリングを増やさない)。
+ * キャッシュ済みで onLoad より先に読み終わっている場合は ref で拾う。
+ */
+export function ThumbImage({ src, alt }: { src: string; alt: string }) {
+  return (
+    <img
+      key={src}
+      src={convertFileSrc(src)}
+      alt={alt}
+      loading="lazy"
+      ref={(el) => {
+        if (el?.complete && el.naturalWidth > 0) el.dataset.loaded = "";
+      }}
+      onLoad={(e) => {
+        e.currentTarget.dataset.loaded = "";
+      }}
+    />
+  );
+}
+
+/** 音声プレビュー中の波形 (サムネイルに重ねる) */
+export function AudioWave() {
+  return (
+    <div className={styles.wave} aria-hidden>
+      <span />
+      <span />
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
+/**
  * 角丸のサムネイル。グリッドカード以外 (リスト行・ホーム・Inbox) で共通に使う。
  * 再生時間のピルと視聴進捗バーを重ねて表示する。
  */
@@ -56,7 +91,7 @@ export function MediaThumb({
       data-size={dataSize}
     >
       {v.thumbnail ? (
-        <img src={convertFileSrc(v.thumbnail)} alt={v.title ?? ""} loading="lazy" />
+        <ThumbImage src={v.thumbnail} alt={v.title ?? ""} />
       ) : (
         <div className={styles.placeholder}>
           <MediaTypeIcon type={v.media_type} />

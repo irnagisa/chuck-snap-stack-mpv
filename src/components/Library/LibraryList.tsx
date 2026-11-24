@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle, type ReactNode } from 'react';
 import type { LibraryViewHandle } from './LibraryGrid';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
@@ -15,7 +15,7 @@ import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { Check, FileX, ListPlus, Play, Star, Trash2 } from "lucide-react";
 import { Button } from "../ui";
-import { MediaThumb, MediaTypeIcon } from "./MediaThumb";
+import { AudioWave, MediaThumb, MediaTypeIcon } from "./MediaThumb";
 import styles from "./VideoCard.module.css";
 
 interface Props {
@@ -31,6 +31,8 @@ interface Props {
   onMoveDir?: (video: Video) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
+  /** 一覧が空のときに表示する内容 */
+  emptyState?: ReactNode;
 }
 
 interface VideoRowProps {
@@ -128,6 +130,15 @@ const VideoRow = memo(function VideoRow({
       onMouseLeave={onMouseLeave}
       onClick={() => onShowDetail(v)}
       onDoubleClick={(e) => { e.stopPropagation(); onPlay(v); }}
+      // キーボード: Tab で行に移動、Enter で詳細、Shift+Enter で再生
+      tabIndex={0}
+      aria-label={title}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
+        e.preventDefault();
+        if (e.shiftKey) onPlay(v);
+        else onShowDetail(v);
+      }}
     >
       {/* 選択チェック (hover か選択中に表示) */}
       <button
@@ -159,17 +170,7 @@ const VideoRow = memo(function VideoRow({
             data-active={isVideoPreviewPlaying || undefined}
           />
         )}
-        {isAudio && isAudioPreviewPlaying && (
-          <div className="absolute inset-0 bg-black/20 flex items-end justify-center gap-px pb-0.5 pointer-events-none">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="w-0.5 bg-green-400 rounded-full audio-wave-bar"
-                style={{ height: `${5 + (i % 3) * 3}px`, animation: 'audioWave 0.5s ease-in-out infinite alternate', animationDelay: `${i * 0.1}s` }}
-              />
-            ))}
-          </div>
-        )}
+        {isAudio && isAudioPreviewPlaying && <AudioWave />}
       </MediaThumb>
 
       {/* タイトル・カテゴリ・タグ・フォルダ */}
@@ -275,6 +276,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
   onMoveDir,
   selectedIds,
   onSelectionChange,
+  emptyState,
 }: Props, ref: React.Ref<LibraryViewHandle>) {
   const listRowSize = useLibraryViewStore((s) => s.listItemSize);
   const hoverPreviewEnabled = useSettingsStore((s) => s.hoverPreviewEnabled);
@@ -382,9 +384,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
     <>
       <div ref={scrollRef} className={styles.scroller}>
         {videos.length === 0 ? (
-          <p className="text-gray-400 mt-4 text-sm dark:text-gray-500">
-            動画が見つかりません。ディレクトリをスキャンしてください。
-          </p>
+          emptyState
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((virtualItem) => {

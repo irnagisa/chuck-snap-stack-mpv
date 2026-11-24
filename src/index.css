@@ -31,11 +31,3 @@ html {
   animation: loading-bar-slide 1.4s ease-in-out infinite;
 }
 
-@keyframes audioWave {
-  0%   { transform: scaleY(0.3); }
-  100% { transform: scaleY(1.0); }
-}
-
-.audio-wave-bar {
-  transform-origin: bottom;
-}

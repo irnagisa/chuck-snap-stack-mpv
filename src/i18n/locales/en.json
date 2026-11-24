@@ -210,7 +210,11 @@
     "openUrl": "Open URL",
     "deleteVideo": "Delete video",
     "playing": "Playing",
-    "select": "Select"
+    "select": "Select",
+    "emptyTitle": "No media yet",
+    "emptyDescription": "Add a folder and its videos, audio and images will show up here.",
+    "noMatchTitle": "No media matches",
+    "noMatchDescription": "Try changing the search, filters or sidebar selection."
   },
   "detail": {
     "title": "Details",

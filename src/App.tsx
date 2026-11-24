@@ -42,7 +42,8 @@ import {
 } from "./components/Layout";
 import { useInboxStore } from "./store/useInboxStore";
 import { motion } from "motion/react";
-import { Collapse, motionPresets } from "./components/ui";
+import { Button, Collapse, EmptyState, motionPresets } from "./components/ui";
+import { FolderPlus, SearchX } from "lucide-react";
 
 type MainView = "home" | "library" | "inbox";
 
@@ -212,6 +213,40 @@ function App() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
+  // 検索・絞り込み・サイドバーの選択のどれかが効いているか (空のときの表示を出し分ける)
+  const isFiltered =
+    filterSearch !== "" ||
+    filterCategoryId !== null ||
+    filterTagIds.length > 0 ||
+    filterMinRating !== 0 ||
+    filterHasAudio !== null ||
+    filterMinDuration > 0 ||
+    filterMaxDuration > 0 ||
+    filterWatchedStatus !== "all" ||
+    filterWatchDir !== null ||
+    filterMediaType !== "all" ||
+    filterAv1 !== "all";
+
+  const libraryEmptyState = isFiltered ? (
+    <EmptyState
+      icon={<SearchX />}
+      title={t("library.noMatchTitle")}
+      description={t("library.noMatchDescription")}
+    />
+  ) : (
+    <EmptyState
+      icon={<FolderPlus />}
+      title={t("library.emptyTitle")}
+      description={t("library.emptyDescription")}
+      action={
+        <Button variant="primary" onClick={handlePickDir}>
+          <FolderPlus aria-hidden />
+          {t("app.addFolder")}
+        </Button>
+      }
+    />
+  );
+
   const selectedVideos = useMemo(
     () => videos.filter((v) => selectedVideoIds.has(v.id)),
     [videos, selectedVideoIds]
@@ -363,6 +398,7 @@ function App() {
                               <LibraryList
                                 ref={libraryRef}
                                 videos={videos}
+                                emptyState={libraryEmptyState}
                                 currentVideoId={currentVideo?.id ?? null}
                                 detailVideoId={detailVideo?.id ?? null}
                                 scrollResetKey={scrollResetKey}
@@ -379,6 +415,7 @@ function App() {
                               <LibraryGrid
                                 ref={libraryRef}
                                 videos={videos}
+                                emptyState={libraryEmptyState}
                                 currentVideoId={currentVideo?.id ?? null}
                                 detailVideoId={detailVideo?.id ?? null}
                                 scrollResetKey={scrollResetKey}

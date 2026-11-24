@@ -61,6 +61,13 @@
     &[data-missing] {
       opacity: 0.6;
     }
+    /* キーボード操作時の輪郭 (outline だと角丸・他の状態の輪郭と重なるので box-shadow で描く) */
+    &:focus-visible {
+      outline: none;
+      box-shadow:
+        0 0 0 2px var(--color-focus-ring),
+        var(--shadow-md);
+    }
     &[data-missing] .thumb img {
       filter: grayscale(1);
     }
@@ -88,7 +95,14 @@
       object-fit: cover;
     }
     & img {
-      transition: scale 400ms var(--ease-out);
+      opacity: 0;
+      transition:
+        opacity var(--duration-normal) ease,
+        scale 400ms var(--ease-out);
+    }
+    /* 読み込みが終わるまでは背景 (プレースホルダー色) を見せ、終わったらフェードイン */
+    & img[data-loaded] {
+      opacity: 1;
     }
   }
   .card:hover .thumb img {
@@ -222,6 +236,63 @@
     left: var(--space-1-5);
   }
 
+  /* 右上の hover 操作ボタン群 */
+  .actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+  .actions .danger {
+    color: var(--color-danger-fg);
+  }
+
+  /* 音声プレビュー中の波形 */
+  .wave {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    padding-bottom: var(--space-2);
+    background: oklch(0% 0 0 / 0.2);
+    pointer-events: none;
+
+    & span {
+      width: 3px;
+      height: 0.5rem;
+      border-radius: var(--radius-full);
+      background: var(--palette-accent-300);
+      transform-origin: bottom;
+      animation: eq 0.5s ease-in-out infinite alternate;
+    }
+    & span:nth-child(3n + 2) {
+      height: 0.8rem;
+    }
+    & span:nth-child(3n) {
+      height: 1.1rem;
+    }
+    & span:nth-child(2) { animation-delay: -0.1s; }
+    & span:nth-child(3) { animation-delay: -0.2s; }
+    & span:nth-child(4) { animation-delay: -0.3s; }
+    & span:nth-child(5) { animation-delay: -0.4s; }
+  }
+  .thumb[data-compact] .wave {
+    gap: 1px;
+    padding-bottom: 3px;
+
+    & span {
+      width: 2px;
+      height: 5px;
+    }
+    & span:nth-child(3n + 2) {
+      height: 8px;
+    }
+    & span:nth-child(3n) {
+      height: 11px;
+    }
+  }
+
   .center {
     position: absolute;
     inset: 0;
@@ -314,7 +385,8 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .eq span {
+    .eq span,
+    .wave span {
       animation: none;
     }
   }
@@ -465,6 +537,10 @@
     }
     &[data-missing] {
       opacity: 0.6;
+    }
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--color-focus-ring);
     }
   }
   .row[data-compact] {

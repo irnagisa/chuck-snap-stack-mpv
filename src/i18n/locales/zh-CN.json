@@ -210,7 +210,11 @@
     "openUrl": "打开链接",
     "deleteVideo": "删除视频",
     "playing": "播放中",
-    "select": "选择"
+    "select": "选择",
+    "emptyTitle": "还没有媒体",
+    "emptyDescription": "添加文件夹后，其中的视频、音频和图片会显示在这里。",
+    "noMatchTitle": "没有符合条件的媒体",
+    "noMatchDescription": "请尝试更改搜索关键词、筛选条件或侧边栏中的选择。"
   },
   "detail": {
     "title": "详情",

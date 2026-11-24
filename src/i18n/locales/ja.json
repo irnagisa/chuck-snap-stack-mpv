@@ -210,7 +210,11 @@
     "openUrl": "URLを開く",
     "deleteVideo": "動画を削除",
     "playing": "再生中",
-    "select": "選択"
+    "select": "選択",
+    "emptyTitle": "メディアがまだありません",
+    "emptyDescription": "フォルダを追加すると、中の動画・音声・画像がここに並びます。",
+    "noMatchTitle": "条件に合うメディアがありません",
+    "noMatchDescription": "検索キーワードや絞り込み、サイドバーの選択を変えてみてください。"
   },
   "detail": {
     "title": "詳細",

@@ -1,6 +1,6 @@
-import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from "react-i18next";
 import type { Video, Tag, Category } from '../../types';
@@ -16,6 +16,7 @@ import { motion } from 'motion/react';
 import { Check, ExternalLink, FileX, Film, Image as ImageIcon, Link2, ListPlus, Music, Play, Star, Trash2, VolumeX } from 'lucide-react';
 import { Button, motionPresets } from '../ui';
 import { formatTime } from '../../utils/time';
+import { AudioWave, ThumbImage } from './MediaThumb';
 import styles from './VideoCard.module.css';
 
 interface VideoCardProps {
@@ -127,10 +128,19 @@ const VideoCard = memo(function VideoCard({
       onMouseLeave={onMouseLeave}
       onClick={handlePrimaryClick}
       onDoubleClick={(e) => { e.stopPropagation(); handlePlay(); }}
+      // キーボード: Tab でカードに移動、Enter で詳細、Shift+Enter で再生
+      tabIndex={0}
+      aria-label={title}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
+        e.preventDefault();
+        if (e.shiftKey) handlePlay();
+        else handlePrimaryClick();
+      }}
     >
       <div className={styles.thumb}>
         {v.thumbnail ? (
-          <img src={convertFileSrc(v.thumbnail)} alt={v.title ?? ''} loading="lazy" />
+          <ThumbImage src={v.thumbnail} alt={v.title ?? ''} />
         ) : (
           <div className={styles.placeholder}>
             {isLink ? <Link2 aria-hidden /> : isImage ? <ImageIcon aria-hidden /> : isAudio ? <Music aria-hidden /> : <Film aria-hidden />}
@@ -146,17 +156,7 @@ const VideoCard = memo(function VideoCard({
             data-active={isVideoPreviewPlaying || undefined}
           />
         )}
-        {isAudio && isAudioPreviewPlaying && (
-          <div className="absolute inset-0 bg-black/20 flex items-end justify-center gap-0.5 pb-1.5 pointer-events-none">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="w-1 bg-green-400 rounded-full audio-wave-bar"
-                style={{ height: `${8 + (i % 3) * 5}px`, animation: 'audioWave 0.5s ease-in-out infinite alternate', animationDelay: `${i * 0.1}s` }}
-              />
-            ))}
-          </div>
-        )}
+        {isAudio && isAudioPreviewPlaying && <AudioWave />}
 
         {/* 左上: 選択チェック (hover か選択中に表示) */}
         <div className={styles.topLeft}>
@@ -181,7 +181,7 @@ const VideoCard = memo(function VideoCard({
               {t('library.playing')}
             </span>
           )}
-          <div className={`flex gap-1 ${styles.hoverOnly}`}>
+          <div className={`${styles.actions} ${styles.hoverOnly}`}>
             {onAddToPlaylist && (
               <Button
                 variant="secondary"
@@ -197,7 +197,7 @@ const VideoCard = memo(function VideoCard({
             <Button
               variant="secondary"
               size="icon-sm"
-              className="text-red-500"
+              className={styles.danger}
               onClick={(e) => { e.stopPropagation(); onDelete(v); }}
               onDoubleClick={(e) => e.stopPropagation()}
               title={t('library.deleteVideo')}
@@ -294,6 +294,8 @@ interface Props {
   onMoveDir?: (video: Video) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
+  /** 一覧が空のときに表示する内容 */
+  emptyState?: ReactNode;
 }
 
 const ITEM_MIN_WIDTH = 160;
@@ -314,6 +316,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
   onMoveDir,
   selectedIds,
   onSelectionChange,
+  emptyState,
 }: Props, ref: React.Ref<LibraryViewHandle>) {
   // useShallow: videoTags の参照が変わっても内容が同一なら再レンダリングをスキップ
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
@@ -455,9 +458,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
     <>
       <div ref={scrollRef} className={styles.scroller}>
         {videos.length === 0 ? (
-          <p className="text-gray-400 mt-4 text-sm dark:text-gray-500">
-            動画が見つかりません。ディレクトリをスキャンしてください。
-          </p>
+          emptyState
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {

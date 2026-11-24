@@ -12,6 +12,7 @@ export { ConfirmDialog } from "./ConfirmDialog";
 export { ContextMenu } from "./ContextMenu";
 export { Dialog, type DialogSize } from "./Dialog";
 export { DropdownMenu } from "./DropdownMenu";
+export { EmptyState } from "./EmptyState";
 export { Input, type InputProps } from "./Input";
 export { Collapse, useFrozenWhileExiting } from "./presence";
 export { Popover } from "./Popover";
