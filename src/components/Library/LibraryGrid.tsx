@@ -12,9 +12,8 @@ import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
-import { motion } from 'motion/react';
 import { Check, ExternalLink, FileX, Film, Image as ImageIcon, Link2, ListPlus, Music, Play, Star, Trash2, VolumeX } from 'lucide-react';
-import { Button, motionPresets } from '../ui';
+import { Button } from '../ui';
 import { formatTime } from '../../utils/time';
 import { AudioWave, ThumbImage } from './MediaThumb';
 import styles from './VideoCard.module.css';
@@ -114,15 +113,13 @@ const VideoCard = memo(function VideoCard({
     progressPercent !== null && progressPercent > 0 ? progressPercent : v.progress > 0 && progressPercent === null ? 100 : 0;
 
   return (
-    <motion.div
+    <div
       ref={cardRef}
       className={styles.card}
       data-selected={isSelected || undefined}
       data-playing={isPlaying || undefined}
       data-detail={isDetailVideo || undefined}
       data-missing={fileMissing || undefined}
-      whileHover={{ y: -3 }}
-      transition={motionPresets.transitions.spring}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, v); }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -273,7 +270,7 @@ const VideoCard = memo(function VideoCard({
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 });
 
