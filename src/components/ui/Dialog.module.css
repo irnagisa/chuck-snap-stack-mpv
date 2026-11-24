@@ -68,8 +68,14 @@
     line-height: var(--leading-normal);
   }
 
+  /*
+   * flex-basis は auto にする。flex: 1 (basis 0) だと height: fit-content の .content を
+   * 計算するときに WebKit (Tauri の macOS WebView) が本文の高さを 0 とみなし、
+   * ダイアログがヘッダーとフッターだけの高さに潰れる。
+   * auto なら本文の高さぶん伸び、max-height に達したら縮んで本文がスクロールする。
+   */
   .body {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     padding: var(--space-4) var(--space-5);
     overflow-y: auto;

@@ -9,6 +9,7 @@ import {
   type AiModelType, KEY_ACTION_KEYS, DEFAULT_KEYBINDINGS,
 } from "../../store/useSettingsStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { toast } from "../../store/useToastStore";
 import { LANGUAGE_LABELS, type Language } from "../../i18n";
 import { CategoryMigrationModal } from "../Library/CategoryMigrationModal";
 import { FolderPlus, Keyboard, Moon, RotateCw, Sun, SunMoon, X } from "lucide-react";
@@ -164,7 +165,7 @@ export function SettingsPanel({ onClose }: Props) {
       await invoke('download_ai_model', { modelType: aiModelType });
       setAiModelDownloaded(true);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
       setAiModelDownloading(false);
     }
   };
@@ -176,7 +177,7 @@ export function SettingsPanel({ onClose }: Props) {
       await invoke('uninstall_ai_model', { modelType: aiModelType });
       setAiModelDownloaded(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setAiModelUninstalling(false);
     }
@@ -189,7 +190,7 @@ export function SettingsPanel({ onClose }: Props) {
       setWsPort(actualPort);
       setWsRunning(true);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setWsLoading(false);
     }
@@ -201,7 +202,7 @@ export function SettingsPanel({ onClose }: Props) {
       await invoke('stop_web_server');
       setWsRunning(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setWsLoading(false);
     }
@@ -233,7 +234,7 @@ export function SettingsPanel({ onClose }: Props) {
       const detected = await invoke<string>("detect_ytdlp_path");
       setLocal((prev) => ({ ...prev, ytdlpPath: detected }));
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     }
   };
 

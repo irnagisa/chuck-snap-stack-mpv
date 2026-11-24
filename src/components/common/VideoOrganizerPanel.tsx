@@ -4,6 +4,7 @@ import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } 
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useInboxStore } from '../../store/useInboxStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { toast } from '../../store/useToastStore';
 import { TagBadge } from '../Library/TagBadge';
 import { IconPicker, MediaIcon } from '../../lib/mediaIcons';
 import type { Video, Tag } from '../../types';
@@ -127,7 +128,7 @@ export function VideoOrganizerPanel({ video }: Props) {
         const destDir = catPath ? `${watchDir}/${catPath}` : `${watchDir}/Unsorted`;
         const result = await moveVideoFile(video.id, destDir);
         if (result === null) {
-          alert(t('syncMode.moveFileFailed'));
+          toast.error(t('syncMode.moveFileFailed'));
         }
       }
     }
