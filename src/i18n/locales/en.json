@@ -45,9 +45,12 @@
     "transcodeBatchPartial": "Transcode finished: {{failed}} of {{total}} failed"
   },
   "sidebar": {
-    "categoryTab": "Category",
-    "folderTab": "Folder",
-    "playlistTab": "Playlist"
+    "label": "Library navigation",
+    "searchPlaceholder": "Filter...",
+    "filtering": "Filtering by this section",
+    "moreActions": "Actions for {{name}}",
+    "allHint": "Clear all category, folder and tag filters",
+    "tagHint": "Click to add or remove from the filter. F2 to edit, Delete to remove"
   },
   "filters": {
     "sortBy": "Sort by",
@@ -335,7 +338,9 @@
     "all": "All",
     "empty": "No folders registered",
     "rescan": "Rescan",
-    "unwatch": "Unwatch"
+    "unwatch": "Unwatch",
+    "unwatchConfirmTitle": "Stop watching \"{{name}}\"?",
+    "unwatchConfirmDescription": "Media in this folder will be removed from the library. The files themselves are not deleted."
   },
   "category": {
     "title": "Category",
@@ -364,7 +369,24 @@
     "color": "Color",
     "icon": "Icon",
     "parent": "Parent",
-    "group": "Group"
+    "group": "Group",
+    "name": "Name",
+    "empty": "No categories",
+    "addChildTitle": "Add subcategory to \"{{name}}\"",
+    "editTitle": "Edit category",
+    "editTagTitle": "Edit tag",
+    "addGroupLong": "Add tag group",
+    "deleteConfirmTitle": "Delete category \"{{name}}\"?",
+    "deleteConfirmDescription": "Media in this category become uncategorized and move to the Inbox. Subcategories move to the top level.",
+    "deleteTagConfirmTitle": "Delete tag \"{{name}}\"?",
+    "deleteTagConfirmDescription": "This tag will be removed from all media.",
+    "deleteGroupConfirmTitle": "Delete group \"{{name}}\"?",
+    "deleteGroupConfirmDescription": "Tags in this group are kept and move to \"Others\".",
+    "editTags": "Edit tags",
+    "finishEditingTags": "Done editing",
+    "editTagsHint": "Click a tag to edit it, or × to delete it",
+    "editNamed": "Edit {{name}}",
+    "deleteNamed": "Delete {{name}}"
   },
   "playlist": {
     "title": "Playlists",
@@ -379,7 +401,10 @@
     "noVideos": "No videos. Add some from the library.",
     "removeFromPlaylist": "Remove from playlist",
     "dragToReorder": "Drag to reorder",
-    "countSuffix": " items"
+    "countSuffix": " items",
+    "smartLoadError": "Failed to load smart playlists: {{error}}",
+    "deleteConfirmTitle": "Delete \"{{name}}\"?",
+    "deleteConfirmDescription": "Only the playlist is deleted. Media stay in the library."
   },
   "addToPlaylist": {
     "title": "Add to Playlist",

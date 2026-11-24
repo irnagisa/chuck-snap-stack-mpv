@@ -1,5 +1,5 @@
 /**
- * ライブラリ UI テスト: フィルターバー・表示モード切り替え・サイドバータブ
+ * ライブラリ UI テスト: フィルターバー・表示モード切り替え・サイドバー
  *
  * DB 初期化完了後にフィルターバーが描画されるため、before フックで待機する。
  */
@@ -101,31 +101,28 @@ describe('Chuck Snap Stack - Library UI', () => {
   })
 
   // ────────────────────────────────────────────
-  // サイドバータブ
+  // サイドバー (折りたためるセクション)
   // ────────────────────────────────────────────
-  describe('サイドバータブ', () => {
-    it('カテゴリ・フォルダ・リストの 3 タブが表示される', async () => {
-      await expect(await $('button=カテゴリ')).toExist()
-      await expect(await $('button=フォルダ')).toExist()
-      await expect(await $('button=リスト')).toExist()
+  describe('サイドバー', () => {
+    it('プレイリスト・カテゴリ・フォルダのセクションが並んで表示される', async () => {
+      await expect(await $('section[aria-label="プレイリスト"]')).toExist()
+      await expect(await $('section[aria-label="カテゴリ"]')).toExist()
+      await expect(await $('section[aria-label="フォルダ"]')).toExist()
     })
 
-    it('フォルダタブに切り替えられる', async () => {
-      const folderTab = await $('button=フォルダ')
-      await folderTab.click()
-      await expect(folderTab).toBeDisplayed()
+    it('セクションの見出しで折りたたみと展開ができる', async () => {
+      const toggle = await $('section[aria-label="フォルダ"] button[aria-expanded]')
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     })
 
-    it('プレイリストタブに切り替えられる', async () => {
-      const listTab = await $('button=リスト')
-      await listTab.click()
-      await expect(listTab).toBeDisplayed()
-    })
-
-    it('カテゴリタブに戻れる', async () => {
-      const categoryTab = await $('button=カテゴリ')
-      await categoryTab.click()
-      await expect(categoryTab).toBeDisplayed()
+    it('「すべて」で絞り込みを解除できる', async () => {
+      const all = await $('nav[aria-label="ライブラリのナビゲーション"]').$('button=すべて')
+      await all.click()
+      await expect(all).toHaveAttribute('aria-current', 'true')
     })
   })
 })

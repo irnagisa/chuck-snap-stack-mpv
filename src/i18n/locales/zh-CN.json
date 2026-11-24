@@ -45,9 +45,12 @@
     "transcodeBatchPartial": "转码结束: {{total}} 个中 {{failed}} 个失败"
   },
   "sidebar": {
-    "categoryTab": "分类",
-    "folderTab": "文件夹",
-    "playlistTab": "播放列表"
+    "label": "媒体库导航",
+    "searchPlaceholder": "筛选...",
+    "filtering": "正在按此部分筛选",
+    "moreActions": "{{name}} 的操作",
+    "allHint": "清除所有分类、文件夹和标签筛选",
+    "tagHint": "点击添加或移除筛选。F2 编辑，Delete 删除"
   },
   "filters": {
     "sortBy": "排序方式",
@@ -335,7 +338,9 @@
     "all": "全部",
     "empty": "未注册文件夹",
     "rescan": "重新扫描",
-    "unwatch": "取消监视"
+    "unwatch": "取消监视",
+    "unwatchConfirmTitle": "停止监视“{{name}}”？",
+    "unwatchConfirmDescription": "此文件夹中的媒体将从媒体库中移除。文件本身不会被删除。"
   },
   "category": {
     "title": "分类",
@@ -364,7 +369,24 @@
     "color": "颜色",
     "icon": "图标",
     "parent": "父分类",
-    "group": "分组"
+    "group": "分组",
+    "name": "名称",
+    "empty": "没有分类",
+    "addChildTitle": "向“{{name}}”添加子分类",
+    "editTitle": "编辑分类",
+    "editTagTitle": "编辑标签",
+    "addGroupLong": "添加标签组",
+    "deleteConfirmTitle": "删除分类“{{name}}”？",
+    "deleteConfirmDescription": "此分类中的媒体将变为未分类并移至收件箱。子分类将移至顶层。",
+    "deleteTagConfirmTitle": "删除标签“{{name}}”？",
+    "deleteTagConfirmDescription": "将从所有媒体中移除此标签。",
+    "deleteGroupConfirmTitle": "删除标签组“{{name}}”？",
+    "deleteGroupConfirmDescription": "组内的标签不会被删除，将移至“其他”。",
+    "editTags": "编辑标签",
+    "finishEditingTags": "完成编辑",
+    "editTagsHint": "点击标签进行编辑，点击 × 删除",
+    "editNamed": "编辑 {{name}}",
+    "deleteNamed": "删除 {{name}}"
   },
   "playlist": {
     "title": "播放列表",
@@ -379,7 +401,10 @@
     "noVideos": "暂无视频，请从媒体库添加。",
     "removeFromPlaylist": "从播放列表移除",
     "dragToReorder": "拖动以排序",
-    "countSuffix": " 个"
+    "countSuffix": " 个",
+    "smartLoadError": "加载智能播放列表失败: {{error}}",
+    "deleteConfirmTitle": "删除“{{name}}”？",
+    "deleteConfirmDescription": "仅删除播放列表，媒体仍保留在媒体库中。"
   },
   "addToPlaylist": {
     "title": "添加到播放列表",

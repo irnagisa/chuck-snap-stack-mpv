@@ -106,7 +106,6 @@ function App() {
     })));
 
   const viewMode = useLibraryViewStore((s) => s.viewMode);
-  const setSidebarTab = useLibraryViewStore((s) => s.setSidebarTab);
 
   const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
 
@@ -308,10 +307,9 @@ function App() {
   const handleHomeOpenFolder = useCallback(
     (dir: string) => {
       setMainView("library");
-      setSidebarTab("folder");
       useLibraryStore.getState().setWatchDirFilter(dir);
     },
-    [setSidebarTab]
+    []
   );
 
   return (

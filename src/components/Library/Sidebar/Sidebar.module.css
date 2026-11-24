@@ -1,0 +1,518 @@
+/*
+ * ライブラリの左カラム。
+ * タブや上下分割は持たず、折りたためるセクションを 1 本のスクロールに並べる。
+ * 行は角丸のピル、先頭にカテゴリ / タグの色を淡く敷いたアイコンを置く。
+ * 選択中は行全体をその色でうっすら塗る (色は --tag-color で受け取る)。
+ */
+@layer ui {
+  .root {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+  }
+  .search {
+    flex-shrink: 0;
+    width: 100%;
+  }
+  .scroll {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-height: 0;
+    padding-bottom: var(--space-2);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .spinning {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      rotate: 360deg;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinning {
+      animation-duration: 3s;
+    }
+  }
+
+  /* ---- セクション ---- */
+  .section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .sectionHead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-0-5);
+    min-height: 1.75rem;
+    padding-inline-end: var(--space-0-5);
+    background: var(--color-bg-surface);
+  }
+  .sectionToggle {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    height: 1.75rem;
+    padding: 0 var(--space-1);
+    border: none;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--color-fg-subtle);
+    font: inherit;
+    font-size: 0.6875rem;
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.06em;
+    text-align: left;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color var(--duration-fast) ease;
+
+    &:hover {
+      color: var(--color-fg);
+    }
+    & > svg {
+      flex-shrink: 0;
+      width: 0.75rem;
+      height: 0.75rem;
+      transition: rotate var(--duration-normal) var(--ease-out);
+    }
+    &[data-open] > svg {
+      rotate: 90deg;
+    }
+  }
+  .sectionTitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 折りたたみ中でも、そのセクションで絞り込んでいることが分かる印 */
+  .activeDot {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+  }
+  .sectionBody {
+    padding-bottom: var(--space-1-5);
+  }
+
+  /* ---- 行 ---- */
+  .rowWrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  /* 一覧の行 (ボタンの見た目ではないクリック要素) */
+  .row {
+    --chip: var(--tag-color, var(--color-accent));
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    height: 2rem;
+    padding: 0 var(--space-2) 0 var(--space-1);
+    border: none;
+    border-radius: var(--radius-lg);
+    background: none;
+    color: var(--color-fg);
+    font: inherit;
+    font-size: var(--text-xs);
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color var(--duration-fast) ease,
+      color var(--duration-fast) ease;
+
+    &:hover {
+      background: var(--color-bg-hover);
+    }
+    &[data-selected] {
+      background: color-mix(in oklch, var(--chip) 14%, transparent);
+      color: color-mix(in oklch, var(--chip) 60%, var(--color-fg));
+      font-weight: var(--weight-semibold);
+    }
+  }
+  /* 「…」ボタンがある行は、hover 中その分だけ文字を短くする */
+  .rowWrap[data-has-menu]:hover .row,
+  .rowWrap[data-has-menu]:focus-within .row,
+  .rowWrap[data-menu-open] .row {
+    padding-inline-end: 2rem;
+  }
+  .rowText {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 色付きアイコン */
+  .iconBadge {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in oklch, var(--chip) 16%, transparent);
+    color: color-mix(in oklch, var(--chip) 80%, var(--color-fg));
+    transition: background-color var(--duration-fast) ease;
+
+    &[data-neutral] {
+      background: var(--color-bg-active);
+      color: var(--color-fg-muted);
+    }
+  }
+  .row[data-selected] .iconBadge {
+    background: color-mix(in oklch, var(--chip) 26%, transparent);
+  }
+  .row[data-selected] .iconBadge[data-neutral] {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-fg);
+  }
+  .badgeIcon {
+    width: 0.85rem;
+    height: 0.85rem;
+  }
+
+  /* hover で出る「…」 */
+  .rowMore {
+    position: absolute;
+    inset-block: 0;
+    right: var(--space-1);
+    display: flex;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    translate: 4px 0;
+    transition:
+      opacity var(--duration-fast) ease,
+      translate var(--duration-normal) var(--ease-out);
+  }
+  .rowWrap:hover > .rowMore,
+  .rowWrap:focus-within > .rowMore,
+  .rowWrap[data-menu-open] > .rowMore {
+    opacity: 1;
+    pointer-events: auto;
+    translate: 0 0;
+  }
+
+  /* ---- カテゴリツリーの開閉 ---- */
+  .toggle,
+  .toggleSpacer {
+    flex-shrink: 0;
+    width: 1.125rem;
+  }
+  .toggle {
+    display: grid;
+    place-items: center;
+    height: 1.5rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--color-fg-subtle);
+    cursor: pointer;
+    transition: color var(--duration-fast) ease;
+
+    &:hover {
+      color: var(--color-fg);
+    }
+    & svg {
+      width: 0.8rem;
+      height: 0.8rem;
+      transition: rotate var(--duration-normal) var(--ease-out);
+    }
+    &[data-open] svg {
+      rotate: 90deg;
+    }
+  }
+  /* 子カテゴリの先頭に細い縦線を引いて階層を示す */
+  .toggleSpacer[data-child] {
+    align-self: stretch;
+    background: linear-gradient(var(--color-border), var(--color-border)) center / 1px 100% no-repeat;
+  }
+
+  /* ---- タグ (複数選べるのでチップで並べる) ---- */
+  .tagGroup {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+  .tagGroup + .tagGroup {
+    margin-top: var(--space-1-5);
+  }
+  /*
+   * グループ見出しは一段下げ、矢印をセクション名 (「タグ」の文字) の位置から始める。
+   * セクション見出しの矢印と縦にそろうと、グループがセクションと同じ階層に見えるため。
+   * ずらす量 = セクション見出しの矢印 (0.75rem) + 矢印と文字の間 (--space-1)
+   */
+  .tagGroup[data-grouped] {
+    margin-inline-start: calc(0.75rem + var(--space-1));
+  }
+  .groupHead {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .groupToggle {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    height: 1.5rem;
+    padding: 0 var(--space-2) 0 var(--space-1);
+    border: none;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--color-fg-muted);
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--color-fg);
+    }
+    & > svg {
+      flex-shrink: 0;
+      width: 0.75rem;
+      height: 0.75rem;
+      color: var(--color-fg-subtle);
+      transition: rotate var(--duration-normal) var(--ease-out);
+    }
+    &[data-open] > svg {
+      rotate: 90deg;
+    }
+  }
+  .groupHead[data-has-menu]:hover .groupToggle,
+  .groupHead[data-has-menu]:focus-within .groupToggle,
+  .groupHead[data-menu-open] .groupToggle {
+    padding-inline-end: 2rem;
+  }
+  .groupHead:hover > .rowMore,
+  .groupHead:focus-within > .rowMore,
+  .groupHead[data-menu-open] > .rowMore {
+    opacity: 1;
+    pointer-events: auto;
+    translate: 0 0;
+  }
+  .groupName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .groupCount {
+    color: var(--color-fg-subtle);
+    font-weight: var(--weight-medium);
+    font-variant-numeric: tabular-nums;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding-inline: var(--space-1);
+  }
+  /*
+   * グループ内のタグ。見出しの矢印の真下に縦線を引き、チップはグループ名の位置から始める。
+   * 矢印の中心 = 見出しの左余白 (--space-1) + 矢印の幅の半分 (0.375rem)
+   */
+  .groupBody {
+    margin-inline-start: calc(var(--space-1) + 0.375rem);
+    padding-block: var(--space-0-5);
+    padding-inline-start: calc(0.375rem - 1px);
+    border-inline-start: 1px solid var(--color-border);
+  }
+
+  .groupToggle[data-static] {
+    /* 開閉ボタンの矢印 (幅 0.75rem + 左右の余白) の分だけずらし、他のグループ名とそろえる */
+    padding-inline-start: calc(var(--space-1) * 2 + 0.75rem);
+    cursor: default;
+
+    &:hover {
+      color: var(--color-fg-muted);
+    }
+  }
+  .chipWrap {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* タグのチップ (ボタンの見た目ではないクリック要素) */
+  .chip {
+    --chip: var(--tag-color, var(--color-accent));
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 100%;
+    height: 1.5rem;
+    padding: 0 var(--space-2) 0 var(--space-1-5);
+    border: 1px solid color-mix(in oklch, var(--chip) 22%, transparent);
+    border-radius: var(--radius-full);
+    background: color-mix(in oklch, var(--chip) 9%, transparent);
+    color: color-mix(in oklch, var(--chip) 65%, var(--color-fg));
+    font: inherit;
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition:
+      background-color var(--duration-fast) ease,
+      border-color var(--duration-fast) ease,
+      color var(--duration-fast) ease;
+
+    &:hover {
+      background: color-mix(in oklch, var(--chip) 18%, transparent);
+    }
+    &[data-selected] {
+      border-color: var(--chip);
+      background: var(--chip);
+      color: var(--palette-white);
+      font-weight: var(--weight-semibold);
+    }
+    & svg {
+      flex-shrink: 0;
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+  }
+  /*
+   * 編集モードのチップ。枠を破線にして「押すと編集」の状態だと分かるようにし、右端に × を置く。
+   * 外側は飾りの span で、押せるのは中の本体と × の 2 つ。
+   */
+  .chip[data-editing] {
+    gap: 0;
+    padding-inline-end: 2px;
+    border-style: dashed;
+    border-color: color-mix(in oklch, var(--chip) 55%, transparent);
+    cursor: default;
+
+    &:hover {
+      background: color-mix(in oklch, var(--chip) 9%, transparent);
+    }
+  }
+  .chipMain {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    height: 100%;
+    padding: 0 var(--space-1) 0 0;
+    border: none;
+    border-radius: var(--radius-full);
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+  }
+  .chipRemove {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-full);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color var(--duration-fast) ease;
+
+    &:hover {
+      background: color-mix(in oklch, var(--chip) 28%, transparent);
+    }
+    & svg {
+      width: 0.7rem;
+      height: 0.7rem;
+    }
+  }
+  .editHint {
+    margin: 0 0 var(--space-1-5);
+    padding-inline: var(--space-2);
+    color: var(--color-fg-subtle);
+    font-size: var(--text-xs);
+  }
+
+  .chipText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .empty {
+    padding: var(--space-1) var(--space-2);
+    color: var(--color-fg-subtle);
+    font-size: var(--text-xs);
+  }
+  .separator {
+    height: 1px;
+    margin: var(--space-1) var(--space-2);
+    background: var(--color-border);
+  }
+
+  /* ---- 追加・編集のポップオーバー ---- */
+  .editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2-5);
+    width: 16rem;
+  }
+  .editorTitle {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+  .editorField {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .editorLabel {
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+  }
+  .fullWidth {
+    width: 100%;
+  }
+  .editorActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-1);
+  }
+}

@@ -45,9 +45,12 @@
     "transcodeBatchPartial": "変換終了: {{total}} 件中 {{failed}} 件失敗"
   },
   "sidebar": {
-    "categoryTab": "カテゴリ",
-    "folderTab": "フォルダ",
-    "playlistTab": "リスト"
+    "label": "ライブラリのナビゲーション",
+    "searchPlaceholder": "絞り込み...",
+    "filtering": "このセクションで絞り込み中",
+    "moreActions": "{{name}} の操作",
+    "allHint": "カテゴリ・フォルダ・タグの絞り込みをすべて解除",
+    "tagHint": "クリックで絞り込みに追加・解除。F2 で編集、Delete で削除"
   },
   "filters": {
     "sortBy": "並び順",
@@ -335,7 +338,9 @@
     "all": "すべて",
     "empty": "フォルダ未登録",
     "rescan": "再スキャン",
-    "unwatch": "監視解除"
+    "unwatch": "監視解除",
+    "unwatchConfirmTitle": "「{{name}}」の監視を解除しますか？",
+    "unwatchConfirmDescription": "このフォルダ内のメディアはライブラリから外れます。ファイル自体は削除されません。"
   },
   "category": {
     "title": "カテゴリ",
@@ -364,7 +369,24 @@
     "color": "色",
     "icon": "アイコン",
     "parent": "親カテゴリ",
-    "group": "グループ"
+    "group": "グループ",
+    "name": "名前",
+    "empty": "カテゴリなし",
+    "addChildTitle": "「{{name}}」に子カテゴリを追加",
+    "editTitle": "カテゴリを編集",
+    "editTagTitle": "タグを編集",
+    "addGroupLong": "タググループを追加",
+    "deleteConfirmTitle": "カテゴリ「{{name}}」を削除しますか？",
+    "deleteConfirmDescription": "このカテゴリの動画は未設定に戻り、Inbox に移ります。子カテゴリは最上位に移動します。",
+    "deleteTagConfirmTitle": "タグ「{{name}}」を削除しますか？",
+    "deleteTagConfirmDescription": "すべての動画からこのタグが外れます。",
+    "deleteGroupConfirmTitle": "グループ「{{name}}」を削除しますか？",
+    "deleteGroupConfirmDescription": "グループ内のタグは削除されず、「その他」に移ります。",
+    "editTags": "タグを編集",
+    "finishEditingTags": "編集を終了",
+    "editTagsHint": "押すと編集、× で削除",
+    "editNamed": "{{name}} を編集",
+    "deleteNamed": "{{name}} を削除"
   },
   "playlist": {
     "title": "プレイリスト",
@@ -379,7 +401,10 @@
     "noVideos": "動画がありません。ライブラリから追加してください。",
     "removeFromPlaylist": "プレイリストから削除",
     "dragToReorder": "ドラッグして並び替え",
-    "countSuffix": "件"
+    "countSuffix": "件",
+    "smartLoadError": "スマートプレイリストの読み込みに失敗しました: {{error}}",
+    "deleteConfirmTitle": "「{{name}}」を削除しますか？",
+    "deleteConfirmDescription": "プレイリストだけが削除され、メディアはライブラリに残ります。"
   },
   "addToPlaylist": {
     "title": "プレイリストに追加",
