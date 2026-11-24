@@ -17,6 +17,7 @@ import { Button } from '../ui';
 import { formatTime } from '../../utils/time';
 import { AudioWave, ThumbImage } from './MediaThumb';
 import styles from './VideoCard.module.css';
+import { TagBadge } from './TagBadge';
 
 interface VideoCardProps {
   video: Video;
@@ -256,9 +257,7 @@ const VideoCard = memo(function VideoCard({
               </span>
             )}
             {tags.slice(0, 2).map((tag) => (
-              <span key={tag.id} className={styles.tag} style={{ backgroundColor: tag.color }}>
-                {tag.name}
-              </span>
+              <TagBadge key={tag.id} tag={tag} size="sm" />
             ))}
             {tags.length > 2 && <span className={styles.more}>+{tags.length - 2}</span>}
             {v.rating > 0 && (

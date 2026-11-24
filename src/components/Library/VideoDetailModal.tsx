@@ -12,6 +12,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { TranscodeModal } from './TranscodeModal';
 import { Button, Checkbox, Dialog, Input, SegmentedControl, Select } from '../ui';
 import { ThumbImage } from './MediaThumb';
+import { TagBadge } from './TagBadge';
 import styles from './VideoDetailModal.module.css';
 import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
 import { listen } from '@tauri-apps/api/event';
@@ -680,7 +681,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
                         return (
                           <label key={m.tag_id} className={styles.check}>
                             <Checkbox onCheckedChange={(v) => { if (v === true) handleApplyMatchedTag(m.tag_id); }} />
-                            <span className={styles.tag} style={{ backgroundColor: tag.color }}>{tag.name}</span>
+                            <TagBadge tag={tag} showIcon />
                             <span className={styles.score}>{(m.score * 100).toFixed(0)}%</span>
                           </label>
                         );

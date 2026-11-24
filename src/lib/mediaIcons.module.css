@@ -1,0 +1,41 @@
+/* アイコンの選択 (タグ・カテゴリ用) */
+@layer ui {
+  .picker {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-active);
+  }
+
+  .option {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.5rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+    transition:
+      background-color var(--duration-fast) ease,
+      color var(--duration-fast) ease;
+
+    &:hover {
+      color: var(--color-fg);
+    }
+    &[data-selected] {
+      background: var(--color-bg-surface);
+      box-shadow: var(--shadow-sm);
+      color: var(--color-accent-fg);
+    }
+  }
+
+  .icon {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+}

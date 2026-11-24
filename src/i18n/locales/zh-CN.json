@@ -301,7 +301,14 @@
     "captureFailed": "获取缩略图失败：{{error}}",
     "subtitleFailed": "加载字幕失败：{{error}}",
     "revealFailed": "无法在访达中显示：{{error}}",
-    "openUrlFailed": "无法打开 URL：{{error}}"
+    "openUrlFailed": "无法打开 URL：{{error}}",
+    "categoryClear": "清除分类并退回收件箱",
+    "tagUsage": "{{count}} 个",
+    "newTagColor": "颜色",
+    "newTagIcon": "图标",
+    "removeTag": "移除 {{name}}",
+    "ratingStar": "{{count}} 星",
+    "categoryPick": "选择分类"
   },
   "download": {
     "title": "从 URL 下载",
@@ -352,7 +359,12 @@
     "deleteGroup": "删除分组",
     "editGroup": "编辑分组名",
     "others": "其他",
-    "noTags": "暂无标签"
+    "noTags": "暂无标签",
+    "save": "保存",
+    "color": "颜色",
+    "icon": "图标",
+    "parent": "父分类",
+    "group": "分组"
   },
   "playlist": {
     "title": "播放列表",

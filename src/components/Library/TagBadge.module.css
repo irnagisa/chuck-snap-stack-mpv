@@ -1,0 +1,72 @@
+/*
+ * タグ・カテゴリの色付きチップ。
+ * 色は --tag-color (tagColorStyle) で受け取り、color-mix で淡い背景・同系色の文字・細い縁を作る。
+ * 文字色は --color-fg と混ぜるので、ライトでは濃く・ダークでは明るくなり、どの色でも読める。
+ */
+@layer ui {
+  .chip {
+    --chip: var(--tag-color, var(--color-accent));
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 3px;
+    max-width: 100%;
+    height: 1.375rem;
+    padding-inline: var(--space-2);
+    border-radius: var(--radius-full);
+    background: color-mix(in oklch, var(--chip) 14%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--chip) 24%, transparent);
+    color: color-mix(in oklch, var(--chip) 72%, var(--color-fg));
+    font-size: 0.6875rem;
+    font-weight: var(--weight-semibold);
+    line-height: 1;
+    white-space: nowrap;
+
+    &[data-size="sm"] {
+      height: 1.125rem;
+      gap: 2px;
+      padding-inline: var(--space-1-5);
+      font-size: 0.625rem;
+    }
+  }
+
+  .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .icon {
+    flex-shrink: 0;
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .remove {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-inline-end: -3px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    transition:
+      background-color var(--duration-fast) ease,
+      opacity var(--duration-fast) ease;
+
+    &:hover {
+      background: color-mix(in oklch, var(--chip) 24%, transparent);
+      opacity: 1;
+    }
+    & svg {
+      width: 0.625rem;
+      height: 0.625rem;
+      stroke-width: 3;
+    }
+  }
+}

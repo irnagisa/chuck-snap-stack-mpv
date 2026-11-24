@@ -301,7 +301,14 @@
     "captureFailed": "サムネイルの取得に失敗しました: {{error}}",
     "subtitleFailed": "字幕の読み込みに失敗しました: {{error}}",
     "revealFailed": "Finder での表示に失敗しました: {{error}}",
-    "openUrlFailed": "URL を開けませんでした: {{error}}"
+    "openUrlFailed": "URL を開けませんでした: {{error}}",
+    "categoryClear": "カテゴリを解除して Inbox に戻す",
+    "tagUsage": "{{count}}件",
+    "newTagColor": "色",
+    "newTagIcon": "アイコン",
+    "removeTag": "{{name}} を外す",
+    "ratingStar": "★{{count}}",
+    "categoryPick": "カテゴリを選択"
   },
   "download": {
     "title": "URL からダウンロード",
@@ -352,7 +359,12 @@
     "deleteGroup": "グループを削除",
     "editGroup": "グループ名を編集",
     "others": "その他",
-    "noTags": "タグなし"
+    "noTags": "タグなし",
+    "save": "保存",
+    "color": "色",
+    "icon": "アイコン",
+    "parent": "親カテゴリ",
+    "group": "グループ"
   },
   "playlist": {
     "title": "プレイリスト",

@@ -294,13 +294,6 @@
   }
 
   /* ---- AI タグ ---- */
-  .tag {
-    padding: 2px var(--space-2);
-    border-radius: var(--radius-full);
-    color: var(--palette-white);
-    font-size: 0.6875rem;
-    font-weight: var(--weight-semibold);
-  }
   .score {
     color: var(--color-fg-subtle);
     font-size: var(--text-xs);

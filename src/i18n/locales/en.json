@@ -301,7 +301,14 @@
     "captureFailed": "Failed to capture the thumbnail: {{error}}",
     "subtitleFailed": "Failed to load the subtitle: {{error}}",
     "revealFailed": "Failed to show in Finder: {{error}}",
-    "openUrlFailed": "Could not open the URL: {{error}}"
+    "openUrlFailed": "Could not open the URL: {{error}}",
+    "categoryClear": "Clear the category and send back to Inbox",
+    "tagUsage": "{{count}}",
+    "newTagColor": "Color",
+    "newTagIcon": "Icon",
+    "removeTag": "Remove {{name}}",
+    "ratingStar": "{{count}} stars",
+    "categoryPick": "Choose a category"
   },
   "download": {
     "title": "Download from URL",
@@ -352,7 +359,12 @@
     "deleteGroup": "Delete group",
     "editGroup": "Edit group name",
     "others": "Others",
-    "noTags": "No tags"
+    "noTags": "No tags",
+    "save": "Save",
+    "color": "Color",
+    "icon": "Icon",
+    "parent": "Parent",
+    "group": "Group"
   },
   "playlist": {
     "title": "Playlists",

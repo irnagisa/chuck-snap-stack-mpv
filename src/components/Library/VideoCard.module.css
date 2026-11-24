@@ -452,17 +452,6 @@
     }
   }
 
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    height: 1.125rem;
-    padding-inline: var(--space-1-5);
-    border-radius: var(--radius-full);
-    color: var(--palette-white);
-    font-weight: var(--weight-semibold);
-    white-space: nowrap;
-  }
-
   .more {
     color: var(--color-fg-subtle);
     font-weight: var(--weight-semibold);

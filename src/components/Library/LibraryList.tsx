@@ -17,6 +17,7 @@ import { Check, FileX, ListPlus, Play, Star, Trash2 } from "lucide-react";
 import { Button } from "../ui";
 import { AudioWave, MediaThumb, MediaTypeIcon } from "./MediaThumb";
 import styles from "./VideoCard.module.css";
+import { TagBadge } from "./TagBadge";
 
 interface Props {
   videos: Video[];
@@ -185,9 +186,7 @@ const VideoRow = memo(function VideoRow({
               </span>
             )}
             {tags.slice(0, 3).map((tag) => (
-              <span key={tag.id} className={styles.tag} style={{ backgroundColor: tag.color }}>
-                {tag.name}
-              </span>
+              <TagBadge key={tag.id} tag={tag} size="sm" />
             ))}
             {tags.length > 3 && <span className={styles.more}>+{tags.length - 3}</span>}
             <span className={styles.sub} title={v.path}>{parentDir}</span>

@@ -6,12 +6,60 @@ import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
 import { Select, Button, Input } from '../ui';
 import { MediaIcon, IconPicker } from '../../lib/mediaIcons';
-import { Pencil, Plus, Search, X } from "lucide-react";
+import { ChevronRight, FolderMinus, LayoutGrid, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ColorSwatches, TAXONOMY_COLORS as COLORS } from './ColorSwatches';
+import { tagColorStyle } from './TagBadge';
+import styles from './CategorySidebar.module.css';
 
-const COLORS = [
-  '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
-];
+/** 名前・色・アイコン (+ 追加の項目) を編集する小さなフォーム。追加と編集で共通 */
+function Editor({
+  name, onNameChange, placeholder,
+  color, onColorChange, icon, onIconChange,
+  extra, submitLabel, cancelLabel, onSubmit, onCancel, indent = 0,
+}: {
+  name: string;
+  onNameChange: (v: string) => void;
+  placeholder?: string;
+  color?: string;
+  onColorChange?: (v: string) => void;
+  icon?: string | null;
+  onIconChange?: (v: string | null) => void;
+  extra?: React.ReactNode;
+  submitLabel: string;
+  cancelLabel: string;
+  onSubmit: () => void;
+  onCancel: () => void;
+  indent?: number;
+}) {
+  return (
+    <div className={styles.editor} style={{ marginInlineStart: indent }}>
+      <Input
+        size="sm"
+        className={styles.fullWidth}
+        autoFocus
+        placeholder={placeholder}
+        value={name}
+        onChange={(e) => onNameChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onSubmit();
+          if (e.key === 'Escape') onCancel();
+        }}
+      />
+      {color !== undefined && onColorChange && <ColorSwatches value={color} onChange={onColorChange} />}
+      {onIconChange && <IconPicker value={icon ?? null} onChange={onIconChange} />}
+      {extra}
+      <div className={styles.editorActions}>
+        <Button variant="ghost" size="xs" onClick={onCancel}>{cancelLabel}</Button>
+        <Button variant="primary" size="xs" disabled={!name.trim()} onClick={onSubmit}>{submitLabel}</Button>
+      </div>
+    </div>
+  );
+}
+
+/** 行の右側に hover で出る操作ボタン */
+function RowActions({ children }: { children: React.ReactNode }) {
+  return <div className={styles.rowActions}>{children}</div>;
+}
 
 interface Props {
   selectedCategoryId: number | null;
@@ -222,36 +270,20 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
     ? uncategorizedTags.filter((item) => item.name.toLowerCase().includes(searchLower))
     : uncategorizedTags;
 
-  const renderTagRow = (tag: typeof tags[0]) => (
-    <div key={tag.id}>
-      {editingTagId === tag.id ? (
-        <div className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
-          <Input
-            size="sm"
-            autoFocus
-            value={editTagName}
-            onChange={(e) => setEditTagName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleEditTagSave();
-              if (e.key === 'Escape') setEditingTagId(null);
-            }}
-          />
-          <div className="flex gap-1 flex-wrap">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`w-4 h-4 rounded-full transition-transform ${
-                  editTagColor === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800' : ''
-                }`}
-                style={{ backgroundColor: c }}
-                onClick={() => setEditTagColor(c)}
-              />
-            ))}
-          </div>
-          <IconPicker value={editTagIcon} onChange={setEditTagIcon} />
+  const renderTagRow = (tag: typeof tags[0]) =>
+    editingTagId === tag.id ? (
+      <Editor
+        key={tag.id}
+        name={editTagName}
+        onNameChange={setEditTagName}
+        color={editTagColor}
+        onColorChange={setEditTagColor}
+        icon={editTagIcon}
+        onIconChange={setEditTagIcon}
+        extra={
           <Select
             fullWidth
+            aria-label={t('category.group')}
             value={editTagCategoryId == null ? '' : String(editTagCategoryId)}
             onValueChange={(v) => setEditTagCategoryId(v === '' ? null : Number(v))}
             options={[
@@ -259,55 +291,41 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
               ...tagCategories.map((tc) => ({ value: String(tc.id), label: tc.name })),
             ]}
           />
-          <div className="flex gap-1">
-            <Button
-              variant="primary"
-              size="xs"
-              onClick={handleEditTagSave}
-            >
-              保存
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => setEditingTagId(null)}
-            >
-              {t('category.cancel')}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="group flex items-center gap-0.5">
-          <button
-            type="button"
-            className={`flex-1 text-left px-2 py-2 text-xs flex items-center gap-1.5 rounded transition-colors min-w-0 ${
-              selectedTagIds.includes(tag.id)
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
-            onClick={() => onToggleTag(tag.id)}
-          >
-            <span className="shrink-0" style={{ color: tag.color }}>
-              <MediaIcon icon={tag.icon ?? 'tag'} className="w-3 h-3" />
-            </span>
-            <span className="truncate">{tag.name}</span>
-          </button>
-          <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.edit')}
+        }
+        submitLabel={t('category.save')}
+        cancelLabel={t('category.cancel')}
+        onSubmit={handleEditTagSave}
+        onCancel={() => setEditingTagId(null)}
+      />
+    ) : (
+      <div key={tag.id} className={styles.rowWrap}>
+        <button
+          type="button"
+          className={styles.row}
+          data-selected={selectedTagIds.includes(tag.id) || undefined}
+          style={tagColorStyle(tag.color)}
+          aria-pressed={selectedTagIds.includes(tag.id)}
+          onClick={() => onToggleTag(tag.id)}
+        >
+          <span className={styles.iconBadge}>
+            <MediaIcon icon={tag.icon ?? 'tag'} className={styles.badgeIcon} />
+          </span>
+          <span className={styles.rowText}>{tag.name}</span>
+        </button>
+        <RowActions>
+          <Button variant="ghost" size="icon-sm" aria-label={t('category.edit')} title={t('category.edit')}
             onClick={() => startEditTag(tag.id, tag.name, tag.color, tag.tag_category_id, tag.icon)}
-            title={t('category.edit')}
           >
             <Pencil aria-hidden />
           </Button>
-          <Button variant="danger-soft" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.delete')}
+          <Button variant="danger-soft" size="icon-sm" aria-label={t('category.delete')} title={t('category.delete')}
             onClick={() => handleDeleteTag(tag.id)}
-            title={t('category.delete')}
           >
-            <X aria-hidden />
+            <Trash2 aria-hidden />
           </Button>
-        </div>
-      )}
-    </div>
-  );
+        </RowActions>
+      </div>
+    );
 
   const renderCategoryRows = () => {
     const rows: React.ReactNode[] = [];
@@ -320,7 +338,7 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
       }
 
       if (visibleCategoryIds !== null && !visibleCategoryIds.has(cat.id)) continue;
-      const indent = depth * 12;
+      const indent = depth * 14;
 
       const hasChildren = categories.some(c => c.parent_id === cat.id);
       const isCollapsed = collapsedIds.has(cat.id);
@@ -328,176 +346,116 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
 
       if (editingId === cat.id) {
         rows.push(
-          <div key={`edit-${cat.id}`} style={{ paddingLeft: indent }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
-            <Input
-              size="sm"
-              autoFocus
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleEditSave();
-                if (e.key === 'Escape') setEditingId(null);
-              }}
-            />
-            <div className="flex gap-1 flex-wrap">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`w-4 h-4 rounded-full transition-transform ${
-                    editColor === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-800' : ''
-                  }`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setEditColor(c)}
-                />
-              ))}
-            </div>
-            <IconPicker value={editIcon} onChange={setEditIcon} />
-            <Select
-              fullWidth
-              value={editParentId == null ? '' : String(editParentId)}
-              onValueChange={(v) => setEditParentId(v === '' ? null : Number(v))}
-              options={[
-                { value: '', label: t('category.rootParent') },
-                ...editParentOptions.map(({ category: opt, depth: d }) => ({
-                  value: String(opt.id),
-                  label: `${'　'.repeat(d)}${opt.name}`,
-                })),
-              ]}
-            />
-            <div className="flex gap-1">
-              <Button
-                variant="primary"
-                size="xs"
-                onClick={handleEditSave}
-              >
-                保存
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setEditingId(null)}
-              >
-                {t('category.cancel')}
-              </Button>
-            </div>
-          </div>
+          <Editor
+            key={`edit-${cat.id}`}
+            indent={indent}
+            name={editName}
+            onNameChange={setEditName}
+            color={editColor}
+            onColorChange={setEditColor}
+            icon={editIcon}
+            onIconChange={setEditIcon}
+            extra={
+              <Select
+                fullWidth
+                aria-label={t('category.parent')}
+                value={editParentId == null ? '' : String(editParentId)}
+                onValueChange={(v) => setEditParentId(v === '' ? null : Number(v))}
+                options={[
+                  { value: '', label: t('category.rootParent') },
+                  ...editParentOptions.map(({ category: opt, depth: d }) => ({
+                    value: String(opt.id),
+                    label: `${'　'.repeat(d)}${opt.name}`,
+                  })),
+                ]}
+              />
+            }
+            submitLabel={t('category.save')}
+            cancelLabel={t('category.cancel')}
+            onSubmit={handleEditSave}
+            onCancel={() => setEditingId(null)}
+          />
         );
       } else {
         rows.push(
-          <div key={cat.id} style={{ paddingLeft: indent }} className="group flex items-center gap-0.5">
+          <div key={cat.id} className={styles.rowWrap} style={{ paddingInlineStart: indent }}>
+            {/* 子があれば開閉ボタン、なければ同じ幅の空き */}
             {hasChildren ? (
               <button
                 type="button"
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-0.5 shrink-0"
+                className={styles.toggle}
+                data-open={!isCollapsed || undefined}
                 onClick={() => setCollapsedIds(prev => {
                   const next = new Set(prev);
                   if (next.has(cat.id)) next.delete(cat.id); else next.add(cat.id);
                   return next;
                 })}
+                aria-label={isCollapsed ? t('category.expand') : t('category.collapse')}
                 title={isCollapsed ? t('category.expand') : t('category.collapse')}
               >
-                <svg className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRight aria-hidden />
               </button>
-            ) : depth > 0 ? (
-              <span className="text-gray-300 dark:text-gray-600 text-xs mr-0.5 shrink-0">└</span>
-            ) : null}
+            ) : (
+              <span className={styles.toggleSpacer} data-child={depth > 0 || undefined} />
+            )}
             <button
               type="button"
-              className={`relative flex-1 text-left px-2 py-1.5 rounded text-xs flex items-center gap-1.5 transition-colors min-w-0 overflow-hidden ${
-                selectedCategoryId === cat.id
-                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
+              className={styles.row}
+              data-selected={selectedCategoryId === cat.id || undefined}
+              style={tagColorStyle(cat.color)}
+              aria-current={selectedCategoryId === cat.id || undefined}
               onClick={() => onSelectCategory(cat.id)}
             >
-              {selectedCategoryId === cat.id && (
-                <span
-                  className="absolute left-0 inset-y-1 w-0.5 rounded-r"
-                  style={{ backgroundColor: cat.color }}
-                />
-              )}
-              <span className="shrink-0" style={{ color: cat.color }}>
-                <MediaIcon icon={cat.icon ?? 'folder'} className="w-3.5 h-3.5" />
+              <span className={styles.iconBadge}>
+                <MediaIcon icon={cat.icon ?? 'folder'} className={styles.badgeIcon} />
               </span>
-              <span className="truncate">{cat.name}</span>
+              <span className={styles.rowText}>{cat.name}</span>
             </button>
-            <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.addChild')}
-              onClick={() => {
-                setCollapsedIds(prev => { const next = new Set(prev); next.delete(cat.id); return next; });
-                setAddingParentId(cat.id);
-                setNewParentId(cat.id);
-                setNewName('');
-                setNewColor(COLORS[5]);
-                setNewIcon('folder');
-              }}
-              title={t('category.addChild')}
-            >
-              <Plus aria-hidden />
-            </Button>
-            <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.edit')}
-              onClick={() => startEdit(cat.id, cat.name, cat.color, cat.parent_id, cat.icon)}
-              title={t('category.edit')}
-            >
-              <Pencil aria-hidden />
-            </Button>
-            <Button variant="danger-soft" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.delete')}
-              onClick={() => handleDelete(cat.id)}
-              title={t('category.delete')}
-            >
-              <X aria-hidden />
-            </Button>
+            <RowActions>
+              <Button variant="ghost" size="icon-sm" aria-label={t('category.addChild')} title={t('category.addChild')}
+                onClick={() => {
+                  setCollapsedIds(prev => { const next = new Set(prev); next.delete(cat.id); return next; });
+                  setAddingParentId(cat.id);
+                  setNewParentId(cat.id);
+                  setNewName('');
+                  setNewColor(COLORS[5]);
+                  setNewIcon('folder');
+                }}
+              >
+                <Plus aria-hidden />
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label={t('category.edit')} title={t('category.edit')}
+                onClick={() => startEdit(cat.id, cat.name, cat.color, cat.parent_id, cat.icon)}
+              >
+                <Pencil aria-hidden />
+              </Button>
+              <Button variant="danger-soft" size="icon-sm" aria-label={t('category.delete')} title={t('category.delete')}
+                onClick={() => handleDelete(cat.id)}
+              >
+                <Trash2 aria-hidden />
+              </Button>
+            </RowActions>
           </div>
         );
       }
 
       if (addingParentId === cat.id && !isCollapsed) {
         rows.push(
-          <div key={`add-child-${cat.id}`} style={{ paddingLeft: indent + 12 }} className="flex flex-col gap-1.5 px-1 py-1 bg-gray-50 dark:bg-gray-800 rounded">
-            <Input
-              size="sm"
-              autoFocus
-              placeholder={t('category.subnamePlaceholder')}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAdd();
-                if (e.key === 'Escape') { setAddingParentId(undefined); setNewName(''); }
-              }}
-            />
-            <div className="flex gap-1 flex-wrap">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`w-4 h-4 rounded-full transition-transform ${
-                    newColor === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-900' : ''
-                  }`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setNewColor(c)}
-                />
-              ))}
-            </div>
-            <IconPicker value={newIcon} onChange={setNewIcon} />
-            <div className="flex gap-1">
-              <Button
-                variant="primary"
-                size="xs"
-                onClick={handleAdd}
-              >
-                {t('category.add')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => { setAddingParentId(undefined); setNewName(''); }}
-              >
-                {t('category.cancel')}
-              </Button>
-            </div>
-          </div>
+          <Editor
+            key={`add-child-${cat.id}`}
+            indent={indent + 20}
+            name={newName}
+            onNameChange={setNewName}
+            placeholder={t('category.subnamePlaceholder')}
+            color={newColor}
+            onColorChange={setNewColor}
+            icon={newIcon}
+            onIconChange={setNewIcon}
+            submitLabel={t('category.add')}
+            cancelLabel={t('category.cancel')}
+            onSubmit={handleAdd}
+            onCancel={() => { setAddingParentId(undefined); setNewName(''); }}
+          />
         );
       }
     }
@@ -507,10 +465,10 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
   const hasTagsSection = (tags.length > 0 || tagCategories.length > 0) && (!searchLower || filteredTagsByCategory.some(g => g.tags.length > 0 || g.category.name.toLowerCase().includes(searchLower)) || filteredUncategorizedTags.length > 0);
 
   return (
-    <aside className="flex flex-col h-full min-h-0 w-full min-w-0">
+    <aside className={styles.root}>
       <Input
         size="xs"
-        className="w-full mb-2 shrink-0"
+        className={styles.search}
         icon={<Search />}
         placeholder={t('category.searchPlaceholder')}
         value={search}
@@ -520,273 +478,187 @@ export function CategorySidebar({ selectedCategoryId, onSelectCategory, selected
 
       <div
         ref={sectionsRef}
-        className="flex-1 min-h-0"
+        className={styles.sections}
         style={hasTagsSection
-          ? { display: 'grid', gridTemplateRows: `${splitRatio}fr 8px ${1 - splitRatio}fr` }
+          ? { display: 'grid', gridTemplateRows: `${splitRatio}fr 12px ${1 - splitRatio}fr` }
           : { display: 'flex', flexDirection: 'column' }}
       >
-      <div className="min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-1">
-      <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
-        <span className="text-gray-400 dark:text-gray-500 shrink-0">
-          <MediaIcon icon="folder" className="w-3.5 h-3.5" />
-        </span>
-        <h2 className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex-1 tracking-wide">
-          {t('category.title')}
-        </h2>
-        {categories.length > 0 && (
-          <span className="text-[10px] font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full tabular-nums leading-none">
-            {categories.length}
-          </span>
-        )}
-      </div>
-
-      <button
-        type="button"
-        className={`relative flex items-center gap-1.5 w-full text-left px-2 py-2.5 min-h-[2.25rem] shrink-0 rounded text-xs transition-colors overflow-hidden ${
-          selectedCategoryId === null
-            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
-            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-        }`}
-        onClick={() => onSelectCategory(null)}
-      >
-        {selectedCategoryId === null && (
-          <span className="absolute left-0 inset-y-1 w-0.5 rounded-r bg-blue-400 dark:bg-blue-500" />
-        )}
-        <span className="shrink-0">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-          </svg>
-        </span>
-        {t('category.all')}
-      </button>
-
-      <button
-        type="button"
-        className={`relative flex items-center gap-1.5 w-full text-left px-2 py-2.5 min-h-[2.25rem] shrink-0 rounded text-xs transition-colors overflow-hidden ${
-          selectedCategoryId === -1
-            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium'
-            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-        }`}
-        onClick={() => onSelectCategory(-1)}
-      >
-        {selectedCategoryId === -1 && (
-          <span className="absolute left-0 inset-y-1 w-0.5 rounded-r bg-blue-400 dark:bg-blue-500" />
-        )}
-        <span className="shrink-0">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            <line x1="9" y1="12" x2="15" y2="12" />
-          </svg>
-        </span>
-        {t('category.uncategorized')}
-      </button>
-
-      {renderCategoryRows()}
-
-      {addingParentId === null ? (
-        <div className="mt-1 flex flex-col gap-1.5 px-1">
-          <Input
-            size="sm"
-            autoFocus
-            placeholder={t('category.namePlaceholder')}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAdd();
-              if (e.key === 'Escape') { setAddingParentId(undefined); setNewName(''); }
-            }}
-          />
-          <div className="flex gap-1 flex-wrap">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`w-4 h-4 rounded-full transition-transform ${
-                  newColor === c ? 'scale-125 ring-2 ring-offset-1 ring-gray-400 dark:ring-offset-gray-900' : ''
-                }`}
-                style={{ backgroundColor: c }}
-                onClick={() => setNewColor(c)}
-              />
-            ))}
-          </div>
-          <IconPicker value={newIcon} onChange={setNewIcon} />
-          <div className="flex gap-1">
-            <Button
-              variant="primary"
-              size="xs"
-              onClick={handleAdd}
-            >
-              {t('category.add')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => { setAddingParentId(undefined); setNewName(''); }}
-            >
-              {t('category.cancel')}
-            </Button>
-          </div>
-        </div>
-      ) : addingParentId === undefined ? (
-        <Button
-          variant="ghost"
-          size="xs"
-          className="self-start"
-          onClick={() => { setAddingParentId(null); setNewParentId(null); setNewName(''); setNewColor(COLORS[5]); setNewIcon('folder'); }}
-        >
-          <Plus aria-hidden />
-          {t('category.add')}
-        </Button>
-      ) : null}
-      </div>
-
-      {hasTagsSection && (
-        <div
-          className="flex items-center cursor-ns-resize group select-none"
-          onMouseDown={handleDividerMouseDown}
-        >
-          <div className="h-px w-full bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-400 dark:group-hover:bg-blue-600 transition-colors" />
-        </div>
-      )}
-
-      {hasTagsSection && (
-        <div className="min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pt-1 pr-4">
-          <div className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
-            <span className="text-gray-400 dark:text-gray-500 shrink-0">
-              <MediaIcon icon="tag" className="w-3.5 h-3.5" />
-            </span>
-            <h2 className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex-1 tracking-wide">
-              {t('category.tagsTitle')}
-            </h2>
-            {tags.length > 0 && (
-              <span className="text-[10px] font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full tabular-nums leading-none">
-                {tags.length}
-              </span>
-            )}
+        {/* ---- カテゴリ ---- */}
+        <div className={styles.pane}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>{t('category.title')}</h2>
+            {categories.length > 0 && <span className={styles.count}>{categories.length}</span>}
             <Button
               variant="ghost"
               size="icon-sm"
-              title={t('category.addGroup')}
-              aria-label={t('category.addGroup')}
-              onClick={() => setIsAddingTagCat(true)}
+              title={t('category.add')}
+              aria-label={t('category.add')}
+              onClick={() => { setAddingParentId(null); setNewParentId(null); setNewName(''); setNewColor(COLORS[5]); setNewIcon('folder'); }}
             >
               <Plus aria-hidden />
             </Button>
           </div>
 
-          {isAddingTagCat && (
-            <div className="flex flex-col gap-1 px-1 mb-1">
-              <Input
-                size="sm"
-                autoFocus
-                placeholder={t('category.groupNamePlaceholder')}
-                value={newTagCatName}
-                onChange={(e) => setNewTagCatName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddTagCat();
-                  if (e.key === 'Escape') { setIsAddingTagCat(false); setNewTagCatName(''); }
-                }}
-              />
-              <div className="flex gap-1">
-                <Button
-                  variant="primary"
-                  size="xs"
-                  onClick={handleAddTagCat}
-                >
-                  {t('category.add')}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => { setIsAddingTagCat(false); setNewTagCatName(''); }}
-                >
-                  {t('category.cancel')}
-                </Button>
-              </div>
-            </div>
-          )}
+          <div className={styles.rowWrap}>
+            <button
+              type="button"
+              className={styles.row}
+              data-selected={selectedCategoryId === null || undefined}
+              aria-current={selectedCategoryId === null || undefined}
+              onClick={() => onSelectCategory(null)}
+            >
+              <span className={styles.iconBadge} data-neutral="">
+                <LayoutGrid className={styles.badgeIcon} aria-hidden />
+              </span>
+              <span className={styles.rowText}>{t('category.all')}</span>
+            </button>
+          </div>
+          <div className={styles.rowWrap}>
+            <button
+              type="button"
+              className={styles.row}
+              data-selected={selectedCategoryId === -1 || undefined}
+              aria-current={selectedCategoryId === -1 || undefined}
+              onClick={() => onSelectCategory(-1)}
+            >
+              <span className={styles.iconBadge} data-neutral="">
+                <FolderMinus className={styles.badgeIcon} aria-hidden />
+              </span>
+              <span className={styles.rowText}>{t('category.uncategorized')}</span>
+            </button>
+          </div>
 
-          {filteredTagsByCategory.map(({ category, tags: groupTags }) => (
-            <div key={category.id} className="mb-1">
-              <div className="group flex items-center gap-0.5 px-1 py-2">
-                {editingTagCatId === category.id ? (
-                  <div className="flex flex-col gap-1 flex-1 py-0.5">
-                    <Input
-                      size="xs"
-                      autoFocus
-                      value={editTagCatName}
-                      onChange={(e) => setEditTagCatName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleEditTagCatSave();
-                        if (e.key === 'Escape') setEditingTagCatId(null);
-                      }}
-                    />
-                    <div className="flex gap-1">
-                      <Button variant="primary" size="xs" onClick={handleEditTagCatSave}>保存</Button>
-                      <Button variant="ghost" size="xs" onClick={() => setEditingTagCatId(null)}>{t('category.cancel')}</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-0.5 shrink-0"
-                      onClick={() => setCollapsedTagCatIds(prev => {
-                        const next = new Set(prev);
-                        if (next.has(category.id)) next.delete(category.id); else next.add(category.id);
-                        return next;
-                      })}
-                      title={collapsedTagCatIds.has(category.id) ? t('category.expand') : t('category.collapse')}
-                    >
-                      <svg className={`w-3 h-3 transition-transform ${collapsedTagCatIds.has(category.id) ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                    <span className="flex-1 text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
-                      {category.name}
-                    </span>
-                    <span className="text-xs text-gray-400 dark:text-gray-600 shrink-0 tabular-nums">{groupTags.length}</span>
-                    <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.editGroup')}
-                      onClick={() => { setEditingTagCatId(category.id); setEditTagCatName(category.name); }}
-                      title={t('category.editGroup')}
-                    >
-                      <Pencil aria-hidden />
-                    </Button>
-                    <Button variant="danger-soft" size="icon-sm" className="opacity-0 group-hover:opacity-100" aria-label={t('category.deleteGroup')}
-                      onClick={() => handleDeleteTagCat(category.id)}
-                      title={t('category.deleteGroup')}
-                    >
-                      <X aria-hidden />
-                    </Button>
-                  </>
-                )}
-              </div>
-              {!collapsedTagCatIds.has(category.id) && (
-                <div className="pl-2">
-                  {groupTags.length === 0 ? (
-                    <span className="text-xs text-gray-400 dark:text-gray-600 px-2 py-0.5 block">{t('category.noTags')}</span>
-                  ) : (
-                    groupTags.map(renderTagRow)
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+          {categories.length > 0 && <div className={styles.separator} />}
+          {renderCategoryRows()}
 
-          {filteredUncategorizedTags.length > 0 && (
-            <div className="mb-1">
-              {tagCategories.length > 0 && (
-                <div className="px-1 mb-0.5">
-                  <span className="text-xs font-medium text-gray-400 dark:text-gray-500">{t('category.others')}</span>
-                </div>
-              )}
-              <div className={tagCategories.length > 0 ? 'pl-2' : ''}>
-                {filteredUncategorizedTags.map(renderTagRow)}
-              </div>
-            </div>
+          {addingParentId === null && (
+            <Editor
+              name={newName}
+              onNameChange={setNewName}
+              placeholder={t('category.namePlaceholder')}
+              color={newColor}
+              onColorChange={setNewColor}
+              icon={newIcon}
+              onIconChange={setNewIcon}
+              submitLabel={t('category.add')}
+              cancelLabel={t('category.cancel')}
+              onSubmit={handleAdd}
+              onCancel={() => { setAddingParentId(undefined); setNewName(''); }}
+            />
           )}
         </div>
-      )}
+
+        {hasTagsSection && (
+          <div
+            className={styles.divider}
+            onMouseDown={handleDividerMouseDown}
+            role="separator"
+            aria-orientation="horizontal"
+          >
+            <span className={styles.dividerGrip} />
+          </div>
+        )}
+
+        {/* ---- タグ ---- */}
+        {hasTagsSection && (
+          <div className={styles.pane}>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>{t('category.tagsTitle')}</h2>
+              {tags.length > 0 && <span className={styles.count}>{tags.length}</span>}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title={t('category.addGroup')}
+                aria-label={t('category.addGroup')}
+                onClick={() => setIsAddingTagCat(true)}
+              >
+                <Plus aria-hidden />
+              </Button>
+            </div>
+
+            {isAddingTagCat && (
+              <Editor
+                name={newTagCatName}
+                onNameChange={setNewTagCatName}
+                placeholder={t('category.groupNamePlaceholder')}
+                submitLabel={t('category.add')}
+                cancelLabel={t('category.cancel')}
+                onSubmit={handleAddTagCat}
+                onCancel={() => { setIsAddingTagCat(false); setNewTagCatName(''); }}
+              />
+            )}
+
+            {filteredTagsByCategory.map(({ category, tags: groupTags }) => {
+              const collapsed = collapsedTagCatIds.has(category.id);
+              return (
+                <div key={category.id} className={styles.group}>
+                  {editingTagCatId === category.id ? (
+                    <Editor
+                      name={editTagCatName}
+                      onNameChange={setEditTagCatName}
+                      submitLabel={t('category.save')}
+                      cancelLabel={t('category.cancel')}
+                      onSubmit={handleEditTagCatSave}
+                      onCancel={() => setEditingTagCatId(null)}
+                    />
+                  ) : (
+                    <div className={styles.groupHead}>
+                      <button
+                        type="button"
+                        className={styles.groupToggle}
+                        data-open={!collapsed || undefined}
+                        onClick={() => setCollapsedTagCatIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(category.id)) next.delete(category.id); else next.add(category.id);
+                          return next;
+                        })}
+                        aria-expanded={!collapsed}
+                      >
+                        <ChevronRight aria-hidden />
+                        <span className={styles.groupName}>{category.name}</span>
+                        <span className={styles.groupCount}>{groupTags.length}</span>
+                      </button>
+                      <RowActions>
+                        <Button variant="ghost" size="icon-sm" aria-label={t('category.editGroup')} title={t('category.editGroup')}
+                          onClick={() => { setEditingTagCatId(category.id); setEditTagCatName(category.name); }}
+                        >
+                          <Pencil aria-hidden />
+                        </Button>
+                        <Button variant="danger-soft" size="icon-sm" aria-label={t('category.deleteGroup')} title={t('category.deleteGroup')}
+                          onClick={() => handleDeleteTagCat(category.id)}
+                        >
+                          <Trash2 aria-hidden />
+                        </Button>
+                      </RowActions>
+                    </div>
+                  )}
+                  {!collapsed && (
+                    <div className={styles.groupBody}>
+                      {groupTags.length === 0 ? (
+                        <span className={styles.empty}>{t('category.noTags')}</span>
+                      ) : (
+                        groupTags.map(renderTagRow)
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {filteredUncategorizedTags.length > 0 && (
+              <div className={styles.group}>
+                {tagCategories.length > 0 && (
+                  <div className={styles.groupHead}>
+                    <span className={styles.groupLabel}>{t('category.others')}</span>
+                  </div>
+                )}
+                <div className={tagCategories.length > 0 ? styles.groupBody : undefined}>
+                  {filteredUncategorizedTags.map(renderTagRow)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );

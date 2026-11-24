@@ -5,6 +5,7 @@ import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, Film, Image as Im
 import { Select, Button, SegmentedControl, Input, Popover, Tooltip } from "../ui";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useTagStore } from "../../store/useTagStore";
+import { TagBadge } from "./TagBadge";
 import { useLibraryViewStore, type ListItemSize, type ViewMode } from "../../store/useLibraryViewStore";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import { useModalStore } from "../../store/useModalStore";
@@ -331,16 +332,13 @@ export function LibraryFilterBar() {
             {tags
               .filter((tag) => filterTagIds.includes(tag.id))
               .map((tag) => (
-                <button
+                <TagBadge
                   key={tag.id}
-                  type="button"
-                  className="h-6 px-2.5 rounded-full text-xs font-semibold text-white hover:opacity-80 transition-opacity"
-                  style={{ backgroundColor: tag.color }}
-                  onClick={() => toggleTagFilter(tag.id)}
-                  title={t("filters.tagClear")}
-                >
-                  {tag.name}
-                </button>
+                  tag={tag}
+                  showIcon
+                  onRemove={() => toggleTagFilter(tag.id)}
+                  removeLabel={`${tag.name} を${t("filters.tagClear")}`}
+                />
               ))}
             {filterTagIds.length >= 2 && (
               <Button

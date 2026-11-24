@@ -108,12 +108,13 @@ describe('LibraryFilterBar — タグ', () => {
     expect(screen.queryByText('Drama')).not.toBeInTheDocument();
   });
 
-  it('clicking a selected tag chip calls toggleTagFilter with its id', () => {
+  it("clicking a selected tag chip's remove button calls toggleTagFilter with its id", () => {
     const toggleTagFilter = vi.fn();
     const tags = [makeTag(42, 'Sci-Fi')];
     setupMocks({ filterTagIds: [42], toggleTagFilter }, {}, tags);
     render(<LibraryFilterBar />);
-    fireEvent.click(screen.getByText('Sci-Fi'));
+    expect(screen.getByText('Sci-Fi')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Sci-Fi/ }));
     expect(toggleTagFilter).toHaveBeenCalledWith(42);
   });
 
