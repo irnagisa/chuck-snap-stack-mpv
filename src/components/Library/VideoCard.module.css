@@ -98,7 +98,7 @@
       opacity: 0;
       transition:
         opacity var(--duration-normal) ease,
-        scale 400ms var(--ease-out);
+        scale var(--duration-slow) var(--ease-out);
     }
     /* 読み込みが終わるまでは背景 (プレースホルダー色) を見せ、終わったらフェードイン */
     & img[data-loaded] {

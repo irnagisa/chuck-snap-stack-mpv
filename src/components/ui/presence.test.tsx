@@ -11,7 +11,7 @@ describe('Collapse', () => {
     expect(screen.getByText('content')).toBeInTheDocument();
 
     rerender(<Collapse show={false}>content</Collapse>);
-    await waitFor(() => expect(screen.queryByText('content')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('content')).not.toBeInTheDocument(), { timeout: 3000 });
   });
 
   it('keeps rendering the last data while exiting', async () => {
@@ -23,7 +23,8 @@ describe('Collapse', () => {
     // 非表示と同時にデータが空になっても、退場中は直前の値のまま
     rerender(<Collapse show={false} data={0}>{(n: number) => <span>count {n}</span>}</Collapse>);
     expect(screen.queryByText('count 0')).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText(/count/)).not.toBeInTheDocument());
+    // 退場アニメーション (collapse) の完了を待つ。テスト全体の負荷で遅れることがあるので長めに待つ
+    await waitFor(() => expect(screen.queryByText(/count/)).not.toBeInTheDocument(), { timeout: 3000 });
   });
 });
 

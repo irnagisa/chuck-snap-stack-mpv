@@ -9,28 +9,35 @@ import type { Transition, Variants } from "motion/react";
  *   - hover / focus の色変化            → CSS transition (Button.module.css 等)
  *   - 出現・消滅・移動・サイズ変化       → Motion (このファイルのプリセット)
  */
-const easeOut = [0.16, 1, 0.3, 1] as const;
-const easeIn = [0.4, 0, 1, 1] as const;
+/*
+ * イージング: cubic の ease-out / ease-in。
+ * expo 系 (0.16, 1, 0.3, 1) は動きの大半が最初の 1/4 で終わり、短い時間だと
+ * ほぼ一瞬に見えるため、最後まで動きが目で追える cubic にしている。
+ * CSS 側の --ease-out / --ease-in (tokens.css) と同じ値。
+ */
+const easeOut = [0.33, 1, 0.68, 1] as const;
+const easeIn = [0.32, 0, 0.67, 0] as const;
 
 /*
- * 強さの目安: カジュアルテーマなので「気づける」程度に動かす。
- * 出現は 0.16〜0.26s + 8〜16px / 92〜95% から、消えるときは出るときより短く。
+ * 強さの目安: カジュアルテーマなので「動いているのが見える」程度に動かす。
+ * 出現は 0.22〜0.34s + 8〜16px / 92〜95% から、消えるときは出るときの 6 割ほど。
+ * spring は少しだけ行き過ぎて戻る (オーバーシュートがわずかに見える) 硬さにしている。
  */
 export const transitions = {
   /** ツールチップ・メニューなど小さなポップアップ */
-  fast: { duration: 0.16, ease: easeOut },
+  fast: { duration: 0.22, ease: easeOut },
   /** パネル・画面の出現 */
-  normal: { duration: 0.24, ease: easeOut },
+  normal: { duration: 0.34, ease: easeOut },
   /** 消えるときは出るときより短く */
-  exit: { duration: 0.14, ease: easeIn },
+  exit: { duration: 0.18, ease: easeIn },
   /** ダイアログの出現 (少しだけ弾む) */
-  pop: { type: "spring", stiffness: 380, damping: 30, mass: 0.8 },
+  pop: { type: "spring", stiffness: 280, damping: 24, mass: 0.9 },
   /** 位置の移動 (インジケーター・スイッチ・リスト並び替え) */
-  spring: { type: "spring", stiffness: 520, damping: 38, mass: 0.7 },
+  spring: { type: "spring", stiffness: 380, damping: 32, mass: 0.8 },
   /** 少し弾むもの (トースト・ドロップオーバーレイ) */
-  bouncy: { type: "spring", stiffness: 420, damping: 28, mass: 0.8 },
+  bouncy: { type: "spring", stiffness: 320, damping: 22, mass: 0.9 },
   /** 高さの開閉 */
-  collapse: { duration: 0.2, ease: easeOut },
+  collapse: { duration: 0.3, ease: easeOut },
 } satisfies Record<string, Transition>;
 
 export const fade: Variants = {
@@ -72,7 +79,7 @@ export const floatUp: Variants = {
 
 /** 高さ 0 ⇔ auto の開閉 */
 export const collapse: Variants = {
-  hidden: { height: 0, opacity: 0, transition: { ...transitions.collapse, duration: 0.15 } },
+  hidden: { height: 0, opacity: 0, transition: { duration: 0.22, ease: easeIn } },
   visible: { height: "auto", opacity: 1, transition: transitions.collapse },
 };
 

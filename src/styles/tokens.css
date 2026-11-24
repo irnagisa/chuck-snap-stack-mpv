@@ -161,9 +161,13 @@
     --z-drop-overlay: 200;
 
     /* ---- motion (CSS トランジション用。Motion 側は src/components/ui/motion.ts) ---- */
-    --duration-fast: 120ms;
-    --duration-normal: 180ms;
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    /* hover の色変化など (fast) / 出現・状態変化 (normal) / 大きめの変化 (slow) */
+    --duration-fast: 160ms;
+    --duration-normal: 260ms;
+    --duration-slow: 450ms;
+    /* motion.ts の easeOut / easeIn と同じ cubic カーブ */
+    --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+    --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
 
     /* ---- layout ---- */
     --pane-detail-width: 20rem;
