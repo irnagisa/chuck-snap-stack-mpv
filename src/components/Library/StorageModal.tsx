@@ -1,85 +1,45 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle, Sparkles, Star, Trash2 } from "lucide-react";
+import { LoaderCircle, Shrink, Sparkles, Trash2 } from "lucide-react";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { toast } from "../../store/useToastStore";
-import { formatFileSize, parseSqliteDate } from "../../utils/time";
+import { formatFileSize } from "../../utils/time";
 import { Button, Checkbox, ConfirmDialog, Dialog, SegmentedControl, useDialogClose } from "../ui";
-import { ThumbImage } from "./MediaThumb";
+import { StorageCandidateRow } from "./StorageCandidateRow";
+import { StorageDuplicates, suggestedIds } from "./StorageDuplicates";
+import { StorageTrashPanel } from "./StorageTrashPanel";
+import { TranscodeBatchDialog } from "./TranscodeBatchDialog";
+import {
+  bitrateKbps,
+  type CandidateKind,
+  type CleanupCandidates,
+  type CleanupItem,
+  type DuplicateGroups,
+  type StorageOverview,
+  type ThumbnailCleanupResult,
+} from "./storageTypes";
 import modal from "./LibraryModal.module.css";
 import styles from "./StorageModal.module.css";
-
-// ── 型 (src-tauri/src/commands/storage.rs と対応) ─────────────────────────
-
-interface SizeBucket {
-  key: string;
-  count: number;
-  bytes: number;
-}
-
-interface StorageOverview {
-  library: {
-    count: number;
-    bytes: number;
-    unknownSizeCount: number;
-    missingCount: number;
-    byMediaType: SizeBucket[];
-    byExtension: SizeBucket[];
-  };
-  thumbnails: {
-    fileCount: number;
-    bytes: number;
-    orphanCount: number;
-    orphanBytes: number;
-    oversizedCount: number;
-    oversizedBytes: number;
-  };
-  databaseBytes: number;
-  aiModelBytes: number;
-}
-
-interface ThumbnailCleanupResult {
-  removedOrphans: number;
-  resetOversized: number;
-  freedBytes: number;
-}
-
-type CandidateKind = "large" | "unwatched" | "staleInbox" | "longUnviewed";
-
-interface CleanupItem {
-  id: number;
-  path: string;
-  title: string | null;
-  thumbnail: string | null;
-  fileSize: number;
-  mediaType: string;
-  rating: number;
-  watchCount: number;
-  createdAt: string;
-  lastSeenAt: string | null;
-}
-
-interface CleanupCandidates {
-  totalCount: number;
-  totalBytes: number;
-  thresholdDays: number | null;
-  items: CleanupItem[];
-}
 
 /** 一度に表示する整理候補の件数 */
 const CANDIDATE_LIMIT = 200;
 /** 拡張子の内訳で個別に出す件数 (残りは「その他」にまとめる) */
 const EXTENSION_ROWS = 8;
 
+const KINDS: CandidateKind[] = ["large", "highBitrate", "duplicates", "unwatched", "staleInbox", "longUnviewed"];
 const KIND_LABEL: Record<CandidateKind, string> = {
   large: "storage.kindLarge",
+  highBitrate: "storage.kindHighBitrate",
+  duplicates: "storage.kindDuplicates",
   unwatched: "storage.kindUnwatched",
   staleInbox: "storage.kindStaleInbox",
   longUnviewed: "storage.kindLongUnviewed",
 };
 const KIND_DESC: Record<CandidateKind, string> = {
   large: "storage.kindDescLarge",
+  highBitrate: "storage.kindDescHighBitrate",
+  duplicates: "storage.kindDescDuplicates",
   unwatched: "storage.kindDescUnwatched",
   staleInbox: "storage.kindDescStaleInbox",
   longUnviewed: "storage.kindDescLongUnviewed",
@@ -90,16 +50,14 @@ const MEDIA_LABEL: Record<string, string> = {
   image: "storage.mediaImage",
 };
 
+interface VideoForPhash {
+  id: number;
+  path: string;
+  thumbnail: string | null;
+}
+
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
-}
-
-function fileName(path: string): string {
-  return path.split("/").pop() ?? path;
-}
-
-function formatDate(value: string | null): string | null {
-  return parseSqliteDate(value)?.toLocaleDateString() ?? null;
 }
 
 /** 容量の横棒グラフ */
@@ -126,7 +84,10 @@ interface Props {
   onClose: () => void;
 }
 
-/** ストレージの使用状況と整理 (容量の内訳・サムネイルの掃除・整理候補のゴミ箱移動) */
+/**
+ * ストレージの使用状況と整理
+ * (容量の内訳・サムネイルの掃除・ゴミ箱と退避フォルダ・整理候補のゴミ箱移動・重複の整理・まとめて AV1 変換)
+ */
 export function StorageModal({ onClose }: Props) {
   const { t } = useTranslation();
   const removeMultiple = useLibraryStore((s) => s.removeMultiple);
@@ -136,12 +97,29 @@ export function StorageModal({ onClose }: Props) {
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [kind, setKind] = useState<CandidateKind>("large");
   const [candidates, setCandidates] = useState<CleanupCandidates | null>(null);
+  const [dupes, setDupes] = useState<DuplicateGroups | null>(null);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [cleaningThumbs, setCleaningThumbs] = useState(false);
+  const [emptyingQuarantine, setEmptyingQuarantine] = useState(false);
   const [trashing, setTrashing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const dialog = useDialogClose(onClose, { locked: trashing || cleaningThumbs });
+  const [batchOpen, setBatchOpen] = useState(false);
+  /** 変換ダイアログに渡す動画 (開いた時点の選択。閉じるアニメーション中も表示を保つ) */
+  const [batchItems, setBatchItems] = useState<CleanupItem[]>([]);
+  const [phashProgress, setPhashProgress] = useState<{ done: number; total: number } | null>(null);
+  const dialog = useDialogClose(onClose, { locked: trashing || cleaningThumbs || emptyingQuarantine });
+
+  /** 種類を切り替えたとき、前の種類の結果で上書きしないための番号 */
+  const loadSeq = useRef(0);
+  /** 閉じたら pHash の計算を止める */
+  const phashCancelled = useRef(false);
+  useEffect(
+    () => () => {
+      phashCancelled.current = true;
+    },
+    [],
+  );
 
   const loadOverview = useCallback(async () => {
     try {
@@ -153,14 +131,24 @@ export function StorageModal({ onClose }: Props) {
   }, []);
 
   const loadCandidates = useCallback(async (k: CandidateKind) => {
+    const seq = ++loadSeq.current;
     setCandidatesLoading(true);
     try {
-      setCandidates(await invoke<CleanupCandidates>("get_cleanup_candidates", { kind: k, limit: CANDIDATE_LIMIT }));
+      if (k === "duplicates") {
+        const result = await invoke<DuplicateGroups>("get_duplicate_groups");
+        if (seq === loadSeq.current) setDupes(result);
+      } else {
+        const result = await invoke<CleanupCandidates>("get_cleanup_candidates", { kind: k, limit: CANDIDATE_LIMIT });
+        if (seq === loadSeq.current) setCandidates(result);
+      }
     } catch (e) {
-      setCandidates(null);
+      if (seq === loadSeq.current) {
+        setCandidates(null);
+        setDupes(null);
+      }
       toast.error(t("storage.candidatesError", { error: errorText(e) }));
     } finally {
-      setCandidatesLoading(false);
+      if (seq === loadSeq.current) setCandidatesLoading(false);
     }
   }, [t]);
 
@@ -171,6 +159,7 @@ export function StorageModal({ onClose }: Props) {
   useEffect(() => {
     // 前の種類の一覧・基準日数を出したままにしない
     setCandidates(null);
+    setDupes(null);
     setSelected(new Set());
     loadCandidates(kind);
   }, [kind, loadCandidates]);
@@ -227,13 +216,46 @@ export function StorageModal({ onClose }: Props) {
     }
   };
 
+  // ── 重複: pHash の計算 ──────────────────────────────────────────────────
+
+  const handleComputePhash = async () => {
+    phashCancelled.current = false;
+    try {
+      const pending = await invoke<VideoForPhash[]>("db_get_videos_without_phash");
+      setPhashProgress({ done: 0, total: pending.length });
+      for (let i = 0; i < pending.length; i++) {
+        if (phashCancelled.current) return;
+        const v = pending[i];
+        try {
+          await invoke<string>("db_compute_video_phash", {
+            videoId: v.id,
+            videoPath: v.path,
+            thumbnailPath: v.thumbnail ?? null,
+          });
+        } catch {
+          // 読めないファイルは飛ばす (次回また試す)
+        }
+        setPhashProgress({ done: i + 1, total: pending.length });
+      }
+    } catch (e) {
+      toast.error(t("storage.candidatesError", { error: errorText(e) }));
+    } finally {
+      setPhashProgress(null);
+    }
+    if (!phashCancelled.current) await loadCandidates("duplicates");
+  };
+
   // ── 整理候補の選択とゴミ箱移動 ──────────────────────────────────────────
 
-  const items = candidates?.items ?? [];
+  const items: CleanupItem[] = useMemo(
+    () => (kind === "duplicates" ? (dupes?.groups.flatMap((g) => g.items) ?? []) : (candidates?.items ?? [])),
+    [kind, dupes, candidates],
+  );
   const selectedItems = items.filter((i) => selected.has(i.id));
   const selectedBytes = selectedItems.reduce((s, i) => s + i.fileSize, 0);
   const allChecked = items.length > 0 && selectedItems.length === items.length;
   const headChecked = allChecked ? true : selectedItems.length > 0 ? "indeterminate" : false;
+  const busy = trashing || !!phashProgress;
 
   const toggle = (id: number, on: boolean) => {
     setSelected((prev) => {
@@ -351,61 +373,91 @@ export function StorageModal({ onClose }: Props) {
             </Button>
           </div>
         </section>
+
+        <StorageTrashPanel
+          trash={overview.trash}
+          disabled={trashing}
+          onBusyChange={setEmptyingQuarantine}
+          onEmptied={loadOverview}
+        />
       </>
     );
   };
 
-  const renderCandidates = () => {
-    if (candidatesLoading && !candidates) {
-      return (
-        <div className={modal.status}>
-          <LoaderCircle className={modal.spinner} aria-hidden />
-          {t("storage.loading")}
-        </div>
-      );
-    }
+  const renderList = () => {
     if (!candidates || items.length === 0) {
       return <div className={modal.status}>{t("storage.candidatesEmpty")}</div>;
     }
     return (
       <div className={modal.panel}>
         <label className={modal.panelHead}>
-          <Checkbox checked={headChecked} onCheckedChange={toggleAll} disabled={trashing} />
+          <Checkbox checked={headChecked} onCheckedChange={toggleAll} disabled={busy} />
           <span>{t("storage.selectAll")}</span>
           {candidates.totalCount > items.length && (
-            <span className={styles.headNote}>{t("storage.candidatesShowing", { shown: items.length })}</span>
+            <span className={styles.headNote}>
+              {t(kind === "highBitrate" ? "storage.candidatesShowingBitrate" : "storage.candidatesShowing", { shown: items.length })}
+            </span>
           )}
         </label>
         {items.map((item) => {
-          const checked = selected.has(item.id);
-          const seen = formatDate(item.lastSeenAt);
-          const added = formatDate(item.createdAt);
+          const kbps = kind === "highBitrate" ? bitrateKbps(item) : null;
           return (
-            <label key={item.id} className={modal.panelRow} data-selected={checked || undefined} data-tone="danger">
-              <Checkbox checked={checked} onCheckedChange={(v) => toggle(item.id, v === true)} disabled={trashing} />
-              <span className={`${modal.miniThumb} ${modal.thumbBox}`}>
-                {item.thumbnail && <ThumbImage src={item.thumbnail} alt="" />}
-              </span>
-              <span className={modal.fileText}>
-                <span className={modal.fileName}>{item.title ?? fileName(item.path)}</span>
-                <span className={modal.filePath}>{item.path}</span>
-                <span className={styles.meta}>
-                  {item.rating > 0 && (
-                    <span className={styles.rating} aria-label={`★${item.rating}`}>
-                      <Star aria-hidden fill="currentColor" />
-                      {item.rating}
-                    </span>
-                  )}
-                  {seen ? t("storage.lastSeen", { date: seen }) : added && t("storage.addedAt", { date: added })}
-                </span>
-              </span>
-              <span className={styles.size}>{formatFileSize(item.fileSize)}</span>
-            </label>
+            <StorageCandidateRow
+              key={item.id}
+              item={item}
+              checked={selected.has(item.id)}
+              onToggle={toggle}
+              disabled={busy}
+              extraMeta={kbps != null && <span>· {t("storage.bitrate", { mbps: (kbps / 1000).toFixed(1) })}</span>}
+            />
           );
         })}
       </div>
     );
   };
+
+  const renderCandidates = () => {
+    const loaded = kind === "duplicates" ? dupes : candidates;
+    if (candidatesLoading && !loaded) {
+      return (
+        <div className={modal.status}>
+          <LoaderCircle className={modal.spinner} aria-hidden />
+          {t(kind === "duplicates" ? "storage.dupLoading" : "storage.loading")}
+        </div>
+      );
+    }
+    if (kind !== "duplicates") return renderList();
+    if (!dupes) return <div className={modal.status}>{t("storage.candidatesEmpty")}</div>;
+    return (
+      <StorageDuplicates
+        data={dupes}
+        selected={selected}
+        onToggle={toggle}
+        onSelectSuggested={() => setSelected(new Set(suggestedIds(dupes.groups)))}
+        onClearSelection={() => setSelected(new Set())}
+        onComputePhash={handleComputePhash}
+        phashProgress={phashProgress}
+        disabled={busy}
+      />
+    );
+  };
+
+  const renderSummary = () => {
+    if (kind === "duplicates") {
+      return dupes && dupes.totalGroups > 0 ? (
+        <span className={modal.strong}>
+          {t("storage.dupSummary", { groups: dupes.totalGroups, size: formatFileSize(dupes.totalReclaimableBytes) })}
+        </span>
+      ) : null;
+    }
+    return candidates && candidates.totalCount > 0 ? (
+      <span className={modal.strong}>
+        {t("storage.candidatesSummary", { count: candidates.totalCount, size: formatFileSize(candidates.totalBytes) })}
+      </span>
+    ) : null;
+  };
+
+  const summary = renderSummary();
 
   return (
     <>
@@ -423,7 +475,20 @@ export function StorageModal({ onClose }: Props) {
             <Button variant="secondary" disabled={trashing} onClick={() => dialog.close()}>
               {t("storage.close")}
             </Button>
-            <Button variant="danger" disabled={selectedItems.length === 0 || trashing} onClick={() => setConfirmOpen(true)}>
+            {kind === "highBitrate" && (
+              <Button
+                variant="soft"
+                disabled={selectedItems.length === 0 || busy}
+                onClick={() => {
+                  setBatchItems(selectedItems);
+                  setBatchOpen(true);
+                }}
+              >
+                <Shrink aria-hidden />
+                {t("storage.convertAv1")}
+              </Button>
+            )}
+            <Button variant="danger" disabled={selectedItems.length === 0 || busy} onClick={() => setConfirmOpen(true)}>
               {trashing ? <LoaderCircle className={modal.spinner} aria-hidden /> : <Trash2 aria-hidden />}
               {t("storage.moveToTrash")}
             </Button>
@@ -440,23 +505,19 @@ export function StorageModal({ onClose }: Props) {
                 aria-label={t("storage.candidatesHeading")}
                 value={kind}
                 onValueChange={setKind}
-                options={(Object.keys(KIND_LABEL) as CandidateKind[]).map((k) => ({
+                options={KINDS.map((k) => ({
                   value: k,
                   label: t(KIND_LABEL[k]),
-                  disabled: trashing,
+                  disabled: busy,
                 }))}
               />
             </div>
             <p className={modal.note}>
-              {t(KIND_DESC[kind], { days: candidates?.thresholdDays ?? 0 })}
-              {candidates && candidates.totalCount > 0 && (
-                <>
-                  {" "}
-                  <span className={modal.strong}>
-                    {t("storage.candidatesSummary", { count: candidates.totalCount, size: formatFileSize(candidates.totalBytes) })}
-                  </span>
-                </>
-              )}
+              {t(KIND_DESC[kind], {
+                days: candidates?.thresholdDays ?? 0,
+                mbps: ((candidates?.minBitrateKbps ?? 0) / 1000).toFixed(0),
+              })}
+              {summary && <> {summary}</>}
             </p>
             {renderCandidates()}
           </section>
@@ -472,6 +533,13 @@ export function StorageModal({ onClose }: Props) {
         cancelLabel={t("storage.cancel")}
         onConfirm={handleTrash}
         danger
+      />
+
+      <TranscodeBatchDialog
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        items={batchItems}
+        onQueued={() => setSelected(new Set())}
       />
     </>
   );

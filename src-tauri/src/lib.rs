@@ -191,6 +191,8 @@ pub fn run() {
             commands::storage::get_storage_overview,
             commands::storage::get_cleanup_candidates,
             commands::storage::cleanup_thumbnails,
+            commands::storage::empty_quarantine,
+            commands::storage_duplicates::get_duplicate_groups,
             // db_export
             commands::db_export::db_export_backup,
             commands::db_export::db_import_backup,

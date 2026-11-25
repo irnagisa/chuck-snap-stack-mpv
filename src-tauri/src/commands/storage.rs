@@ -1,9 +1,11 @@
 //! ストレージの使用状況と整理。
 //!
 //! - ライブラリの容量内訳 (メディア種別・拡張子別) と、アプリが作るファイル (サムネイル・DB・AI モデル) の容量
-//! - 整理候補の一覧 (大きいファイル・未再生・Inbox 長期滞留・長期間見ていない)
+//! - 整理候補の一覧 (大きいファイル・高ビットレート・未再生・Inbox 長期滞留・長期間見ていない)。
+//!   重複は `storage_duplicates` で扱う
 //! - サムネイルの掃除 (どの行からも参照されていないファイルの削除、大きすぎるサムネイルの作り直し)
 //! - ライブラリから行を消すときのサムネイル削除 (`db_videos` の削除コマンドから呼ぶ)
+//! - ゴミ箱と退避フォルダ (`.ChuckSnapStackTrash`) の容量、退避フォルダを空にする
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -33,6 +35,10 @@ const ORPHAN_GRACE: Duration = Duration::from_secs(10 * 60);
 const STALE_INBOX_DAYS: i64 = 30;
 const UNWATCHED_DAYS: i64 = 30;
 const LONG_UNVIEWED_DAYS: i64 = 180;
+
+/// 「高ビットレート」の基準 (bps)。1080p の H.264 で十分な画質が出るくらいの値で、
+/// これを超える動画は AV1 にすると大きく縮みやすい
+const HIGH_BITRATE_BPS: i64 = 6_000_000;
 
 /// SQL の IN 句に一度に渡す件数
 const CHUNK: usize = 400;
@@ -358,6 +364,7 @@ pub struct StorageOverview {
     /// videos.db とその WAL・共有メモリファイルの合計
     pub database_bytes: u64,
     pub ai_model_bytes: u64,
+    pub trash: TrashUsage,
 }
 
 #[tauri::command]
@@ -369,9 +376,9 @@ pub async fn get_storage_overview(app: AppHandle) -> Result<StorageOverview, Str
             log::warn!("[storage] file_size の取得に失敗しました: {e}");
         }
 
-        let (library, refs) = {
+        let (library, refs, quarantine_dirs) = {
             let conn = state.conn_read()?;
-            (library_usage(&conn)?, thumbnail_refs(&conn)?)
+            (library_usage(&conn)?, thumbnail_refs(&conn)?, quarantine_dir_candidates(&conn)?)
         };
         let files = list_thumbnail_files(&thumbnail_roots(&app));
         let thumbnails = thumbnail_usage(&files, &refs, SystemTime::now());
@@ -383,11 +390,169 @@ pub async fn get_storage_overview(app: AppHandle) -> Result<StorageOverview, Str
             .map(|m| m.len())
             .sum();
         let ai_model_bytes = dir_size(&data_dir.join("ai"));
+        let trash = trash_usage(&app, &existing_quarantine_dirs(quarantine_dirs));
 
-        Ok(StorageOverview { library, thumbnails, database_bytes, ai_model_bytes })
+        Ok(StorageOverview { library, thumbnails, database_bytes, ai_model_bytes, trash })
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+// ── ゴミ箱と退避フォルダ ────────────────────────────────────────────────────
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct QuarantineDir {
+    pub path: String,
+    pub file_count: u64,
+    pub bytes: u64,
+}
+
+#[derive(Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashUsage {
+    /// ホームにある OS のゴミ箱の容量。macOS ではフルディスクアクセスがないと
+    /// 中身を読めないため None になる。外部ボリュームのゴミ箱は含まない
+    pub os_trash_bytes: Option<u64>,
+    /// ゴミ箱が使えないボリュームで、変換元を移した退避フォルダ。容量の大きい順
+    pub quarantine: Vec<QuarantineDir>,
+    pub quarantine_bytes: u64,
+}
+
+fn os_trash_dir(app: &AppHandle) -> Option<PathBuf> {
+    let home = app.path().home_dir().ok()?;
+    if cfg!(target_os = "macos") {
+        Some(home.join(".Trash"))
+    } else if cfg!(target_os = "linux") {
+        Some(home.join(".local/share/Trash/files"))
+    } else {
+        None
+    }
+}
+
+/// ディレクトリの容量。読めない (権限がない) ときは None、存在しないときは 0
+fn readable_dir_size(path: &Path) -> Option<u64> {
+    match std::fs::read_dir(path) {
+        Ok(_) => Some(dir_size(path)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(0),
+        Err(_) => None,
+    }
+}
+
+/// 退避フォルダがありうる場所 (ライブラリのファイルがあるディレクトリと監視フォルダ) の退避フォルダのパス。
+/// 存在の確認は DB のロックを放してから `existing_quarantine_dirs` で行う
+fn quarantine_dir_candidates(conn: &rusqlite::Connection) -> Result<Vec<PathBuf>, String> {
+    let mut parents: HashSet<PathBuf> = HashSet::new();
+    let mut stmt = conn
+        .prepare("SELECT path FROM videos WHERE COALESCE(media_type, 'video') != 'link'")
+        .map_err(|e| e.to_string())?;
+    for row in stmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())? {
+        if let Some(parent) = Path::new(&row.map_err(|e| e.to_string())?).parent() {
+            parents.insert(parent.to_path_buf());
+        }
+    }
+    let mut stmt = conn.prepare("SELECT path FROM watch_dirs").map_err(|e| e.to_string())?;
+    for row in stmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())? {
+        parents.insert(PathBuf::from(row.map_err(|e| e.to_string())?));
+    }
+
+    Ok(parents.into_iter().map(|p| p.join(super::transcode::QUARANTINE_DIR_NAME)).collect())
+}
+
+/// 実際にある退避フォルダだけを残す。シンボリックリンクはたどらない
+fn existing_quarantine_dirs(candidates: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = candidates
+        .into_iter()
+        .filter(|d| std::fs::symlink_metadata(d).is_ok_and(|m| m.is_dir()))
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+/// 退避フォルダ直下の退避ファイル (`*.trashed`)
+fn quarantined_files(dir: &Path) -> Vec<(PathBuf, u64)> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(super::transcode::QUARANTINE_SUFFIX))
+        .filter_map(|e| {
+            let meta = std::fs::symlink_metadata(e.path()).ok()?;
+            meta.is_file().then(|| (e.path(), meta.len()))
+        })
+        .collect()
+}
+
+fn quarantine_usage(dirs: &[PathBuf]) -> Vec<QuarantineDir> {
+    let mut out: Vec<QuarantineDir> = dirs
+        .iter()
+        .filter_map(|d| {
+            let files = quarantined_files(d);
+            (!files.is_empty()).then(|| QuarantineDir {
+                path: d.to_string_lossy().into_owned(),
+                file_count: files.len() as u64,
+                bytes: files.iter().map(|(_, s)| s).sum(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.bytes.cmp(&a.bytes).then(a.path.cmp(&b.path)));
+    out
+}
+
+fn trash_usage(app: &AppHandle, quarantine_dirs: &[PathBuf]) -> TrashUsage {
+    let quarantine = quarantine_usage(quarantine_dirs);
+    TrashUsage {
+        os_trash_bytes: os_trash_dir(app).and_then(|d| readable_dir_size(&d)),
+        quarantine_bytes: quarantine.iter().map(|q| q.bytes).sum(),
+        quarantine,
+    }
+}
+
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct QuarantineCleanupResult {
+    pub removed_files: u64,
+    pub freed_bytes: u64,
+}
+
+/// 退避フォルダの中の退避ファイルを完全に削除する。空になったフォルダも消す。
+/// `allowed` (ライブラリから見つけた退避フォルダ) に含まれないフォルダには触らない。
+fn empty_quarantine_dirs(requested: &[String], allowed: &[PathBuf]) -> QuarantineCleanupResult {
+    let allowed: HashSet<PathBuf> = allowed.iter().filter_map(|d| d.canonicalize().ok()).collect();
+    let mut result = QuarantineCleanupResult::default();
+    for dir in requested {
+        let Ok(canon) = Path::new(dir).canonicalize() else { continue };
+        if !allowed.contains(&canon) {
+            log::warn!("[storage] 退避フォルダとして確認できないため削除しません: {dir}");
+            continue;
+        }
+        for (path, size) in quarantined_files(&canon) {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {
+                    result.removed_files += 1;
+                    result.freed_bytes += size;
+                }
+                Err(e) => log::warn!("[storage] 退避ファイルの削除に失敗しました ({}): {e}", path.display()),
+            }
+        }
+        // 他のファイルが残っていれば失敗するだけ
+        let _ = std::fs::remove_dir(&canon);
+    }
+    result
+}
+
+/// 退避フォルダを空にする (元に戻せない)
+#[tauri::command]
+pub async fn empty_quarantine(
+    state: State<'_, DbState>,
+    dirs: Vec<String>,
+) -> Result<QuarantineCleanupResult, String> {
+    let candidates = {
+        let conn = state.conn_read()?;
+        quarantine_dir_candidates(&conn)?
+    };
+    tokio::task::spawn_blocking(move || empty_quarantine_dirs(&dirs, &existing_quarantine_dirs(candidates)))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── サムネイルの掃除 ────────────────────────────────────────────────────────
@@ -462,11 +627,40 @@ pub async fn cleanup_thumbnails(app: AppHandle) -> Result<ThumbnailCleanupResult
 /// 最後に見た日時 (再生と詳細表示の新しいほう)。どちらも無ければ NULL
 const LAST_SEEN_EXPR: &str = "NULLIF(MAX(COALESCE(datetime(last_viewed_at), ''), COALESCE(datetime(watched_at), '')), '')";
 
-/// 整理候補の種類ごとの条件と「古い」の基準日数
-fn candidate_filter(kind: &str) -> Result<(String, Option<i64>), String> {
+/// ビットレート (bps)。`duration > 0` の行でだけ使う
+const BITRATE_EXPR: &str = "(file_size * 8.0 / duration)";
+
+/// 整理候補の種類ごとの条件
+struct CandidateSpec {
+    filter: String,
+    /// 「古い」の基準日数
+    threshold_days: Option<i64>,
+    /// 高ビットレートの基準 (kbps)
+    min_bitrate_kbps: Option<i64>,
+    order_by: String,
+}
+
+impl CandidateSpec {
+    fn by_size(filter: String, threshold_days: Option<i64>) -> Self {
+        Self { filter, threshold_days, min_bitrate_kbps: None, order_by: "file_size DESC, id".into() }
+    }
+}
+
+fn candidate_spec(kind: &str) -> Result<CandidateSpec, String> {
     Ok(match kind {
-        "large" => (String::new(), None),
-        "unwatched" => (
+        "large" => CandidateSpec::by_size(String::new(), None),
+        // このアプリで再エンコードした出力 (`*.av1.mkv` / `*.hevc.mkv`) は対象外
+        "highBitrate" => CandidateSpec {
+            filter: format!(
+                "AND COALESCE(media_type, 'video') = 'video' AND duration > 0
+                 AND {BITRATE_EXPR} >= {HIGH_BITRATE_BPS}
+                 AND path NOT LIKE '%.av1.mkv' AND path NOT LIKE '%.hevc.mkv'"
+            ),
+            threshold_days: None,
+            min_bitrate_kbps: Some(HIGH_BITRATE_BPS / 1000),
+            order_by: format!("{BITRATE_EXPR} DESC, id"),
+        },
+        "unwatched" => CandidateSpec::by_size(
             format!(
                 "AND COALESCE(rating, 0) = 0 AND COALESCE(watch_count, 0) = 0
                  AND watched_at IS NULL AND last_viewed_at IS NULL
@@ -474,14 +668,14 @@ fn candidate_filter(kind: &str) -> Result<(String, Option<i64>), String> {
             ),
             Some(UNWATCHED_DAYS),
         ),
-        "staleInbox" => (
+        "staleInbox" => CandidateSpec::by_size(
             format!(
                 "AND status = 'inbox'
                  AND datetime(created_at) < datetime('now', '-{STALE_INBOX_DAYS} days')"
             ),
             Some(STALE_INBOX_DAYS),
         ),
-        "longUnviewed" => (
+        "longUnviewed" => CandidateSpec::by_size(
             format!(
                 "AND {LAST_SEEN_EXPR} IS NOT NULL
                  AND {LAST_SEEN_EXPR} < datetime('now', '-{LONG_UNVIEWED_DAYS} days')"
@@ -492,7 +686,7 @@ fn candidate_filter(kind: &str) -> Result<(String, Option<i64>), String> {
     })
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CleanupItem {
     pub id: i64,
@@ -505,7 +699,40 @@ pub struct CleanupItem {
     pub watch_count: i64,
     pub created_at: String,
     pub last_seen_at: Option<String>,
+    pub duration: Option<f64>,
+    pub category_id: Option<i64>,
 }
+
+/// `CleanupItem` を読む SELECT の列 (`item_from_row` と順番を合わせる)
+pub(crate) fn cleanup_item_columns() -> String {
+    format!(
+        "id, path, title, thumbnail, file_size, COALESCE(media_type, 'video'),
+         COALESCE(rating, 0), COALESCE(watch_count, 0), COALESCE(created_at, ''),
+         {LAST_SEEN_EXPR}, duration, category_id"
+    )
+}
+
+pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> {
+    Ok(CleanupItem {
+        id: r.get(0)?,
+        path: r.get(1)?,
+        title: r.get(2)?,
+        thumbnail: r.get::<_, Option<String>>(3)?.filter(|t| !t.is_empty()),
+        file_size: r.get(4)?,
+        media_type: r.get(5)?,
+        rating: r.get(6)?,
+        watch_count: r.get(7)?,
+        created_at: r.get(8)?,
+        last_seen_at: r.get(9)?,
+        duration: r.get(10)?,
+        category_id: r.get(11)?,
+    })
+}
+
+/// ファイルが手元にあり容量を使っている行の条件 (リンク・欠損・サイズ不明は対象外)
+pub(crate) const ON_DISK_FILTER: &str = "COALESCE(media_type, 'video') != 'link'
+           AND COALESCE(status, '') != 'missing'
+           AND file_size > 0";
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -514,6 +741,7 @@ pub struct CleanupCandidates {
     pub total_count: i64,
     pub total_bytes: i64,
     pub threshold_days: Option<i64>,
+    pub min_bitrate_kbps: Option<i64>,
     pub items: Vec<CleanupItem>,
 }
 
@@ -522,15 +750,8 @@ fn query_candidates(
     kind: &str,
     limit: i64,
 ) -> Result<CleanupCandidates, String> {
-    let (filter, threshold_days) = candidate_filter(kind)?;
-    // ファイルが手元にあり容量を使っているものだけ (リンク・欠損は対象外)
-    let base = format!(
-        "FROM videos
-         WHERE COALESCE(media_type, 'video') != 'link'
-           AND COALESCE(status, '') != 'missing'
-           AND file_size > 0
-           {filter}"
-    );
+    let spec = candidate_spec(kind)?;
+    let base = format!("FROM videos WHERE {ON_DISK_FILTER} {}", spec.filter);
 
     let (total_count, total_bytes): (i64, i64) = conn
         .query_row(&format!("SELECT COUNT(*), COALESCE(SUM(file_size), 0) {base}"), [], |r| {
@@ -540,38 +761,28 @@ fn query_candidates(
 
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT id, path, title, thumbnail, file_size, COALESCE(media_type, 'video'),
-                    COALESCE(rating, 0), COALESCE(watch_count, 0), COALESCE(created_at, ''),
-                    {LAST_SEEN_EXPR}
-             {base}
-             ORDER BY file_size DESC, id
-             LIMIT ?1"
+            "SELECT {} {base} ORDER BY {} LIMIT ?1",
+            cleanup_item_columns(),
+            spec.order_by
         ))
         .map_err(|e| e.to_string())?;
     let items = stmt
-        .query_map([limit.clamp(1, 1000)], |r| {
-            Ok(CleanupItem {
-                id: r.get(0)?,
-                path: r.get(1)?,
-                title: r.get(2)?,
-                thumbnail: r.get::<_, Option<String>>(3)?.filter(|t| !t.is_empty()),
-                file_size: r.get(4)?,
-                media_type: r.get(5)?,
-                rating: r.get(6)?,
-                watch_count: r.get(7)?,
-                created_at: r.get(8)?,
-                last_seen_at: r.get(9)?,
-            })
-        })
+        .query_map([limit.clamp(1, 1000)], item_from_row)
         .map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|e| e.to_string())?;
 
-    Ok(CleanupCandidates { total_count, total_bytes, threshold_days, items })
+    Ok(CleanupCandidates {
+        total_count,
+        total_bytes,
+        threshold_days: spec.threshold_days,
+        min_bitrate_kbps: spec.min_bitrate_kbps,
+        items,
+    })
 }
 
-/// 整理候補を容量の大きい順に返す。
-/// kind: "large" | "unwatched" | "staleInbox" | "longUnviewed"
+/// 整理候補を容量の大きい順 (highBitrate はビットレートの高い順) に返す。
+/// kind: "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed"
 #[tauri::command]
 pub async fn get_cleanup_candidates(
     state: State<'_, DbState>,
@@ -880,6 +1091,55 @@ mod tests {
         let c = query_candidates(&conn, "longUnviewed", 100).unwrap();
         assert_eq!(ids(&c), vec![target, iso]);
         assert!(c.items[0].last_seen_at.is_some());
+    }
+
+    #[test]
+    fn high_bitrate_orders_by_bitrate_and_skips_av1_outputs_and_non_videos() {
+        let conn = setup();
+        // 10 Mbps (60 秒で 75 MB)
+        let mid = add_candidate(&conn, "/m/mid.mp4", 75_000_000, "duration = 60");
+        // 20 Mbps だが容量は小さい
+        let high = add_candidate(&conn, "/m/high.mp4", 50_000_000, "duration = 20");
+        // 基準未満 (2 Mbps)
+        add_candidate(&conn, "/m/low.mp4", 15_000_000, "duration = 60");
+        add_candidate(&conn, "/m/done.av1.mkv", 75_000_000, "duration = 60");
+        add_candidate(&conn, "/m/nodur.mp4", 75_000_000, "duration = NULL");
+        add_candidate(&conn, "/m/song.flac", 75_000_000, "duration = 60, media_type = 'audio'");
+
+        let c = query_candidates(&conn, "highBitrate", 100).unwrap();
+        assert_eq!(ids(&c), vec![high, mid]);
+        assert_eq!(c.min_bitrate_kbps, Some(HIGH_BITRATE_BPS / 1000));
+        assert_eq!(c.items[1].duration, Some(60.0));
+    }
+
+    // ── 退避フォルダ ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn quarantine_dirs_are_found_next_to_library_files_and_emptied_safely() {
+        let base = temp_root("quarantine").parent().unwrap().join("media");
+        let qdir = base.join(super::super::transcode::QUARANTINE_DIR_NAME);
+        let trashed = qdir.join("a.mp4.trashed");
+        let other = qdir.join("note.txt");
+        write_file(&trashed, 300);
+        write_file(&other, 5);
+        // ライブラリと関係ない場所の退避フォルダ
+        let stray = base.parent().unwrap().join("elsewhere").join(super::super::transcode::QUARANTINE_DIR_NAME);
+        let stray_file = stray.join("b.mp4.trashed");
+        write_file(&stray_file, 10);
+
+        let conn = setup();
+        insert(&conn, &s(&base.join("a.av1.mkv")), None, "video");
+
+        let dirs = existing_quarantine_dirs(quarantine_dir_candidates(&conn).unwrap());
+        assert_eq!(dirs, vec![qdir.clone()]);
+        let usage = quarantine_usage(&dirs);
+        assert_eq!(usage, vec![QuarantineDir { path: s(&qdir), file_count: 1, bytes: 300 }]);
+
+        let r = empty_quarantine_dirs(&[s(&qdir), s(&stray)], &dirs);
+        assert_eq!(r, QuarantineCleanupResult { removed_files: 1, freed_bytes: 300 });
+        assert!(!trashed.exists());
+        assert!(other.exists(), "退避ファイル以外は消さない");
+        assert!(stray_file.exists(), "ライブラリから見つからない退避フォルダには触らない");
     }
 
     #[test]

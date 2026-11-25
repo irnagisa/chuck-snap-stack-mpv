@@ -177,3 +177,34 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* ---- 重複・ゴミ箱 (StorageDuplicates / StorageTrashPanel) ---- */
+@layer ui {
+  .dupList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .dupActions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+  }
+  .calloutBody {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .quarantineRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1-5) var(--space-4);
+    border-top: 1px solid var(--color-border);
+  }
+}

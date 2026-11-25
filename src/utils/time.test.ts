@@ -1,5 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { formatFileSize, formatTime, parseSqliteDate } from './time';
+import { formatFileSize, formatTime, parseSqliteDate, parseTimecode } from './time';
+
+describe('parseTimecode', () => {
+  it('reads seconds, m:ss and h:mm:ss', () => {
+    expect(parseTimecode('90')).toBe(90);
+    expect(parseTimecode('1:30')).toBe(90);
+    expect(parseTimecode(' 1:02:03 ')).toBe(3723);
+    expect(parseTimecode('0:05.5')).toBe(5.5);
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseTimecode('')).toBeNull();
+    expect(parseTimecode('  ')).toBeNull();
+  });
+
+  it('returns NaN for unreadable input', () => {
+    expect(parseTimecode('abc')).toBeNaN();
+    expect(parseTimecode('1:75')).toBeNaN();
+    expect(parseTimecode('1:2:3:4')).toBeNaN();
+    expect(parseTimecode('-5')).toBeNaN();
+  });
+});
 
 describe('formatTime', () => {
   it('formats 0 seconds as 0:00', () => {
