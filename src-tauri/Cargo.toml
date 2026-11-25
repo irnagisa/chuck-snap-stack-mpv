@@ -50,3 +50,4 @@ tauri-plugin-wdio-webdriver = "1"
 # (Session::builder() から一切復帰しない) 問題を確認したため、api-21 に留める。
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "load-dynamic", "ndarray", "api-21"] }
 ndarray = "0.17"
+webp = { version = "0.3.1", default-features = false }

@@ -9,6 +9,7 @@ use tauri::Emitter;
 use tauri_plugin_notification::NotificationExt;
 
 use super::settings::SharedAppSettings;
+use super::webp_thumb::{encoder_listed, list_encoders};
 use super::utils::{normalize_path_str, resolve_unique_path, validate_video_path};
 use crate::db::DbState;
 
@@ -65,6 +66,11 @@ impl TranscodeState {
             current_child: Arc::new(Mutex::new(None)),
             last_completed: Mutex::new(None),
         }
+    }
+
+    /// 変換中の一時出力ファイル。ロックが壊れていれば Err (呼び出し側は何も消さない)
+    pub(crate) fn current_output(&self) -> Result<Option<String>, String> {
+        self.current_output.lock().map(|p| p.clone()).map_err(|e| e.to_string())
     }
 }
 
@@ -142,7 +148,9 @@ pub async fn transcode_video(
     };
 
     // ストリーム構成を調べ、モードに合わせて残すトラックと変換方法を決める
-    let source_info = probe_source(&ffprobe_path, &input_path).await?;
+    let (source_info, encoders) =
+        tokio::join!(probe_source(&ffprobe_path, &input_path), detect_encoders(&ffmpeg_path));
+    let source_info = source_info?;
     let expected = expectation(&mode, &source_info)?;
     // 進み具合は出力の長さに対する割合で出す (トリミングすると元より短い)
     let duration_secs = match mode {
@@ -159,6 +167,7 @@ pub async fn transcode_video(
         &mode,
         &source_info,
         Some(input_fingerprint.len),
+        encoders,
     )?;
 
     {
@@ -431,7 +440,7 @@ pub fn kill_on_exit(state: &TranscodeState) {
 }
 
 /// 変換途中の一時ファイル名 (`._<名前>.<av1|hevc|opus|slim>[_N].mkv.tmp`) かどうか
-fn is_transcode_tmp_name(name: &str) -> bool {
+pub(crate) fn is_transcode_tmp_name(name: &str) -> bool {
     name.starts_with("._")
         && name.ends_with(".mkv.tmp")
         && OUTPUT_SUFFIXES.iter().any(|s| name.contains(&format!(".{s}")))
@@ -506,7 +515,9 @@ pub async fn cancel_transcode(state: tauri::State<'_, TranscodeState>) -> Result
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum TranscodeMode {
-    /// 映像を SVT-AV1 で再エンコードする (遅いがよく縮む)
+    /// 映像を AV1 で再エンコードする (遅いがよく縮む)。
+    /// SVT-AV1 があればそちらを使い、なければ libaom で代わりにする (`Av1Encoder`)。
+    /// `preset` は SVT-AV1 のプリセット (0〜13)。libaom では `-cpu-used` に読み替える
     Av1 { crf: u32, preset: u32 },
     /// 映像を VideoToolbox の HEVC で再エンコードする (速い)。
     /// Intel Mac では画質指定 (`-q:v`) が使えないため、元の映像ビットレートに対する割合で指定する
@@ -948,6 +959,57 @@ fn subtitle_codec_for_mkv(codec_name: &str) -> &'static str {
 /// HEVC の最低ビットレート (bps)。これ未満は画質が崩れやすい
 const MIN_HEVC_BITRATE: f64 = 300_000.0;
 
+// ── エンコーダー ─────────────────────────────────────────────────────────────
+
+/// AV1 のエンコーダー
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Av1Encoder {
+    /// SVT-AV1 (`libsvtav1`)。速い
+    Svt,
+    /// libaom (`libaom-av1`)。SVT-AV1 よりかなり遅いが、SVT-AV1 を含まない ffmpeg のビルドもある
+    Aom,
+}
+
+/// この ffmpeg で使える変換用のエンコーダー
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Encoders {
+    pub av1: Option<Av1Encoder>,
+    /// HEVC (VideoToolbox)
+    pub hevc: bool,
+}
+
+impl Encoders {
+    /// `ffmpeg -encoders` の出力から読み取る (各行は ` V....D 名前  説明` の形)
+    fn parse(list: &str) -> Self {
+        let has = |name: &str| encoder_listed(list, name);
+        let av1 = if has("libsvtav1") {
+            Some(Av1Encoder::Svt)
+        } else if has("libaom-av1") {
+            Some(Av1Encoder::Aom)
+        } else {
+            None
+        };
+        Self { av1, hevc: has("hevc_videotoolbox") }
+    }
+}
+
+/// この ffmpeg で使えるエンコーダーを調べる
+async fn detect_encoders(ffmpeg_path: &str) -> Encoders {
+    list_encoders(ffmpeg_path).await.map(|list| Encoders::parse(&list)).unwrap_or_default()
+}
+
+/// SVT-AV1 のプリセット (0〜13) を libaom の `-cpu-used` に読み替える。
+/// libaom の通常モードは 6 が最速 (7 以上を指定しても 6 と同じ) で、1 段遅くするごとに
+/// 数倍ずつ時間が延びる (720p で 6 → 5 が約 4.5 倍、5 → 4 が約 2 倍) ため、4 より遅くはしない
+fn aom_cpu_used(preset: u32) -> u32 {
+    match preset {
+        8.. => 6,
+        5..=7 => 5,
+        _ => 4,
+    }
+}
+
 fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
@@ -961,6 +1023,7 @@ fn build_ffmpeg_args(
     mode: &TranscodeMode,
     source: &ProbeInfo,
     file_size: Option<u64>,
+    encoders: Encoders,
 ) -> Result<Vec<String>, String> {
     let mut args = strings(&["-y", "-progress", "pipe:1", "-nostats"]);
 
@@ -993,10 +1056,21 @@ fn build_ffmpeg_args(
     args.extend(strings(&["-map", "0:V", "-map", "0:a?", "-map", "0:s?", "-map", "0:t?"]));
 
     match mode {
-        TranscodeMode::Av1 { crf, preset } => {
-            args.extend(strings(&["-c:v", "libsvtav1"]));
-            args.extend(["-crf".into(), crf.to_string(), "-preset".into(), preset.to_string()]);
-        }
+        TranscodeMode::Av1 { crf, preset } => match encoders.av1 {
+            Some(Av1Encoder::Svt) => {
+                args.extend(strings(&["-c:v", "libsvtav1"]));
+                args.extend(["-crf".into(), crf.to_string(), "-preset".into(), preset.to_string()]);
+            }
+            Some(Av1Encoder::Aom) => {
+                // `-b:v 0` を付けないと CRF が画質固定ではなく上限付きの指定になる。
+                // 行単位の並列化とタイル分割 (2×2、小さい映像では自動で減る) で速くする
+                args.extend(strings(&["-c:v", "libaom-av1"]));
+                args.extend(["-crf".into(), crf.to_string(), "-b:v".into(), "0".into()]);
+                args.extend(["-cpu-used".into(), aom_cpu_used(*preset).to_string()]);
+                args.extend(strings(&["-row-mt", "1", "-tile-columns", "1", "-tile-rows", "1"]));
+            }
+            None => return Err("この ffmpeg には AV1 のエンコーダー (libsvtav1 / libaom-av1) がありません".into()),
+        },
         TranscodeMode::Hevc { bitrate_percent } => {
             let video = source.main_video().ok_or("映像トラックがありません")?;
             let source_bps = video_bitrate(source, file_size).ok_or("元の映像のビットレートが分かりません")?;
@@ -1110,6 +1184,8 @@ pub struct TranscodeEstimate {
     pub audio_saving_bytes: u64,
     /// この ffmpeg で HEVC (VideoToolbox) が使えるか
     pub hevc_available: bool,
+    /// AV1 変換に使うエンコーダー (無ければ AV1 変換はできない)
+    pub av1_encoder: Option<Av1Encoder>,
 }
 
 /// 映像ストリームのビットレート (bps)。ストリームに記録がなければ
@@ -1142,7 +1218,7 @@ fn audio_saving_bytes(info: &ProbeInfo, plans: &[AudioPlan]) -> u64 {
         .sum()
 }
 
-fn estimate_from_probe(info: &ProbeInfo, file_size: Option<u64>, hevc_available: bool) -> TranscodeEstimate {
+fn estimate_from_probe(info: &ProbeInfo, file_size: Option<u64>, encoders: Encoders) -> TranscodeEstimate {
     let video = info.main_video();
     let bitrate = video_bitrate(info, file_size);
     let bpp = video.zip(bitrate).and_then(|(v, b)| {
@@ -1185,18 +1261,8 @@ fn estimate_from_probe(info: &ProbeInfo, file_size: Option<u64>, hevc_available:
             .collect(),
         audio_saving_bytes: audio_saving_bytes(info, &audio),
         audio,
-        hevc_available,
-    }
-}
-
-/// この ffmpeg に HEVC (VideoToolbox) のエンコーダーがあるか
-async fn has_hevc_videotoolbox(ffmpeg_path: &str) -> bool {
-    match tokio::process::Command::new(ffmpeg_path).args(["-hide_banner", "-encoders"]).output().await {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).contains("hevc_videotoolbox"),
-        Err(e) => {
-            log::warn!("[transcode] エンコーダー一覧の取得に失敗しました: {e}");
-            false
-        }
+        hevc_available: encoders.hevc,
+        av1_encoder: encoders.av1,
     }
 }
 
@@ -1211,10 +1277,10 @@ pub async fn estimate_transcode(
         let s = app_settings.lock().map_err(|e| e.to_string())?;
         (s.ffmpeg_path.clone(), s.ffprobe_path.clone())
     };
-    let (info, hevc) = tokio::join!(probe_source(&ffprobe_path, &input_path), has_hevc_videotoolbox(&ffmpeg_path));
+    let (info, encoders) = tokio::join!(probe_source(&ffprobe_path, &input_path), detect_encoders(&ffmpeg_path));
     let info = info?;
     let size = tokio::fs::metadata(&input_path).await.ok().map(|m| m.len());
-    Ok(estimate_from_probe(&info, size, hevc))
+    Ok(estimate_from_probe(&info, size, encoders))
 }
 
 /// 変換後のサイズが十分小さいか (元の `1 - min_saving_ratio` 倍以下で、かつ元より小さい)
@@ -1414,8 +1480,13 @@ mod tests {
         check_output(&expectation(&av1, source)?, output)
     }
 
+    /// SVT-AV1 と VideoToolbox がそろった ffmpeg
+    const SVT: Encoders = Encoders { av1: Some(Av1Encoder::Svt), hevc: true };
+    /// SVT-AV1 を含まず libaom だけがある ffmpeg (evermeet.cx のビルドなど)
+    const AOM: Encoders = Encoders { av1: Some(Av1Encoder::Aom), hevc: true };
+
     fn av1_args(source: &ProbeInfo, crf: u32, preset: u32) -> Vec<String> {
-        build_ffmpeg_args("/in.mp4", "/out.tmp", &TranscodeMode::Av1 { crf, preset }, source, None).unwrap()
+        build_ffmpeg_args("/in.mp4", "/out.tmp", &TranscodeMode::Av1 { crf, preset }, source, None, SVT).unwrap()
     }
 
     fn video(codec: &str, w: u32, h: u32, fps: f64, bit_rate: Option<u64>) -> StreamInfo {
@@ -1595,28 +1666,28 @@ mod tests {
     #[test]
     fn estimate_flags_av1_low_bitrate_and_worth() {
         // 1080p30 H.264 8 Mbps → bpp ≈ 0.129
-        let worth = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(8_000_000))]), None, false);
+        let worth = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(8_000_000))]), None, Encoders::default());
         assert_eq!(worth.verdict, TranscodeVerdict::Worth);
         assert!((worth.bits_per_pixel.unwrap() - 0.1286).abs() < 0.001);
 
         // 1080p30 H.264 1.5 Mbps → bpp ≈ 0.024
-        let low = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_500_000))]), None, false);
+        let low = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_500_000))]), None, Encoders::default());
         assert_eq!(low.verdict, TranscodeVerdict::LowBitrate);
 
-        let av1 = estimate_from_probe(&probe(60.0, vec![video("av1", 1920, 1080, 30.0, Some(8_000_000))]), None, false);
+        let av1 = estimate_from_probe(&probe(60.0, vec![video("av1", 1920, 1080, 30.0, Some(8_000_000))]), None, Encoders::default());
         assert_eq!(av1.verdict, TranscodeVerdict::AlreadyAv1);
 
-        let unknown = estimate_from_probe(&probe(60.0, vec![stream("video", "h264")]), None, false);
+        let unknown = estimate_from_probe(&probe(60.0, vec![stream("video", "h264")]), None, Encoders::default());
         assert_eq!(unknown.verdict, TranscodeVerdict::Unknown);
     }
 
     #[test]
     fn estimate_accounts_for_hevc_efficiency() {
         // HEVC 1.2 Mbps: 実測 bpp ≈ 0.019 だが H.264 換算では ≈ 0.032 → 縮む余地あり
-        let e = estimate_from_probe(&probe(60.0, vec![video("hevc", 1920, 1080, 30.0, Some(1_200_000))]), None, false);
+        let e = estimate_from_probe(&probe(60.0, vec![video("hevc", 1920, 1080, 30.0, Some(1_200_000))]), None, Encoders::default());
         assert_eq!(e.verdict, TranscodeVerdict::Worth);
         // 同じビットレートの H.264 は低ビットレート扱い
-        let e = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_200_000))]), None, false);
+        let e = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_200_000))]), None, Encoders::default());
         assert_eq!(e.verdict, TranscodeVerdict::LowBitrate);
     }
 
@@ -1734,7 +1805,7 @@ mod tests {
             audio("ac3", 6, "5.1(side)", Some(640_000)),
             audio("aac", 2, "stereo", Some(128_000)),
         ]);
-        let args = build_ffmpeg_args("/in.mkv", "/out.tmp", &TranscodeMode::Audio, &p, None).unwrap();
+        let args = build_ffmpeg_args("/in.mkv", "/out.tmp", &TranscodeMode::Audio, &p, None, SVT).unwrap();
         assert!(has_pair(&args, "-c:v", "copy"));
         assert!(has_pair(&args, "-c:a:0", "libopus"));
         assert!(has_pair(&args, "-b:a:0", "288k"));
@@ -1749,26 +1820,85 @@ mod tests {
         assert!(expectation(&TranscodeMode::Audio, &p).is_err());
     }
 
+    // ── AV1 エンコーダーの選択 ───────────────────────────────────────────────
+
+    #[test]
+    fn encoders_prefer_svt_and_fall_back_to_aom() {
+        let header = " V..... = Video\n A..... = Audio\n ------\n";
+        let svt = format!("{header} V....D libaom-av1           libaom AV1 (codec av1)\n V....D libsvtav1            SVT-AV1(Scalable Video Technology for AV1) encoder (codec av1)\n V....D hevc_videotoolbox    VideoToolbox H.265 Encoder (codec hevc)\n");
+        assert_eq!(Encoders::parse(&svt), Encoders { av1: Some(Av1Encoder::Svt), hevc: true });
+
+        let aom = format!("{header} V....D libaom-av1           libaom AV1 (codec av1)\n A....D wmav1                Windows Media Audio 1\n");
+        assert_eq!(Encoders::parse(&aom), Encoders { av1: Some(Av1Encoder::Aom), hevc: false });
+
+        // デコーダーだけ (名前の一部が一致するだけ) では使えるとみなさない
+        let none = format!("{header} V....D libx264              libx264 H.264\n A....D wmav1                Windows Media Audio 1\n");
+        assert_eq!(Encoders::parse(&none), Encoders::default());
+    }
+
+    #[test]
+    fn av1_args_with_libaom_use_constant_quality_and_mapped_speed() {
+        let source = probe(60.0, vec![stream("video", "h264"), stream("audio", "aac")]);
+        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &TranscodeMode::Av1 { crf: 32, preset: 8 }, &source, None, AOM).unwrap();
+        assert!(has_pair(&args, "-c:v", "libaom-av1"));
+        assert!(has_pair(&args, "-crf", "32"));
+        assert!(has_pair(&args, "-b:v", "0"), "画質固定にするには -b:v 0 が必要");
+        assert!(has_pair(&args, "-cpu-used", "6"));
+        assert!(has_pair(&args, "-row-mt", "1"));
+        assert!(!args.iter().any(|a| a == "-preset"), "libaom に -preset はない");
+        for m in ["0:V", "0:a?", "0:s?", "0:t?"] {
+            assert!(has_pair(&args, "-map", m), "-map {m}");
+        }
+    }
+
+    #[test]
+    fn svt_presets_map_to_aom_speeds() {
+        assert_eq!(aom_cpu_used(13), 6);
+        assert_eq!(aom_cpu_used(8), 6);
+        assert_eq!(aom_cpu_used(5), 5);
+        assert_eq!(aom_cpu_used(3), 4);
+        assert_eq!(aom_cpu_used(0), 4);
+    }
+
+    #[test]
+    fn av1_is_refused_without_an_av1_encoder() {
+        let source = probe(60.0, vec![stream("video", "h264")]);
+        let mode = TranscodeMode::Av1 { crf: 32, preset: 8 };
+        let none = Encoders { av1: None, hevc: true };
+        assert!(build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &source, None, none).is_err());
+    }
+
+    #[test]
+    fn estimate_reports_available_encoders() {
+        let p = probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(8_000_000))]);
+        let e = estimate_from_probe(&p, None, AOM);
+        assert_eq!(e.av1_encoder, Some(Av1Encoder::Aom));
+        assert!(e.hevc_available);
+        let json = serde_json::to_value(&e).unwrap();
+        assert_eq!(json["av1Encoder"], "aom");
+        assert_eq!(serde_json::to_value(estimate_from_probe(&p, None, Encoders::default())).unwrap()["av1Encoder"], serde_json::Value::Null);
+    }
+
     // ── HEVC ─────────────────────────────────────────────────────────────────
 
     #[test]
     fn hevc_args_use_bitrate_ratio_and_explicit_pixel_format() {
         let p = probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(8_000_000))]);
         let mode = TranscodeMode::Hevc { bitrate_percent: 40 };
-        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &p, None).unwrap();
+        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &p, None, SVT).unwrap();
         assert!(has_pair(&args, "-c:v", "hevc_videotoolbox"));
         assert!(has_pair(&args, "-b:v", "3200000"));
         assert!(has_pair(&args, "-pix_fmt", "nv12"));
 
         let mut ten = video("hevc", 3840, 2160, 24.0, Some(20_000_000));
         ten.pix_fmt = Some("yuv420p10le".into());
-        let args = build_ffmpeg_args("/in.mkv", "/out.tmp", &mode, &probe(60.0, vec![ten]), None).unwrap();
+        let args = build_ffmpeg_args("/in.mkv", "/out.tmp", &mode, &probe(60.0, vec![ten]), None, SVT).unwrap();
         assert!(has_pair(&args, "-pix_fmt", "p010le"));
         assert!(has_pair(&args, "-profile:v", "main10"));
 
         // 元のビットレートが極端に低くても下限を守る
         let low = probe(60.0, vec![video("h264", 320, 240, 30.0, Some(200_000))]);
-        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &low, None).unwrap();
+        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &low, None, SVT).unwrap();
         assert!(has_pair(&args, "-b:v", "300000"));
     }
 
@@ -1795,7 +1925,7 @@ mod tests {
     fn remux_args_map_only_kept_streams_and_trim_by_copy() {
         let src = remux_source();
         let mode = remux(vec![0, 1, 3], Some(30.0), Some(90.0));
-        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &src, None).unwrap();
+        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &src, None, SVT).unwrap();
         let maps: Vec<&str> = args.windows(2).filter(|w| w[0] == "-map").map(|w| w[1].as_str()).collect();
         assert_eq!(maps, vec!["0:0", "0:1", "0:3"]);
         assert!(has_pair(&args, "-c", "copy"));
@@ -1867,11 +1997,12 @@ mod tests {
         out.to_string_lossy().into_owned()
     }
 
-    async fn run_mode(input: &str, mode: TranscodeMode) -> (ProbeInfo, Result<(), String>) {
+    async fn run_mode(input: &str, mode: TranscodeMode, encoders: Encoders) -> (ProbeInfo, Result<(), String>) {
         let source = probe_source("ffprobe", input).await.unwrap();
         let expected = expectation(&mode, &source).unwrap();
         let output = format!("{input}.{}.mkv", mode.suffix());
-        let args = build_ffmpeg_args(input, &output, &mode, &source, std::fs::metadata(input).ok().map(|m| m.len())).unwrap();
+        let size = std::fs::metadata(input).ok().map(|m| m.len());
+        let args = build_ffmpeg_args(input, &output, &mode, &source, size, encoders).unwrap();
         let out = Command::new("ffmpeg").args(&args).stdout(Stdio::null()).output().unwrap();
         assert!(out.status.success(), "{mode:?}: {}", String::from_utf8_lossy(&out.stderr));
         let info = probe_media("ffprobe", &output).await.unwrap();
@@ -1884,21 +2015,33 @@ mod tests {
     async fn real_ffmpeg_all_modes() {
         let dir = std::env::temp_dir().join(format!("css-transcode-it-{}", std::process::id()));
         let input = make_sample(&dir);
+        let encoders = detect_encoders("ffmpeg").await;
 
         // 音声だけ: PCM 5.1(side) は Opus に、320k の AAC も Opus に、映像はコピー
-        let (info, checked) = run_mode(&input, TranscodeMode::Audio).await;
+        let (info, checked) = run_mode(&input, TranscodeMode::Audio, encoders).await;
         checked.unwrap();
         let codecs: Vec<&str> = info.streams.iter().map(|s| s.codec_name.as_str()).collect();
         assert_eq!(codecs, vec!["h264", "opus", "opus", "subrip"]);
 
-        // AV1
-        let (info, checked) = run_mode(&input, TranscodeMode::Av1 { crf: 40, preset: 12 }).await;
-        checked.unwrap();
-        assert_eq!(info.main_video().unwrap().codec_name, "av1");
+        // AV1: この ffmpeg にある AV1 エンコーダーそれぞれで (SVT-AV1 と libaom の両方があれば両方)
+        let list = Command::new("ffmpeg").args(["-hide_banner", "-encoders"]).output().unwrap();
+        let list = String::from_utf8_lossy(&list.stdout);
+        let av1_encoders: Vec<Av1Encoder> = [("libsvtav1", Av1Encoder::Svt), ("libaom-av1", Av1Encoder::Aom)]
+            .into_iter()
+            .filter(|(name, _)| encoder_listed(&list, name))
+            .map(|(_, enc)| enc)
+            .collect();
+        assert!(!av1_encoders.is_empty(), "AV1 のエンコーダーがない ffmpeg");
+        for enc in av1_encoders {
+            let mode = TranscodeMode::Av1 { crf: 40, preset: 12 };
+            let (info, checked) = run_mode(&input, mode, Encoders { av1: Some(enc), ..encoders }).await;
+            checked.unwrap_or_else(|e| panic!("{enc:?}: {e}"));
+            assert_eq!(info.main_video().unwrap().codec_name, "av1", "{enc:?}");
+        }
 
         // HEVC (VideoToolbox がある Mac だけ)
-        if has_hevc_videotoolbox("ffmpeg").await {
-            let (info, checked) = run_mode(&input, TranscodeMode::Hevc { bitrate_percent: 50 }).await;
+        if encoders.hevc {
+            let (info, checked) = run_mode(&input, TranscodeMode::Hevc { bitrate_percent: 50 }, encoders).await;
             checked.unwrap();
             assert_eq!(info.main_video().unwrap().codec_name, "hevc");
         }
@@ -1908,7 +2051,7 @@ mod tests {
             streams: vec![0, 2, 3],
             trim_start: Some(5.0),
             trim_end: Some(15.0),
-        })
+        }, encoders)
         .await;
         checked.unwrap();
         let codecs: Vec<&str> = info.streams.iter().map(|s| s.codec_name.as_str()).collect();

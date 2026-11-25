@@ -6,12 +6,15 @@ import { useLibraryStore } from "../../store/useLibraryStore";
 import { toast } from "../../store/useToastStore";
 import { formatFileSize } from "../../utils/time";
 import { Button, Checkbox, ConfirmDialog, Dialog, SegmentedControl, useDialogClose } from "../ui";
+import { StorageAiModelsPanel } from "./StorageAiModelsPanel";
 import { StorageCandidateRow } from "./StorageCandidateRow";
 import { StorageDuplicates, suggestedIds } from "./StorageDuplicates";
+import { StorageLeftoversPanel } from "./StorageLeftoversPanel";
 import { StorageTrashPanel } from "./StorageTrashPanel";
 import { TranscodeBatchDialog } from "./TranscodeBatchDialog";
 import {
   bitrateKbps,
+  freedBytes,
   type CandidateKind,
   type CleanupCandidates,
   type CleanupItem,
@@ -101,14 +104,15 @@ export function StorageModal({ onClose }: Props) {
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [cleaningThumbs, setCleaningThumbs] = useState(false);
-  const [emptyingQuarantine, setEmptyingQuarantine] = useState(false);
+  /** ゴミ箱・AI モデル・残りファイルのパネルで削除中 */
+  const [panelBusy, setPanelBusy] = useState(false);
   const [trashing, setTrashing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   /** 変換ダイアログに渡す動画 (開いた時点の選択。閉じるアニメーション中も表示を保つ) */
   const [batchItems, setBatchItems] = useState<CleanupItem[]>([]);
   const [phashProgress, setPhashProgress] = useState<{ done: number; total: number } | null>(null);
-  const dialog = useDialogClose(onClose, { locked: trashing || cleaningThumbs || emptyingQuarantine });
+  const dialog = useDialogClose(onClose, { locked: trashing || cleaningThumbs || panelBusy });
 
   /** 種類を切り替えたとき、前の種類の結果で上書きしないための番号 */
   const loadSeq = useRef(0);
@@ -252,7 +256,14 @@ export function StorageModal({ onClose }: Props) {
     [kind, dupes, candidates],
   );
   const selectedItems = items.filter((i) => selected.has(i.id));
-  const selectedBytes = selectedItems.reduce((s, i) => s + i.fileSize, 0);
+  // 重複は APFS のクローンで共有している分を除いた、空く見込みの容量
+  const selectedBytes = useMemo(
+    () =>
+      kind === "duplicates"
+        ? (dupes?.groups ?? []).reduce((s, g) => s + freedBytes(g.items, (i) => selected.has(i.id)), 0)
+        : items.filter((i) => selected.has(i.id)).reduce((s, i) => s + i.fileSize, 0),
+    [kind, dupes, items, selected],
+  );
   const allChecked = items.length > 0 && selectedItems.length === items.length;
   const headChecked = allChecked ? true : selectedItems.length > 0 ? "indeterminate" : false;
   const busy = trashing || !!phashProgress;
@@ -376,10 +387,27 @@ export function StorageModal({ onClose }: Props) {
 
         <StorageTrashPanel
           trash={overview.trash}
-          disabled={trashing}
-          onBusyChange={setEmptyingQuarantine}
+          disabled={trashing || panelBusy}
+          onBusyChange={setPanelBusy}
           onEmptied={loadOverview}
         />
+
+        <StorageLeftoversPanel
+          refreshKey={overview}
+          disabled={trashing || panelBusy}
+          onBusyChange={setPanelBusy}
+          onDeleted={loadOverview}
+        />
+
+        {overview.aiModels.length > 0 && (
+          <StorageAiModelsPanel
+            models={overview.aiModels}
+            aiEnabled={overview.aiEnabled}
+            disabled={trashing || panelBusy}
+            onBusyChange={setPanelBusy}
+            onRemoved={loadOverview}
+          />
+        )}
       </>
     );
   };
@@ -470,7 +498,10 @@ export function StorageModal({ onClose }: Props) {
           <>
             <span className={`${modal.note} ${modal.footerLead}`}>
               {selectedItems.length > 0 &&
-                t("storage.selectedSummary", { count: selectedItems.length, size: formatFileSize(selectedBytes) })}
+                t(kind === "duplicates" ? "storage.dupSelectedSummary" : "storage.selectedSummary", {
+                  count: selectedItems.length,
+                  size: formatFileSize(selectedBytes),
+                })}
             </span>
             <Button variant="secondary" disabled={trashing} onClick={() => dialog.close()}>
               {t("storage.close")}
@@ -528,7 +559,9 @@ export function StorageModal({ onClose }: Props) {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title={t("storage.confirmTitle", { count: selectedItems.length })}
-        description={t("storage.confirmDesc", { size: formatFileSize(selectedBytes) })}
+        description={t(kind === "duplicates" ? "storage.confirmDescDup" : "storage.confirmDesc", {
+          size: formatFileSize(selectedBytes),
+        })}
         confirmLabel={t("storage.moveToTrash")}
         cancelLabel={t("storage.cancel")}
         onConfirm={handleTrash}

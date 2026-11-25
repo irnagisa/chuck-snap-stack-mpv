@@ -64,7 +64,7 @@ chuck-snap-stack/
 │   └── App.tsx
 ├── src-tauri/                  # Rust/Tauri バックエンド
 │   ├── src/
-│   │   ├── commands/           # Tauri コマンド (145 個)
+│   │   ├── commands/           # Tauri コマンド (147 個)
 │   │   │   ├── library.rs      # メディアファイル操作・メタデータ抽出
 │   │   │   ├── mpv.rs          # mpv プロセス管理・IPC
 │   │   │   ├── db_videos.rs    # メディア DB CRUD・Inbox 管理
@@ -74,10 +74,13 @@ chuck-snap-stack/
 │   │   │   ├── db_settings.rs  # 設定 DB
 │   │   │   ├── db_stats.rs     # ライブラリ統計
 │   │   │   ├── storage.rs      # 容量の内訳・整理候補・サムネイルの掃除・ゴミ箱と退避フォルダ
-│   │   │   ├── storage_duplicates.rs # 整理画面の重複検出 (中身の一致 + pHash)
+│   │   │   ├── storage_duplicates.rs # 整理画面の重複検出 (中身の一致 + pHash)。APFS のクローンは空く容量から除く
+│   │   │   ├── storage_leftovers.rs # 途中で止まったダウンロード・変換・AI モデル取得の残りファイル
+│   │   │   ├── fs_clone.rs     # APFS のクローン情報 (共有していない容量・clone id、macOS の getattrlist)
 │   │   │   ├── db_export.rs    # バックアップ・エクスポート
 │   │   │   ├── download.rs     # HTTP ダウンロード
 │   │   │   ├── transcode.rs    # ffmpeg 変換 (AV1 / HEVC / 音声だけ / トラック整理・切り詰め)
+│   │   │   ├── webp_thumb.rs   # サムネイルの WebP 書き出し (libwebp なしの ffmpeg は PNG 経由)
 │   │   │   ├── ytdlp.rs        # yt-dlp 連携
 │   │   │   ├── watcher.rs      # ファイルシステム監視
 │   │   │   ├── window.rs       # ミニプレイヤーウィンドウ
@@ -266,7 +269,7 @@ pub async fn command_name(
 .invoke_handler(tauri::generate_handler![
     commands::mpv::play,
     commands::library::scan_directory,
-    // ...他 143 個のコマンド
+    // ...他 145 個のコマンド
 ])
 ```
 
@@ -348,8 +351,9 @@ unlisten();
 - IPC ソケットパスは一時ディレクトリに作成し、アプリ終了時に削除する
 - 大量のメディアファイルスキャンは `tokio::task::spawn_blocking` でブロッキング I/O を処理
 - CPU 負荷の高い処理 (transcode) も `spawn_blocking` を使う
+- AV1 変換は SVT-AV1 (`libsvtav1`) を優先し、無い ffmpeg (evermeet.cx の Intel Mac 向けビルドなど) では libaom (`libaom-av1`) で代わりにする。使えるエンコーダーは `ffmpeg -encoders` で調べる
 - HEVC 変換 (`hevc_videotoolbox`) は Intel Mac で画質指定 `-q:v` が使えないためビットレート指定にしている。8 ビット入力は `-pix_fmt nv12` を明示しないと失敗する。libopus は `5.1(side)` 等の配置を受け付けないので `aformat` で並べ替える
-- サムネイルは WebP 形式で生成 (ffmpeg 使用)。`start_web_server` で組み込み HTTP サーバー (axum) を起動してフロントエンドへ配信する
+- サムネイルは WebP 形式で生成 (ffmpeg 使用、`webp_thumb::ffmpeg_to_webp` を通す)。WebP の書き出しには libwebp 入りの ffmpeg が要るが、Homebrew の `ffmpeg` など libwebp なしの配布もあるため、書けない ffmpeg では PNG で取り出して `webp` クレートで非可逆 WebP にする。`start_web_server` で組み込み HTTP サーバー (axum) を起動してフロントエンドへ配信する
 - pHash (知覚的ハッシュ) で重複メディアを検出。`db_compute_video_phash` → `db_find_similar_videos` の流れ
 - AI タグ提案は tract-onnx で ONNX モデルを実行 (WD ViT Tagger v3)。モデルは `download_ai_model` でダウンロード
 - rusqlite を直接使用 (tauri-plugin-sql は不使用)。SQL インジェクション対策でプリペアドステートメントを使う

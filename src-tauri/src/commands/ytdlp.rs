@@ -22,6 +22,11 @@ impl YtdlpState {
             child: Mutex::new(None),
         }
     }
+
+    /// yt-dlp を実行中か (ロックが壊れていれば実行中とみなす)
+    pub(crate) fn is_running(&self) -> bool {
+        self.child.lock().map(|c| c.is_some()).unwrap_or(true)
+    }
 }
 
 impl Default for YtdlpState {

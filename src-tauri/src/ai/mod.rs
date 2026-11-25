@@ -33,6 +33,8 @@ pub enum ModelKind {
 }
 
 impl ModelKind {
+    pub const ALL: [ModelKind; 2] = [ModelKind::WdTagger, ModelKind::JoyTag];
+
     /// 設定値の文字列から。未知の値は既定の WD Tagger として扱う
     pub fn from_id(s: &str) -> Self {
         match s {
