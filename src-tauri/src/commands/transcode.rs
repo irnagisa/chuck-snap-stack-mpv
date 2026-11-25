@@ -4,7 +4,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 use tauri_plugin_notification::NotificationExt;
 
@@ -45,6 +45,8 @@ struct CompletedTranscode {
     input_path: String,
     output_path: String,
     input_fingerprint: FileFingerprint,
+    /// 変換後ファイルが満たすべき条件 (ゴミ箱移動の直前にも確かめる)
+    expected: Expectation,
 }
 
 pub struct TranscodeState {
@@ -83,9 +85,9 @@ pub async fn transcode_video(
     app_settings: tauri::State<'_, SharedAppSettings>,
     input_path: String,
     duration_secs: f64,
-    crf: u32,
-    preset: u32,
+    mode: TranscodeMode,
 ) -> Result<TranscodeOutcome, String> {
+    mode.validate()?;
     state.cancel_flag.store(false, Ordering::SeqCst);
     // 前回の完了記録は新しい変換の開始時点で無効化する
     if let Ok(mut last) = state.last_completed.lock() {
@@ -107,12 +109,13 @@ pub async fn transcode_video(
         .parent()
         .ok_or_else(|| "入力ファイルの親ディレクトリが取得できません".to_string())?;
     // 同名の出力ファイルが存在する場合は連番サフィックスで一意化する (上書き防止)
-    let output_path = resolve_unique_path(&dir.join(format!("{stem}.av1.mkv")));
+    let suffix = mode.suffix();
+    let output_path = resolve_unique_path(&dir.join(format!("{stem}.{suffix}.mkv")));
     // 一時出力ファイルは確定した output_path から派生させる
     let out_filename = output_path
         .file_name()
         .map(|n| format!("._{}", n.to_string_lossy()))
-        .unwrap_or_else(|| format!("._{stem}.av1.mkv"));
+        .unwrap_or_else(|| format!("._{stem}.{suffix}.mkv"));
     let tmp_output_path = dir.join(format!("{out_filename}.tmp"));
 
     // 出力パスが入力と同一ディレクトリ内にあることを確認
@@ -132,13 +135,25 @@ pub async fn transcode_video(
             .map_err(|e| e.to_string())??
     };
 
-    // ストリーム構成を調べ、すべての音声・字幕・添付ファイルを残す引数を組み立てる
-    let source_info = probe_media(&ffprobe_path, &input_path).await?;
-    let duration_secs = if duration_secs > 0.0 { duration_secs } else { source_info.duration };
+    // ストリーム構成を調べ、モードに合わせて残すトラックと変換方法を決める
+    let source_info = probe_source(&ffprobe_path, &input_path).await?;
+    let expected = expectation(&mode, &source_info)?;
+    // 進み具合は出力の長さに対する割合で出す (トリミングすると元より短い)
+    let duration_secs = match mode {
+        TranscodeMode::Remux { .. } => expected.duration,
+        _ if duration_secs > 0.0 => duration_secs,
+        _ => source_info.duration,
+    };
 
     let output_str = output_path.to_string_lossy().to_string();
     let tmp_output_str = tmp_output_path.to_string_lossy().to_string();
-    let ffmpeg_args = build_ffmpeg_args(&input_path, &tmp_output_str, crf, preset, &source_info);
+    let ffmpeg_args = build_ffmpeg_args(
+        &input_path,
+        &tmp_output_str,
+        &mode,
+        &source_info,
+        Some(input_fingerprint.len),
+    )?;
 
     {
         let mut p = state.current_output.lock().map_err(|e| e.to_string())?;
@@ -307,7 +322,9 @@ pub async fn transcode_video(
 
     // 完成した一時ファイルを検証し、残す価値があるものだけ最終パスへ移動する
     let result = match result {
-        Ok(()) => finalize_output(&ffprobe_path, &source_info, &input, &tmp_output_str, &output_str).await,
+        Ok(()) => {
+            finalize_output(&ffprobe_path, &expected, mode.min_saving_ratio(), &input, &tmp_output_str, &output_str).await
+        }
         Err(e) => Err(e),
     };
 
@@ -319,9 +336,8 @@ pub async fn transcode_video(
     if let Some((input_bytes, output_bytes)) = result? {
         log::info!("[transcode] 縮小が小さいため変換後のファイルを破棄しました ({input_bytes} → {output_bytes} bytes): {input_path}");
         notify(&app, "変換後のファイルを破棄しました", &format!(
-            "{} は {:.0}% 未満しか小さくならなかったため、元のファイルを残しました",
+            "{} は十分に小さくならなかったため、元のファイルを残しました",
             file_name_of(&input_path),
-            MIN_SAVING_RATIO * 100.0
         ));
         return Ok(TranscodeOutcome::Discarded { input_bytes, output_bytes });
     }
@@ -332,12 +348,13 @@ pub async fn transcode_video(
                 input_path: input_path.clone(),
                 output_path: output_str.clone(),
                 input_fingerprint,
+                expected,
             });
         }
         Err(e) => log::error!("[transcode] last_completed mutex ロック失敗: {e}"),
     }
 
-    notify(&app, "トランスコード完了", &format!("{} のトランスコードが完了しました", file_name_of(&output_str)));
+    notify(&app, "変換完了", &format!("{} の変換が完了しました", file_name_of(&output_str)));
 
     Ok(TranscodeOutcome::Done { output_path: output_str })
 }
@@ -361,17 +378,18 @@ fn notify(app: &tauri::AppHandle, title: &str, body: &str) {
 /// - 問題なければアトミックにリネームして `None` を返す (不完全なファイルが最終パスに残らない)
 async fn finalize_output(
     ffprobe_path: &str,
-    source_info: &ProbeInfo,
+    expected: &Expectation,
+    min_saving_ratio: f64,
     input: &Path,
     tmp_output: &str,
     output: &str,
 ) -> Result<Option<(u64, u64)>, String> {
     let checked: Result<Option<(u64, u64)>, String> = async {
         let output_info = probe_media(ffprobe_path, tmp_output).await?;
-        check_output_matches_source(source_info, &output_info)?;
+        check_output(expected, &output_info)?;
         let input_bytes = tokio::fs::metadata(input).await.map_err(|e| e.to_string())?.len();
         let output_bytes = tokio::fs::metadata(tmp_output).await.map_err(|e| e.to_string())?.len();
-        Ok((!is_worth_keeping(input_bytes, output_bytes)).then_some((input_bytes, output_bytes)))
+        Ok((!is_worth_keeping(input_bytes, output_bytes, min_saving_ratio)).then_some((input_bytes, output_bytes)))
     }
     .await;
 
@@ -406,9 +424,11 @@ pub fn kill_on_exit(state: &TranscodeState) {
     }
 }
 
-/// 変換途中の一時ファイル名 (`._<名前>.av1[_N].mkv.tmp`) かどうか
+/// 変換途中の一時ファイル名 (`._<名前>.<av1|hevc|opus|slim>[_N].mkv.tmp`) かどうか
 fn is_transcode_tmp_name(name: &str) -> bool {
-    name.starts_with("._") && name.ends_with(".mkv.tmp") && name.contains(".av1")
+    name.starts_with("._")
+        && name.ends_with(".mkv.tmp")
+        && OUTPUT_SUFFIXES.iter().any(|s| name.contains(&format!(".{s}")))
 }
 
 /// 他プロセス (別インスタンス) が書き込み中の可能性があるため、直近に更新された一時ファイルは残す
@@ -474,10 +494,76 @@ pub async fn cancel_transcode(state: tauri::State<'_, TranscodeState>) -> Result
     Ok(())
 }
 
+// ── 変換モード ───────────────────────────────────────────────────────────────
+
+/// 変換の種類。フロントエンドからは `{ "kind": "av1", "crf": 32, "preset": 8 }` のように渡す
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum TranscodeMode {
+    /// 映像を SVT-AV1 で再エンコードする (遅いがよく縮む)
+    Av1 { crf: u32, preset: u32 },
+    /// 映像を VideoToolbox の HEVC で再エンコードする (速い)。
+    /// Intel Mac では画質指定 (`-q:v`) が使えないため、元の映像ビットレートに対する割合で指定する
+    Hevc { bitrate_percent: u32 },
+    /// 映像はそのままコピーし、音声だけを Opus にする
+    Audio,
+    /// 再エンコードせず、選んだトラックだけを残す。開始・終了を指定すると切り詰める (キーフレーム単位)
+    Remux {
+        /// 残すストリームの番号 (ffprobe の index)
+        streams: Vec<usize>,
+        trim_start: Option<f64>,
+        trim_end: Option<f64>,
+    },
+}
+
+/// 出力ファイル名に付ける印 (`{stem}.{印}.mkv`)
+const OUTPUT_SUFFIXES: [&str; 4] = ["av1", "hevc", "opus", "slim"];
+
+impl TranscodeMode {
+    fn suffix(&self) -> &'static str {
+        match self {
+            Self::Av1 { .. } => OUTPUT_SUFFIXES[0],
+            Self::Hevc { .. } => OUTPUT_SUFFIXES[1],
+            Self::Audio => OUTPUT_SUFFIXES[2],
+            Self::Remux { .. } => OUTPUT_SUFFIXES[3],
+        }
+    }
+
+    /// 変換後のファイルがこの割合以上小さくならなければ、変換後のほうを破棄する。
+    /// 映像の再エンコードは画質を落とすので、それに見合う効果がないものは残さない。
+    /// 音声だけ・トラック整理は動画全体に対する割合が小さくなりやすいので、縮んでいれば残す
+    fn min_saving_ratio(&self) -> f64 {
+        match self {
+            Self::Av1 { .. } | Self::Hevc { .. } => MIN_SAVING_RATIO,
+            Self::Audio => 0.01,
+            Self::Remux { .. } => 0.0,
+        }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::Av1 { crf, preset } if *crf > 63 || *preset > 13 => Err("CRF・プリセットの値が範囲外です".into()),
+            Self::Hevc { bitrate_percent } if !(10..=90).contains(bitrate_percent) => {
+                Err("ビットレートの割合が範囲外です (10〜90%)".into())
+            }
+            Self::Remux { trim_start, trim_end, .. } => {
+                let bad = |t: &Option<f64>| t.is_some_and(|v| !v.is_finite() || v < 0.0);
+                if bad(trim_start) || bad(trim_end) {
+                    return Err("切り詰める位置が不正です".into());
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 // ── ffprobe によるストリーム構成の取得 ─────────────────────────────────────
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 struct StreamInfo {
+    /// ffprobe のストリーム番号 (`-map 0:{index}`)
+    index: usize,
     codec_type: String,
     codec_name: String,
     /// カバー画像 (attached_pic)。映像として変換せず落とす
@@ -485,13 +571,24 @@ struct StreamInfo {
     width: Option<u32>,
     height: Option<u32>,
     fps: Option<f64>,
+    /// ストリームのビットレート (bps)。Matroska では BPS タグから補う
     bit_rate: Option<u64>,
+    channels: Option<u32>,
+    channel_layout: Option<String>,
+    pix_fmt: Option<String>,
+    language: Option<String>,
+    title: Option<String>,
 }
 
 impl StreamInfo {
     /// カバー画像を除いた本来の映像ストリームか
     fn is_main_video(&self) -> bool {
         self.codec_type == "video" && !self.attached_pic
+    }
+
+    /// 1 画素 10 ビット以上の映像か
+    fn is_high_bit_depth(&self) -> bool {
+        self.pix_fmt.as_deref().is_some_and(|f| f.contains("10") || f.contains("12"))
     }
 }
 
@@ -512,15 +609,19 @@ struct StreamCounts {
     attachment: usize,
 }
 
+fn count_streams<'a>(streams: impl Iterator<Item = &'a StreamInfo> + Clone) -> StreamCounts {
+    let n = |f: &dyn Fn(&StreamInfo) -> bool| streams.clone().filter(|s| f(s)).count();
+    StreamCounts {
+        video: n(&|s| s.is_main_video()),
+        audio: n(&|s| s.codec_type == "audio"),
+        subtitle: n(&|s| s.codec_type == "subtitle"),
+        attachment: n(&|s| s.codec_type == "attachment"),
+    }
+}
+
 impl ProbeInfo {
     fn counts(&self) -> StreamCounts {
-        let n = |f: &dyn Fn(&StreamInfo) -> bool| self.streams.iter().filter(|s| f(s)).count();
-        StreamCounts {
-            video: n(&|s| s.is_main_video()),
-            audio: n(&|s| s.codec_type == "audio"),
-            subtitle: n(&|s| s.codec_type == "subtitle"),
-            attachment: n(&|s| s.codec_type == "attachment"),
-        }
+        count_streams(self.streams.iter())
     }
 
     fn main_video(&self) -> Option<&StreamInfo> {
@@ -534,7 +635,10 @@ async fn probe_media(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String
         .args([
             "-v", "error",
             "-show_entries",
-            "format=duration,bit_rate:stream=codec_type,codec_name,width,height,avg_frame_rate,bit_rate:stream_disposition=attached_pic",
+            "format=duration,bit_rate\
+             :stream=index,codec_type,codec_name,width,height,avg_frame_rate,bit_rate,channels,channel_layout,pix_fmt\
+             :stream_disposition=attached_pic\
+             :stream_tags=language,title,BPS,BPS-eng",
             "-of", "json",
             path,
         ])
@@ -550,9 +654,57 @@ async fn probe_media(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String
     parse_probe_json(&out.stdout)
 }
 
+/// 元ファイルを調べる。ビットレートが記録されていない音声は、先頭のパケットから実測して補う
+/// (ffmpeg が書いた Matroska には BPS タグがなく、変換するかを決められないため)
+async fn probe_source(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String> {
+    let mut info = probe_media(ffprobe_path, path).await?;
+    for s in info.streams.iter_mut().filter(|s| s.codec_type == "audio" && s.bit_rate.is_none()) {
+        s.bit_rate = measure_bitrate(ffprobe_path, path, s.index).await;
+    }
+    Ok(info)
+}
+
+/// 実測に使う長さ (秒)
+const MEASURE_SECS: u32 = 60;
+
+/// ストリームの先頭 `MEASURE_SECS` 秒のパケットからビットレート (bps) を測る
+async fn measure_bitrate(ffprobe_path: &str, path: &str, index: usize) -> Option<u64> {
+    let out = tokio::process::Command::new(ffprobe_path)
+        .args(["-v", "error", "-select_streams", &index.to_string()])
+        .args(["-show_entries", "packet=pts_time,size", "-read_intervals", &format!("%+{MEASURE_SECS}")])
+        .args(["-of", "json", path])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    bitrate_from_packets(&out.stdout)
+}
+
+fn bitrate_from_packets(bytes: &[u8]) -> Option<u64> {
+    let json: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let packets = json["packets"].as_array()?;
+    let mut total: u64 = 0;
+    let (mut first, mut last) = (f64::INFINITY, f64::NEG_INFINITY);
+    for p in packets {
+        total += json_u64(&p["size"]).unwrap_or(0);
+        if let Some(t) = p["pts_time"].as_str().and_then(|t| t.parse::<f64>().ok()) {
+            first = first.min(t);
+            last = last.max(t);
+        }
+    }
+    let span = last - first;
+    (span >= 1.0).then(|| (total as f64 * 8.0 / span) as u64).filter(|b| *b > 0)
+}
+
 /// ffprobe は数値を文字列で返す ("1234" / "30000/1001")
 fn json_u64(v: &serde_json::Value) -> Option<u64> {
     v.as_u64().or_else(|| v.as_str()?.parse().ok()).filter(|n| *n > 0)
+}
+
+fn json_str(v: &serde_json::Value) -> Option<String> {
+    v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(String::from)
 }
 
 fn parse_rate(v: &serde_json::Value) -> Option<f64> {
@@ -577,49 +729,206 @@ fn parse_probe_json(bytes: &[u8]) -> Result<ProbeInfo, String> {
         .map(|a| a.as_slice())
         .unwrap_or_default()
         .iter()
-        .map(|s| StreamInfo {
-            codec_type: s["codec_type"].as_str().unwrap_or_default().to_string(),
-            codec_name: s["codec_name"].as_str().unwrap_or_default().to_string(),
-            attached_pic: s["disposition"]["attached_pic"].as_i64() == Some(1),
-            width: json_u64(&s["width"]).and_then(|n| u32::try_from(n).ok()),
-            height: json_u64(&s["height"]).and_then(|n| u32::try_from(n).ok()),
-            fps: parse_rate(&s["avg_frame_rate"]),
-            bit_rate: json_u64(&s["bit_rate"]),
+        .enumerate()
+        .map(|(i, s)| {
+            let tags = &s["tags"];
+            StreamInfo {
+                index: json_u64(&s["index"]).map(|n| n as usize).unwrap_or(i),
+                codec_type: s["codec_type"].as_str().unwrap_or_default().to_string(),
+                codec_name: s["codec_name"].as_str().unwrap_or_default().to_string(),
+                attached_pic: s["disposition"]["attached_pic"].as_i64() == Some(1),
+                width: json_u64(&s["width"]).and_then(|n| u32::try_from(n).ok()),
+                height: json_u64(&s["height"]).and_then(|n| u32::try_from(n).ok()),
+                fps: parse_rate(&s["avg_frame_rate"]),
+                bit_rate: json_u64(&s["bit_rate"])
+                    .or_else(|| json_u64(&tags["BPS"]))
+                    .or_else(|| json_u64(&tags["BPS-eng"])),
+                channels: json_u64(&s["channels"]).and_then(|n| u32::try_from(n).ok()),
+                channel_layout: json_str(&s["channel_layout"]),
+                pix_fmt: json_str(&s["pix_fmt"]),
+                language: json_str(&tags["language"]).filter(|l| l != "und"),
+                title: json_str(&tags["title"]),
+            }
         })
         .collect();
     Ok(ProbeInfo { duration, bit_rate: json_u64(&json["format"]["bit_rate"]), streams })
 }
 
-/// 変換後ファイルが元ファイルの代替として妥当かを判定する。
-/// - 映像・音声・字幕・添付ファイルの本数が元から減っていない
-/// - 再生時間の差が max(2 秒, 元の 1%) 以内
-fn check_output_matches_source(source: &ProbeInfo, output: &ProbeInfo) -> Result<(), String> {
-    let (src, out) = (source.counts(), output.counts());
+// ── 変換後ファイルの検証 ─────────────────────────────────────────────────────
+
+/// 変換後ファイルが満たすべき条件
+#[derive(Clone, Debug, PartialEq)]
+struct Expectation {
+    counts: StreamCounts,
+    /// 見込みの再生時間 (秒)
+    duration: f64,
+    /// 見込みより長くてよい秒数 (先頭を切るとキーフレームまで戻るため)
+    extra_allowed: f64,
+}
+
+/// 再エンコードや切り詰めで生じる再生時間のずれの許容量
+fn duration_tolerance(duration: f64) -> f64 {
+    (duration * 0.01).max(2.0)
+}
+
+/// 先頭を切り詰めたとき、直前のキーフレームまで戻って長くなる分の許容量
+const KEYFRAME_SLACK_SECS: f64 = 15.0;
+
+/// モードと元ファイルの構成から、変換後ファイルの条件を決める。
+/// トラック整理では、選んだトラックがあるか・何か変わるかもここで確かめる
+fn expectation(mode: &TranscodeMode, source: &ProbeInfo) -> Result<Expectation, String> {
+    let TranscodeMode::Remux { streams, trim_start, trim_end } = mode else {
+        if *mode == TranscodeMode::Audio && audio_plan(source).iter().all(|a| a.opus_kbps.is_none()) {
+            return Err("縮められる音声トラックがありません (既に Opus か、十分にビットレートが低い)".into());
+        }
+        // カバー画像以外はすべて残す
+        return Ok(Expectation { counts: source.counts(), duration: source.duration, extra_allowed: 0.0 });
+    };
+
+    let kept: Vec<&StreamInfo> = source.streams.iter().filter(|s| streams.contains(&s.index)).collect();
+    if kept.len() != streams.len() {
+        return Err("選んだトラックが元のファイルに見つかりません".into());
+    }
+    if let Some(s) = kept.iter().find(|s| !REMUXABLE_TYPES.contains(&s.codec_type.as_str())) {
+        return Err(format!("このトラックは残せません (#{} {})", s.index, s.codec_type));
+    }
+    if !kept.iter().any(|s| s.is_main_video()) {
+        return Err("映像トラックを 1 つ以上残してください".into());
+    }
+
+    let start = trim_start.unwrap_or(0.0);
+    let end = trim_end.unwrap_or(source.duration).min(source.duration);
+    if end - start < 1.0 {
+        return Err("切り詰めた後の長さが短すぎます".into());
+    }
+    let trimmed = start > 0.0 || end < source.duration - 0.5;
+    let all_kept = source
+        .streams
+        .iter()
+        .filter(|s| REMUXABLE_TYPES.contains(&s.codec_type.as_str()))
+        .all(|s| streams.contains(&s.index));
+    if !trimmed && all_kept {
+        return Err("外すトラックも切り詰める範囲もありません".into());
+    }
+
+    Ok(Expectation {
+        counts: count_streams(kept.into_iter()),
+        duration: end - start,
+        extra_allowed: if start > 0.0 { KEYFRAME_SLACK_SECS } else { 0.0 },
+    })
+}
+
+/// 変換後ファイルが条件を満たすかを判定する。
+/// - 映像・音声・字幕・添付ファイルの本数が見込みから減っていない
+/// - 再生時間の差が許容範囲 (max(2 秒, 1%)、先頭を切ったときは長い側に余裕) に収まる
+fn check_output(expected: &Expectation, output: &ProbeInfo) -> Result<(), String> {
+    let (want, out) = (expected.counts, output.counts());
     if out.video == 0 {
         return Err("変換後ファイルに映像ストリームがありません".to_string());
     }
     for (label, s, o) in [
-        ("映像", src.video, out.video),
-        ("音声", src.audio, out.audio),
-        ("字幕", src.subtitle, out.subtitle),
-        ("添付ファイル", src.attachment, out.attachment),
+        ("映像", want.video, out.video),
+        ("音声", want.audio, out.audio),
+        ("字幕", want.subtitle, out.subtitle),
+        ("添付ファイル", want.attachment, out.attachment),
     ] {
         if o < s {
-            return Err(format!("変換後ファイルの{label}トラックが足りません (元: {s} / 変換後: {o})"));
+            return Err(format!("変換後ファイルの{label}トラックが足りません (見込み: {s} / 変換後: {o})"));
         }
     }
-    let tolerance = (source.duration * 0.01).max(2.0);
-    let diff = (source.duration - output.duration).abs();
-    if diff > tolerance {
+    let tolerance = duration_tolerance(expected.duration);
+    let diff = output.duration - expected.duration;
+    if diff < -tolerance || diff > tolerance + expected.extra_allowed {
         return Err(format!(
-            "再生時間が一致しません (元: {:.1} 秒 / 変換後: {:.1} 秒)",
-            source.duration, output.duration
+            "再生時間が見込みと一致しません (見込み: {:.1} 秒 / 変換後: {:.1} 秒)",
+            expected.duration, output.duration
         ));
     }
     Ok(())
 }
 
+// ── 音声の変換方針 ───────────────────────────────────────────────────────────
+
+/// 音声トラックの扱い
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioPlan {
+    pub index: usize,
+    pub codec: String,
+    pub channels: Option<u32>,
+    pub bit_rate_kbps: Option<f64>,
+    pub language: Option<String>,
+    pub title: Option<String>,
+    /// Opus に変換するときのビットレート。None ならそのままコピーする
+    pub opus_kbps: Option<u32>,
+}
+
+/// そのままコピーしてよい非可逆コーデック (Matroska にそのまま入る)
+const COPYABLE_LOSSY_AUDIO: [&str; 8] = ["aac", "mp3", "mp2", "ac3", "eac3", "dts", "vorbis", "opus"];
+
+/// Opus のビットレート (kbps)。ステレオ 128k、それ以上は 1 チャンネル 48k
+fn opus_kbps_for(channels: Option<u32>) -> u32 {
+    match channels.unwrap_or(2) {
+        0 | 1 => 64,
+        2 => 128,
+        n => 48 * n,
+    }
+}
+
+/// これより Opus の目標の何倍も大きければ変換する (少しだけ大きいものは劣化に見合わないので残す)
+const AUDIO_REENCODE_FACTOR: f64 = 1.25;
+
+/// 音声トラックごとの扱いを決める。
+/// 可逆・PCM やビットレートの高いものは Opus にし、既に Opus・十分小さい・ビットレート不明の非可逆はコピーする
+fn audio_plan(info: &ProbeInfo) -> Vec<AudioPlan> {
+    info.streams
+        .iter()
+        .filter(|s| s.codec_type == "audio")
+        .map(|s| {
+            let target = opus_kbps_for(s.channels);
+            let encode = match (s.codec_name.as_str(), s.bit_rate) {
+                ("opus", _) => false,
+                (c, Some(b)) if COPYABLE_LOSSY_AUDIO.contains(&c) => b as f64 > target as f64 * 1000.0 * AUDIO_REENCODE_FACTOR,
+                (c, None) => !COPYABLE_LOSSY_AUDIO.contains(&c),
+                // 可逆・PCM・その他 (Matroska に入らないものも含む)
+                _ => true,
+            };
+            AudioPlan {
+                index: s.index,
+                codec: s.codec_name.clone(),
+                channels: s.channels,
+                bit_rate_kbps: s.bit_rate.map(|b| b as f64 / 1000.0),
+                language: s.language.clone(),
+                title: s.title.clone(),
+                opus_kbps: encode.then_some(target),
+            }
+        })
+        .collect()
+}
+
+/// libopus がそのまま受け付けるチャンネル配置 (Vorbis の並び)
+const OPUS_LAYOUTS: [&str; 8] = ["mono", "stereo", "3.0", "quad", "5.0", "5.1", "6.1", "7.1"];
+
+/// libopus が受け付けない配置 (`5.1(side)` 等) を、同じチャンネル数の対応する配置へ並べ替える
+fn opus_layout_fix(stream: &StreamInfo) -> Option<&'static str> {
+    let ch = stream.channels?;
+    if ch <= 2 || stream.channel_layout.as_deref().is_some_and(|l| OPUS_LAYOUTS.contains(&l)) {
+        return None;
+    }
+    Some(match ch {
+        3 => "3.0",
+        4 => "quad",
+        5 => "5.0",
+        6 => "5.1",
+        7 => "6.1",
+        _ => "7.1",
+    })
+}
+
 // ── ffmpeg の引数 ────────────────────────────────────────────────────────────
+
+/// トラック整理で残せる種類 (データ・タイムコードは Matroska に入らないので外す)
+const REMUXABLE_TYPES: [&str; 4] = ["video", "audio", "subtitle", "attachment"];
 
 /// Matroska にそのまま入れられない字幕コーデック → 変換先
 fn subtitle_codec_for_mkv(codec_name: &str) -> &'static str {
@@ -630,41 +939,110 @@ fn subtitle_codec_for_mkv(codec_name: &str) -> &'static str {
     }
 }
 
-/// AV1 変換の ffmpeg 引数を組み立てる。
+/// HEVC の最低ビットレート (bps)。これ未満は画質が崩れやすい
+const MIN_HEVC_BITRATE: f64 = 300_000.0;
+
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
+/// 変換の ffmpeg 引数を組み立てる。
 /// 既定のストリーム選択 (種類ごとに 1 本だけ) では 2 本目以降の音声・字幕や
-/// 添付フォントが落ちるため、カバー画像以外のストリームをすべて明示的に対応付ける。
-fn build_ffmpeg_args(input: &str, output: &str, crf: u32, preset: u32, source: &ProbeInfo) -> Vec<String> {
-    let mut args: Vec<String> = [
-        "-y", "-progress", "pipe:1", "-nostats", "-i", input,
-        // V (大文字) はカバー画像・サムネイルを除いた映像
-        "-map", "0:V", "-map", "0:a?", "-map", "0:s?", "-map", "0:t?",
-        "-c:v", "libsvtav1",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    args.extend(["-crf".into(), crf.to_string(), "-preset".into(), preset.to_string()]);
-    args.extend(["-c:a", "libopus", "-b:a", "128k"].map(String::from));
+/// 添付フォントが落ちるため、残すストリームをすべて明示的に対応付ける。
+fn build_ffmpeg_args(
+    input: &str,
+    output: &str,
+    mode: &TranscodeMode,
+    source: &ProbeInfo,
+    file_size: Option<u64>,
+) -> Result<Vec<String>, String> {
+    let mut args = strings(&["-y", "-progress", "pipe:1", "-nostats"]);
+
+    if let TranscodeMode::Remux { streams, trim_start, trim_end } = mode {
+        let start = trim_start.unwrap_or(0.0);
+        if start > 0.0 {
+            args.extend(["-ss".into(), format!("{start:.3}")]);
+        }
+        args.extend(["-i".into(), input.into()]);
+        if let Some(end) = trim_end.filter(|e| *e < source.duration) {
+            args.extend(["-t".into(), format!("{:.3}", end - start)]);
+        }
+        let kept: Vec<&StreamInfo> = source.streams.iter().filter(|s| streams.contains(&s.index)).collect();
+        for s in &kept {
+            args.extend(["-map".into(), format!("0:{}", s.index)]);
+        }
+        args.extend(strings(&["-c", "copy"]));
+        for (i, sub) in kept.iter().filter(|s| s.codec_type == "subtitle").enumerate() {
+            args.extend([format!("-c:s:{i}"), subtitle_codec_for_mkv(&sub.codec_name).to_string()]);
+        }
+        if start > 0.0 {
+            args.extend(strings(&["-avoid_negative_ts", "make_zero"]));
+        }
+        args.extend(["-f".into(), "matroska".into(), output.into()]);
+        return Ok(args);
+    }
+
+    args.extend(["-i".into(), input.into()]);
+    // V (大文字) はカバー画像・サムネイルを除いた映像
+    args.extend(strings(&["-map", "0:V", "-map", "0:a?", "-map", "0:s?", "-map", "0:t?"]));
+
+    match mode {
+        TranscodeMode::Av1 { crf, preset } => {
+            args.extend(strings(&["-c:v", "libsvtav1"]));
+            args.extend(["-crf".into(), crf.to_string(), "-preset".into(), preset.to_string()]);
+        }
+        TranscodeMode::Hevc { bitrate_percent } => {
+            let video = source.main_video().ok_or("映像トラックがありません")?;
+            let source_bps = video_bitrate(source, file_size).ok_or("元の映像のビットレートが分かりません")?;
+            let target = (source_bps * *bitrate_percent as f64 / 100.0).max(MIN_HEVC_BITRATE).round() as u64;
+            args.extend(strings(&["-c:v", "hevc_videotoolbox"]));
+            args.extend(["-b:v".into(), target.to_string()]);
+            // 画素形式を明示しないと 8 ビットの入力で失敗する環境がある (Intel Mac)
+            if video.is_high_bit_depth() {
+                args.extend(strings(&["-pix_fmt", "p010le", "-profile:v", "main10"]));
+            } else {
+                args.extend(strings(&["-pix_fmt", "nv12", "-profile:v", "main"]));
+            }
+        }
+        TranscodeMode::Audio => {
+            args.extend(strings(&["-c:v", "copy"]));
+        }
+        TranscodeMode::Remux { .. } => unreachable!("上で処理済み"),
+    }
+
+    let plans = audio_plan(source);
+    let audio_streams: Vec<&StreamInfo> = source.streams.iter().filter(|s| s.codec_type == "audio").collect();
+    for (i, (plan, stream)) in plans.iter().zip(&audio_streams).enumerate() {
+        match plan.opus_kbps {
+            Some(kbps) => {
+                args.extend([format!("-c:a:{i}"), "libopus".into(), format!("-b:a:{i}"), format!("{kbps}k")]);
+                if let Some(layout) = opus_layout_fix(stream) {
+                    args.extend([format!("-filter:a:{i}"), format!("aformat=channel_layouts={layout}")]);
+                }
+            }
+            None => args.extend([format!("-c:a:{i}"), "copy".into()]),
+        }
+    }
 
     let subtitles = source.streams.iter().filter(|s| s.codec_type == "subtitle");
     for (i, sub) in subtitles.enumerate() {
         args.extend([format!("-c:s:{i}"), subtitle_codec_for_mkv(&sub.codec_name).to_string()]);
     }
     if source.counts().attachment > 0 {
-        args.extend(["-c:t", "copy"].map(String::from));
+        args.extend(strings(&["-c:t", "copy"]));
     }
-    args.extend(["-f", "matroska", output].map(String::from));
-    args
+    args.extend(["-f".into(), "matroska".into(), output.into()]);
+    Ok(args)
 }
 
 // ── 変換効果の見込み ─────────────────────────────────────────────────────────
 
 /// 1 画素・1 フレームあたりのビット数 (H.264 換算) がこれ未満なら、
-/// AV1 にしても縮みにくいとみなす。1080p30 の H.264 で約 1.9 Mbps に当たる。
+/// 再エンコードしても縮みにくいとみなす。1080p30 の H.264 で約 1.9 Mbps に当たる。
 /// 目安の値で、最終的には変換後のサイズで判断する (`MIN_SAVING_RATIO`)。
 const LOW_BPP_THRESHOLD: f64 = 0.03;
 
-/// 変換後のファイルがこの割合以上小さくならなければ、変換後のほうを破棄する
+/// 映像を再エンコードしたとき、変換後のファイルがこの割合以上小さくならなければ、変換後のほうを破棄する
 const MIN_SAVING_RATIO: f64 = 0.15;
 
 /// H.264 と比べた圧縮効率 (同じ画質に必要なビットレートの比)。
@@ -689,6 +1067,24 @@ pub enum TranscodeVerdict {
     Unknown,
 }
 
+/// 変換画面に出すストリームの一覧 (トラック整理で選ぶ)
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamSummary {
+    pub index: usize,
+    pub codec_type: String,
+    pub codec_name: String,
+    pub cover_art: bool,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub channels: Option<u32>,
+    pub bit_rate_kbps: Option<f64>,
+    pub language: Option<String>,
+    pub title: Option<String>,
+    /// トラック整理で残せるか (データ・タイムコードは残せない)
+    pub remuxable: bool,
+}
+
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscodeEstimate {
@@ -701,6 +1097,13 @@ pub struct TranscodeEstimate {
     /// H.264 換算の bits per pixel
     pub bits_per_pixel: Option<f64>,
     pub min_saving_percent: f64,
+    pub duration: f64,
+    pub streams: Vec<StreamSummary>,
+    pub audio: Vec<AudioPlan>,
+    /// 音声だけ変換したときに減る見込みの容量 (ビットレートが分かる分だけ)
+    pub audio_saving_bytes: u64,
+    /// この ffmpeg で HEVC (VideoToolbox) が使えるか
+    pub hevc_available: bool,
 }
 
 /// 映像ストリームのビットレート (bps)。ストリームに記録がなければ
@@ -724,7 +1127,16 @@ fn video_bitrate(info: &ProbeInfo, file_size: Option<u64>) -> Option<f64> {
     (video > 0.0).then_some(video)
 }
 
-fn estimate_from_probe(info: &ProbeInfo, file_size: Option<u64>) -> TranscodeEstimate {
+fn audio_saving_bytes(info: &ProbeInfo, plans: &[AudioPlan]) -> u64 {
+    plans
+        .iter()
+        .filter_map(|p| Some(p.bit_rate_kbps? - p.opus_kbps? as f64))
+        .filter(|d| *d > 0.0)
+        .map(|kbps| (kbps * 1000.0 / 8.0 * info.duration) as u64)
+        .sum()
+}
+
+fn estimate_from_probe(info: &ProbeInfo, file_size: Option<u64>, hevc_available: bool) -> TranscodeEstimate {
     let video = info.main_video();
     let bitrate = video_bitrate(info, file_size);
     let bpp = video.zip(bitrate).and_then(|(v, b)| {
@@ -737,6 +1149,7 @@ fn estimate_from_probe(info: &ProbeInfo, file_size: Option<u64>) -> TranscodeEst
         (Some(_), Some(_)) => TranscodeVerdict::Worth,
         _ => TranscodeVerdict::Unknown,
     };
+    let audio = audio_plan(info);
     TranscodeEstimate {
         verdict,
         video_codec: video.map(|v| v.codec_name.clone()),
@@ -746,31 +1159,69 @@ fn estimate_from_probe(info: &ProbeInfo, file_size: Option<u64>) -> TranscodeEst
         video_bitrate_kbps: bitrate.map(|b| b / 1000.0),
         bits_per_pixel: bpp,
         min_saving_percent: MIN_SAVING_RATIO * 100.0,
+        duration: info.duration,
+        streams: info
+            .streams
+            .iter()
+            .map(|s| StreamSummary {
+                index: s.index,
+                codec_type: s.codec_type.clone(),
+                codec_name: s.codec_name.clone(),
+                cover_art: s.attached_pic,
+                width: s.width,
+                height: s.height,
+                channels: s.channels,
+                bit_rate_kbps: s.bit_rate.map(|b| b as f64 / 1000.0),
+                language: s.language.clone(),
+                title: s.title.clone(),
+                remuxable: REMUXABLE_TYPES.contains(&s.codec_type.as_str()),
+            })
+            .collect(),
+        audio_saving_bytes: audio_saving_bytes(info, &audio),
+        audio,
+        hevc_available,
     }
 }
 
-/// 変換で容量が減りそうかを見積もる (変換画面の警告用)
+/// この ffmpeg に HEVC (VideoToolbox) のエンコーダーがあるか
+async fn has_hevc_videotoolbox(ffmpeg_path: &str) -> bool {
+    match tokio::process::Command::new(ffmpeg_path).args(["-hide_banner", "-encoders"]).output().await {
+        Ok(out) => String::from_utf8_lossy(&out.stdout).contains("hevc_videotoolbox"),
+        Err(e) => {
+            log::warn!("[transcode] エンコーダー一覧の取得に失敗しました: {e}");
+            false
+        }
+    }
+}
+
+/// 変換で容量が減りそうかを見積もり、トラックの一覧と使える変換方法を返す (変換画面用)
 #[tauri::command]
 pub async fn estimate_transcode(
     app_settings: tauri::State<'_, SharedAppSettings>,
     input_path: String,
 ) -> Result<TranscodeEstimate, String> {
     validate_video_path(&input_path)?;
-    let ffprobe_path = app_settings.lock().map_err(|e| e.to_string())?.ffprobe_path.clone();
-    let info = probe_media(&ffprobe_path, &input_path).await?;
+    let (ffmpeg_path, ffprobe_path) = {
+        let s = app_settings.lock().map_err(|e| e.to_string())?;
+        (s.ffmpeg_path.clone(), s.ffprobe_path.clone())
+    };
+    let (info, hevc) = tokio::join!(probe_source(&ffprobe_path, &input_path), has_hevc_videotoolbox(&ffmpeg_path));
+    let info = info?;
     let size = tokio::fs::metadata(&input_path).await.ok().map(|m| m.len());
-    Ok(estimate_from_probe(&info, size))
+    Ok(estimate_from_probe(&info, size, hevc))
 }
 
-/// 変換後のサイズが十分小さいか (元の `1 - MIN_SAVING_RATIO` 倍以下)
-fn is_worth_keeping(input_bytes: u64, output_bytes: u64) -> bool {
-    output_bytes > 0 && (output_bytes as f64) <= input_bytes as f64 * (1.0 - MIN_SAVING_RATIO)
+/// 変換後のサイズが十分小さいか (元の `1 - min_saving_ratio` 倍以下で、かつ元より小さい)
+fn is_worth_keeping(input_bytes: u64, output_bytes: u64, min_saving_ratio: f64) -> bool {
+    output_bytes > 0
+        && output_bytes < input_bytes
+        && (output_bytes as f64) <= input_bytes as f64 * (1.0 - min_saving_ratio)
 }
 
 /// ゴミ箱が使えないボリューム用の退避フォルダ名 (元ファイルと同じディレクトリに作成)
-const QUARANTINE_DIR_NAME: &str = ".ChuckSnapStackTrash";
+pub(crate) const QUARANTINE_DIR_NAME: &str = ".ChuckSnapStackTrash";
 /// 退避ファイルに付ける接尾辞。メディア拡張子でなくすことでスキャン・ウォッチャーの再取り込みを防ぐ
-const QUARANTINE_SUFFIX: &str = ".trashed";
+pub(crate) const QUARANTINE_SUFFIX: &str = ".trashed";
 
 #[derive(Serialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
@@ -840,13 +1291,13 @@ fn dispose_source(input: &Path, expected: &FileFingerprint) -> Result<SourceDisp
     Ok(SourceDisposal::Quarantine { location: dest.to_string_lossy().to_string() })
 }
 
-/// AV1 変換が完了した元ファイルを OS のゴミ箱 (使えない場合は退避フォルダ) へ移動する。
+/// 変換が完了した元ファイルを OS のゴミ箱 (使えない場合は退避フォルダ) へ移動する。
 ///
 /// 元データ保護のため、以下をすべて満たす場合のみ実行する (完全削除は行わない):
 /// - 直近に成功した `transcode_video` の入力・出力と一致する (記録は 1 回で消費)
 /// - 元ファイルが変換開始時点からサイズ・更新日時とも変わっていない
 /// - 元ファイル・変換後ファイルの両方がライブラリに登録済み
-/// - 変換後ファイルが ffprobe で読め、映像 (元に音声があれば音声も) を含み、再生時間が一致する
+/// - 変換後ファイルが ffprobe で読め、残すはずのトラックをすべて含み、再生時間が見込みどおり
 #[tauri::command]
 pub async fn trash_transcode_source(
     state: tauri::State<'_, TranscodeState>,
@@ -912,9 +1363,8 @@ pub async fn trash_transcode_source(
         .map_err(|e| e.to_string())??;
     }
 
-    let source_info = probe_media(&ffprobe_path, &input_path).await?;
     let output_info = probe_media(&ffprobe_path, &output_path).await?;
-    check_output_matches_source(&source_info, &output_info)?;
+    check_output(&record.expected, &output_info)?;
 
     tokio::task::spawn_blocking(move || {
         // 直前にもう一度フィンガープリントを確認してからゴミ箱へ移動する
@@ -932,15 +1382,34 @@ mod tests {
     use super::*;
 
     fn stream(codec_type: &str, codec_name: &str) -> StreamInfo {
-        StreamInfo {
-            codec_type: codec_type.into(),
-            codec_name: codec_name.into(),
-            attached_pic: false,
-            width: None,
-            height: None,
-            fps: None,
-            bit_rate: None,
+        StreamInfo { codec_type: codec_type.into(), codec_name: codec_name.into(), ..Default::default() }
+    }
+
+    /// ストリーム番号を 0 から振り直す
+    fn indexed(mut streams: Vec<StreamInfo>) -> Vec<StreamInfo> {
+        for (i, s) in streams.iter_mut().enumerate() {
+            s.index = i;
         }
+        streams
+    }
+
+    fn audio(codec: &str, channels: u32, layout: &str, bit_rate: Option<u64>) -> StreamInfo {
+        StreamInfo {
+            channels: Some(channels),
+            channel_layout: Some(layout.into()),
+            bit_rate,
+            ..stream("audio", codec)
+        }
+    }
+
+    /// 全トラックを残す変換 (AV1 等) としての判定
+    fn check_output_matches_source(source: &ProbeInfo, output: &ProbeInfo) -> Result<(), String> {
+        let av1 = TranscodeMode::Av1 { crf: 32, preset: 8 };
+        check_output(&expectation(&av1, source)?, output)
+    }
+
+    fn av1_args(source: &ProbeInfo, crf: u32, preset: u32) -> Vec<String> {
+        build_ffmpeg_args("/in.mp4", "/out.tmp", &TranscodeMode::Av1 { crf, preset }, source, None).unwrap()
     }
 
     fn video(codec: &str, w: u32, h: u32, fps: f64, bit_rate: Option<u64>) -> StreamInfo {
@@ -948,7 +1417,7 @@ mod tests {
     }
 
     fn probe(duration: f64, streams: Vec<StreamInfo>) -> ProbeInfo {
-        ProbeInfo { duration, bit_rate: None, streams }
+        ProbeInfo { duration, bit_rate: None, streams: indexed(streams) }
     }
 
     fn info(duration: f64, has_video: bool, has_audio: bool) -> ProbeInfo {
@@ -1003,6 +1472,9 @@ mod tests {
     fn transcode_tmp_name_matches_only_tmp_outputs() {
         assert!(is_transcode_tmp_name("._動画.av1.mkv.tmp"));
         assert!(is_transcode_tmp_name("._動画.av1_2.mkv.tmp"));
+        assert!(is_transcode_tmp_name("._動画.hevc.mkv.tmp"));
+        assert!(is_transcode_tmp_name("._動画.opus.mkv.tmp"));
+        assert!(is_transcode_tmp_name("._動画.slim_3.mkv.tmp"));
         assert!(!is_transcode_tmp_name("動画.av1.mkv.tmp"));
         assert!(!is_transcode_tmp_name("._動画.av1.mkv"));
         assert!(!is_transcode_tmp_name("._動画.mkv.tmp"));
@@ -1091,7 +1563,7 @@ mod tests {
             stream("subtitle", "mov_text"),
             stream("subtitle", "hdmv_pgs_subtitle"),
         ]);
-        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", 32, 8, &source);
+        let args = av1_args(&source, 32, 8);
         for m in ["0:V", "0:a?", "0:s?", "0:t?"] {
             assert!(has_pair(&args, "-map", m), "-map {m}");
         }
@@ -1108,7 +1580,7 @@ mod tests {
     #[test]
     fn ffmpeg_args_copy_attachments_when_present() {
         let source = probe(60.0, vec![stream("video", "h264"), stream("attachment", "ttf")]);
-        let args = build_ffmpeg_args("/in.mkv", "/out.tmp", 30, 5, &source);
+        let args = av1_args(&source, 30, 5);
         assert!(has_pair(&args, "-c:t", "copy"));
     }
 
@@ -1117,28 +1589,28 @@ mod tests {
     #[test]
     fn estimate_flags_av1_low_bitrate_and_worth() {
         // 1080p30 H.264 8 Mbps → bpp ≈ 0.129
-        let worth = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(8_000_000))]), None);
+        let worth = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(8_000_000))]), None, false);
         assert_eq!(worth.verdict, TranscodeVerdict::Worth);
         assert!((worth.bits_per_pixel.unwrap() - 0.1286).abs() < 0.001);
 
         // 1080p30 H.264 1.5 Mbps → bpp ≈ 0.024
-        let low = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_500_000))]), None);
+        let low = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_500_000))]), None, false);
         assert_eq!(low.verdict, TranscodeVerdict::LowBitrate);
 
-        let av1 = estimate_from_probe(&probe(60.0, vec![video("av1", 1920, 1080, 30.0, Some(8_000_000))]), None);
+        let av1 = estimate_from_probe(&probe(60.0, vec![video("av1", 1920, 1080, 30.0, Some(8_000_000))]), None, false);
         assert_eq!(av1.verdict, TranscodeVerdict::AlreadyAv1);
 
-        let unknown = estimate_from_probe(&probe(60.0, vec![stream("video", "h264")]), None);
+        let unknown = estimate_from_probe(&probe(60.0, vec![stream("video", "h264")]), None, false);
         assert_eq!(unknown.verdict, TranscodeVerdict::Unknown);
     }
 
     #[test]
     fn estimate_accounts_for_hevc_efficiency() {
         // HEVC 1.2 Mbps: 実測 bpp ≈ 0.019 だが H.264 換算では ≈ 0.032 → 縮む余地あり
-        let e = estimate_from_probe(&probe(60.0, vec![video("hevc", 1920, 1080, 30.0, Some(1_200_000))]), None);
+        let e = estimate_from_probe(&probe(60.0, vec![video("hevc", 1920, 1080, 30.0, Some(1_200_000))]), None, false);
         assert_eq!(e.verdict, TranscodeVerdict::Worth);
         // 同じビットレートの H.264 は低ビットレート扱い
-        let e = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_200_000))]), None);
+        let e = estimate_from_probe(&probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(1_200_000))]), None, false);
         assert_eq!(e.verdict, TranscodeVerdict::LowBitrate);
     }
 
@@ -1157,10 +1629,13 @@ mod tests {
 
     #[test]
     fn keeps_output_only_when_it_saves_enough() {
-        assert!(is_worth_keeping(1000, 850));
-        assert!(!is_worth_keeping(1000, 851));
-        assert!(!is_worth_keeping(1000, 1200));
-        assert!(!is_worth_keeping(0, 0));
+        assert!(is_worth_keeping(1000, 850, 0.15));
+        assert!(!is_worth_keeping(1000, 851, 0.15));
+        assert!(!is_worth_keeping(1000, 1200, 0.15));
+        assert!(!is_worth_keeping(0, 0, 0.15));
+        // トラック整理は縮んでいれば残すが、同じか大きければ残さない
+        assert!(is_worth_keeping(1000, 999, 0.0));
+        assert!(!is_worth_keeping(1000, 1000, 0.0));
     }
 
     #[test]
@@ -1169,5 +1644,283 @@ mod tests {
         assert_eq!(done, serde_json::json!({"status": "done", "outputPath": "/a.av1.mkv"}));
         let discarded = serde_json::to_value(TranscodeOutcome::Discarded { input_bytes: 10, output_bytes: 9 }).unwrap();
         assert_eq!(discarded, serde_json::json!({"status": "discarded", "inputBytes": 10, "outputBytes": 9}));
+    }
+
+    // ── モード ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn modes_deserialize_from_frontend_json() {
+        let m: TranscodeMode = serde_json::from_value(serde_json::json!({"kind": "av1", "crf": 32, "preset": 8})).unwrap();
+        assert_eq!(m, TranscodeMode::Av1 { crf: 32, preset: 8 });
+        let m: TranscodeMode = serde_json::from_value(serde_json::json!({"kind": "hevc", "bitratePercent": 50})).unwrap();
+        assert_eq!(m.suffix(), "hevc");
+        let m: TranscodeMode = serde_json::from_value(serde_json::json!({"kind": "audio"})).unwrap();
+        assert_eq!(m, TranscodeMode::Audio);
+        let m: TranscodeMode = serde_json::from_value(serde_json::json!(
+            {"kind": "remux", "streams": [0, 1], "trimStart": 10.0, "trimEnd": null}
+        ))
+        .unwrap();
+        assert_eq!(m, TranscodeMode::Remux { streams: vec![0, 1], trim_start: Some(10.0), trim_end: None });
+    }
+
+    #[test]
+    fn modes_reject_out_of_range_values() {
+        assert!(TranscodeMode::Av1 { crf: 64, preset: 8 }.validate().is_err());
+        assert!(TranscodeMode::Hevc { bitrate_percent: 5 }.validate().is_err());
+        assert!(TranscodeMode::Hevc { bitrate_percent: 50 }.validate().is_ok());
+        let bad = TranscodeMode::Remux { streams: vec![0], trim_start: Some(-1.0), trim_end: None };
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn parse_probe_json_reads_index_channels_and_mkv_bps_tag() {
+        let json = br#"{
+            "streams": [
+                {"index":0,"codec_type":"video","codec_name":"hevc","pix_fmt":"yuv420p10le","disposition":{"attached_pic":0}},
+                {"index":1,"codec_type":"audio","codec_name":"ac3","channels":6,"channel_layout":"5.1(side)",
+                 "disposition":{"attached_pic":0},"tags":{"language":"jpn","title":"Main","BPS-eng":"640000"}},
+                {"index":2,"codec_type":"subtitle","codec_name":"ass","tags":{"language":"und"}}
+            ],
+            "format": {"duration":"60.0"}
+        }"#;
+        let p = parse_probe_json(json).unwrap();
+        assert!(p.streams[0].is_high_bit_depth());
+        let a = &p.streams[1];
+        assert_eq!((a.index, a.channels, a.bit_rate), (1, Some(6), Some(640_000)));
+        assert_eq!(a.language.as_deref(), Some("jpn"));
+        assert_eq!(a.title.as_deref(), Some("Main"));
+        assert_eq!(p.streams[2].language, None, "und は言語なし");
+    }
+
+    // ── 音声の変換方針 ───────────────────────────────────────────────────────
+
+    #[test]
+    fn audio_plan_encodes_lossless_and_heavy_audio_but_copies_efficient_audio() {
+        let p = probe(60.0, vec![
+            video("h264", 1920, 1080, 30.0, None),
+            audio("pcm_s16le", 2, "stereo", Some(1_536_000)),
+            audio("aac", 2, "stereo", Some(320_000)),
+            audio("aac", 2, "stereo", Some(128_000)),
+            audio("aac", 2, "stereo", None),
+            audio("opus", 2, "stereo", Some(400_000)),
+            audio("flac", 6, "5.1", None),
+            audio("truehd", 8, "7.1", None),
+        ]);
+        let kbps: Vec<Option<u32>> = audio_plan(&p).iter().map(|a| a.opus_kbps).collect();
+        assert_eq!(kbps, vec![Some(128), Some(128), None, None, None, Some(288), Some(384)]);
+    }
+
+    #[test]
+    fn audio_saving_counts_only_known_bitrates() {
+        let p = probe(100.0, vec![
+            video("h264", 1920, 1080, 30.0, None),
+            audio("pcm_s16le", 2, "stereo", Some(1_528_000)),
+            audio("flac", 2, "stereo", None),
+        ]);
+        // (1528 - 128) kbps × 100 秒 = 17.5 MB
+        assert_eq!(audio_saving_bytes(&p, &audio_plan(&p)), 17_500_000);
+    }
+
+    #[test]
+    fn audio_mode_copies_video_and_fixes_side_layouts_for_opus() {
+        let p = probe(60.0, vec![
+            video("h264", 1920, 1080, 30.0, None),
+            audio("ac3", 6, "5.1(side)", Some(640_000)),
+            audio("aac", 2, "stereo", Some(128_000)),
+        ]);
+        let args = build_ffmpeg_args("/in.mkv", "/out.tmp", &TranscodeMode::Audio, &p, None).unwrap();
+        assert!(has_pair(&args, "-c:v", "copy"));
+        assert!(has_pair(&args, "-c:a:0", "libopus"));
+        assert!(has_pair(&args, "-b:a:0", "288k"));
+        assert!(has_pair(&args, "-filter:a:0", "aformat=channel_layouts=5.1"));
+        assert!(has_pair(&args, "-c:a:1", "copy"));
+        assert!(!args.iter().any(|a| a == "-filter:a:1"));
+    }
+
+    #[test]
+    fn audio_mode_is_refused_when_nothing_would_shrink() {
+        let p = probe(60.0, vec![video("h264", 1920, 1080, 30.0, None), audio("opus", 2, "stereo", None)]);
+        assert!(expectation(&TranscodeMode::Audio, &p).is_err());
+    }
+
+    // ── HEVC ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn hevc_args_use_bitrate_ratio_and_explicit_pixel_format() {
+        let p = probe(60.0, vec![video("h264", 1920, 1080, 30.0, Some(8_000_000))]);
+        let mode = TranscodeMode::Hevc { bitrate_percent: 40 };
+        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &p, None).unwrap();
+        assert!(has_pair(&args, "-c:v", "hevc_videotoolbox"));
+        assert!(has_pair(&args, "-b:v", "3200000"));
+        assert!(has_pair(&args, "-pix_fmt", "nv12"));
+
+        let mut ten = video("hevc", 3840, 2160, 24.0, Some(20_000_000));
+        ten.pix_fmt = Some("yuv420p10le".into());
+        let args = build_ffmpeg_args("/in.mkv", "/out.tmp", &mode, &probe(60.0, vec![ten]), None).unwrap();
+        assert!(has_pair(&args, "-pix_fmt", "p010le"));
+        assert!(has_pair(&args, "-profile:v", "main10"));
+
+        // 元のビットレートが極端に低くても下限を守る
+        let low = probe(60.0, vec![video("h264", 320, 240, 30.0, Some(200_000))]);
+        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &low, None).unwrap();
+        assert!(has_pair(&args, "-b:v", "300000"));
+    }
+
+    // ── トラック整理・切り詰め ───────────────────────────────────────────────
+
+    fn remux_source() -> ProbeInfo {
+        let mut cover = stream("video", "mjpeg");
+        cover.attached_pic = true;
+        probe(600.0, vec![
+            video("h264", 1920, 1080, 30.0, None),
+            audio("aac", 2, "stereo", None),
+            audio("aac", 2, "stereo", None),
+            stream("subtitle", "mov_text"),
+            cover,
+            stream("data", "bin_data"),
+        ])
+    }
+
+    fn remux(streams: Vec<usize>, start: Option<f64>, end: Option<f64>) -> TranscodeMode {
+        TranscodeMode::Remux { streams, trim_start: start, trim_end: end }
+    }
+
+    #[test]
+    fn remux_args_map_only_kept_streams_and_trim_by_copy() {
+        let src = remux_source();
+        let mode = remux(vec![0, 1, 3], Some(30.0), Some(90.0));
+        let args = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &src, None).unwrap();
+        let maps: Vec<&str> = args.windows(2).filter(|w| w[0] == "-map").map(|w| w[1].as_str()).collect();
+        assert_eq!(maps, vec!["0:0", "0:1", "0:3"]);
+        assert!(has_pair(&args, "-c", "copy"));
+        assert!(has_pair(&args, "-c:s:0", "srt"));
+        assert!(has_pair(&args, "-ss", "30.000"));
+        assert!(has_pair(&args, "-t", "60.000"));
+        // -ss は入力の前 (キーフレームへの高速シーク)
+        let ss = args.iter().position(|a| a == "-ss").unwrap();
+        let i = args.iter().position(|a| a == "-i").unwrap();
+        assert!(ss < i);
+    }
+
+    #[test]
+    fn remux_expectation_validates_choices() {
+        let src = remux_source();
+        // 映像を外すことはできない
+        assert!(expectation(&remux(vec![1, 2], None, None), &src).is_err());
+        // 何も変わらない
+        assert!(expectation(&remux(vec![0, 1, 2, 3, 4], None, None), &src).is_err());
+        // データトラックは残せない
+        assert!(expectation(&remux(vec![0, 5], None, None), &src).is_err());
+        // 存在しないトラック
+        assert!(expectation(&remux(vec![0, 9], None, None), &src).is_err());
+        // 短すぎる
+        assert!(expectation(&remux(vec![0, 1, 2, 3, 4], Some(10.0), Some(10.5)), &src).is_err());
+
+        let e = expectation(&remux(vec![0, 2], None, None), &src).unwrap();
+        assert_eq!(e.counts, StreamCounts { video: 1, audio: 1, subtitle: 0, attachment: 0 });
+        assert_eq!(e.duration, 600.0);
+        // 切り詰めだけでもよい
+        let e = expectation(&remux(vec![0, 1, 2, 3, 4], Some(100.0), None), &src).unwrap();
+        assert_eq!((e.duration, e.extra_allowed), (500.0, KEYFRAME_SLACK_SECS));
+    }
+
+    #[test]
+    fn check_output_allows_keyframe_slack_only_when_head_is_trimmed() {
+        let out = |d: f64| probe(d, vec![video("h264", 1920, 1080, 30.0, None)]);
+        let counts = StreamCounts { video: 1, audio: 0, subtitle: 0, attachment: 0 };
+        let trimmed = Expectation { counts, duration: 60.0, extra_allowed: KEYFRAME_SLACK_SECS };
+        assert!(check_output(&trimmed, &out(70.0)).is_ok());
+        assert!(check_output(&trimmed, &out(80.0)).is_err());
+        assert!(check_output(&trimmed, &out(55.0)).is_err());
+        let whole = Expectation { extra_allowed: 0.0, ..trimmed };
+        assert!(check_output(&whole, &out(70.0)).is_err());
+    }
+
+    // ── 実際の ffmpeg での確認 (`cargo test -- --ignored` で実行) ─────────────
+
+    /// テスト用の動画を作る: 映像 + PCM 5.1(side) 音声 + AAC ステレオ音声 (ノイズで高ビットレート) + SRT 字幕
+    fn make_sample(dir: &Path) -> String {
+        std::fs::create_dir_all(dir).unwrap();
+        let srt = dir.join("sub.srt");
+        std::fs::write(&srt, "1\n00:00:00,000 --> 00:00:05,000\nhello\n").unwrap();
+        let out = dir.join("sample.mkv");
+        let status = Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-y"])
+            .args(["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30"])
+            .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000,aformat=channel_layouts=5.1(side)"])
+            .args(["-f", "lavfi", "-i", "anoisesrc=color=pink:sample_rate=48000,aformat=channel_layouts=stereo"])
+            .arg("-i")
+            .arg(&srt)
+            .args(["-map", "0", "-map", "1", "-map", "2", "-map", "3", "-t", "20"])
+            .args(["-c:v", "libx264", "-g", "60", "-b:v", "4M", "-c:a:0", "pcm_s16le", "-c:a:1", "aac", "-b:a:1", "320k"])
+            .args(["-c:s", "srt"])
+            .arg(&out)
+            .status()
+            .unwrap();
+        assert!(status.success(), "サンプルの作成に失敗");
+        out.to_string_lossy().into_owned()
+    }
+
+    async fn run_mode(input: &str, mode: TranscodeMode) -> (ProbeInfo, Result<(), String>) {
+        let source = probe_source("ffprobe", input).await.unwrap();
+        let expected = expectation(&mode, &source).unwrap();
+        let output = format!("{input}.{}.mkv", mode.suffix());
+        let args = build_ffmpeg_args(input, &output, &mode, &source, std::fs::metadata(input).ok().map(|m| m.len())).unwrap();
+        let out = Command::new("ffmpeg").args(&args).stdout(Stdio::null()).output().unwrap();
+        assert!(out.status.success(), "{mode:?}: {}", String::from_utf8_lossy(&out.stderr));
+        let info = probe_media("ffprobe", &output).await.unwrap();
+        let checked = check_output(&expected, &info);
+        (info, checked)
+    }
+
+    #[tokio::test]
+    #[ignore = "ffmpeg が必要"]
+    async fn real_ffmpeg_all_modes() {
+        let dir = std::env::temp_dir().join(format!("css-transcode-it-{}", std::process::id()));
+        let input = make_sample(&dir);
+
+        // 音声だけ: PCM 5.1(side) は Opus に、320k の AAC も Opus に、映像はコピー
+        let (info, checked) = run_mode(&input, TranscodeMode::Audio).await;
+        checked.unwrap();
+        let codecs: Vec<&str> = info.streams.iter().map(|s| s.codec_name.as_str()).collect();
+        assert_eq!(codecs, vec!["h264", "opus", "opus", "subrip"]);
+
+        // AV1
+        let (info, checked) = run_mode(&input, TranscodeMode::Av1 { crf: 40, preset: 12 }).await;
+        checked.unwrap();
+        assert_eq!(info.main_video().unwrap().codec_name, "av1");
+
+        // HEVC (VideoToolbox がある Mac だけ)
+        if has_hevc_videotoolbox("ffmpeg").await {
+            let (info, checked) = run_mode(&input, TranscodeMode::Hevc { bitrate_percent: 50 }).await;
+            checked.unwrap();
+            assert_eq!(info.main_video().unwrap().codec_name, "hevc");
+        }
+
+        // トラック整理と切り詰め: PCM 音声を外し、5 秒目から 10 秒分
+        let (info, checked) = run_mode(&input, TranscodeMode::Remux {
+            streams: vec![0, 2, 3],
+            trim_start: Some(5.0),
+            trim_end: Some(15.0),
+        })
+        .await;
+        checked.unwrap();
+        let codecs: Vec<&str> = info.streams.iter().map(|s| s.codec_name.as_str()).collect();
+        assert_eq!(codecs, vec!["h264", "aac", "subrip"]);
+        assert!((info.duration - 10.0).abs() < 3.0, "長さ {}", info.duration);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bitrate_is_measured_from_packet_sizes() {
+        let json = br#"{"packets":[
+            {"pts_time":"0.000","size":"4000"},
+            {"pts_time":"1.000","size":"4000"},
+            {"pts_time":"2.000","size":"4000"}
+        ]}"#;
+        // 12000 バイト ÷ 2 秒 = 48 kbps
+        assert_eq!(bitrate_from_packets(json), Some(48_000));
+        assert_eq!(bitrate_from_packets(br#"{"packets":[{"pts_time":"0.0","size":"10"}]}"#), None, "短すぎる");
     }
 }

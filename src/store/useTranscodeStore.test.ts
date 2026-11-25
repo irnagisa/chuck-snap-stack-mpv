@@ -21,8 +21,7 @@ function makeOpts(path: string, overrides: Partial<EnqueueOptions> = {}): Enqueu
     videoPath: path,
     videoName: path.split('/').pop() ?? path,
     durationSecs: 60,
-    crf: 32,
-    preset: 8,
+    mode: { kind: 'av1', crf: 32, preset: 8 },
     onSuccess: vi.fn(() => Promise.resolve()),
     ...overrides,
   };

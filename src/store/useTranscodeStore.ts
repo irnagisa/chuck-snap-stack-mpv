@@ -13,13 +13,23 @@ export interface TranscodeProgressPayload {
   total_size_bytes: number;
 }
 
+/** 変換の種類 (src-tauri/src/commands/transcode.rs の TranscodeMode) */
+export type TranscodeMode =
+  /** 映像を SVT-AV1 で再エンコード (遅いがよく縮む) */
+  | { kind: 'av1'; crf: number; preset: number }
+  /** 映像を VideoToolbox の HEVC で再エンコード (速い)。元の映像ビットレートに対する割合 */
+  | { kind: 'hevc'; bitratePercent: number }
+  /** 映像はコピーし、音声だけ Opus に */
+  | { kind: 'audio' }
+  /** 再エンコードせず、選んだトラックだけ残す・切り詰める */
+  | { kind: 'remux'; streams: number[]; trimStart: number | null; trimEnd: number | null };
+
 export interface TranscodeJob {
   id: number;
   videoPath: string;
   videoName: string;
   durationSecs: number;
-  crf: number;
-  preset: number;
+  mode: TranscodeMode;
   /** 変換成功後に呼ばれる (メタデータのコピー等)。モーダルが閉じた後に実行されるため、ストアの関数だけで完結させること */
   onSuccess: (outputPath: string) => Promise<void>;
 }
@@ -108,8 +118,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
       const outcome = await invoke<TranscodeOutcome>('transcode_video', {
         inputPath: job.videoPath,
         durationSecs: job.durationSecs,
-        crf: job.crf,
-        preset: job.preset,
+        mode: job.mode,
       });
       if (outcome.status === 'discarded') {
         // 変換後のファイルは破棄済み。元ファイル・メタデータには触らない (onSuccess も呼ばない)

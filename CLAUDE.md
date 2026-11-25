@@ -64,7 +64,7 @@ chuck-snap-stack/
 │   └── App.tsx
 ├── src-tauri/                  # Rust/Tauri バックエンド
 │   ├── src/
-│   │   ├── commands/           # Tauri コマンド (143 個)
+│   │   ├── commands/           # Tauri コマンド (145 個)
 │   │   │   ├── library.rs      # メディアファイル操作・メタデータ抽出
 │   │   │   ├── mpv.rs          # mpv プロセス管理・IPC
 │   │   │   ├── db_videos.rs    # メディア DB CRUD・Inbox 管理
@@ -73,10 +73,11 @@ chuck-snap-stack/
 │   │   │   ├── db_playlists.rs # プレイリスト DB
 │   │   │   ├── db_settings.rs  # 設定 DB
 │   │   │   ├── db_stats.rs     # ライブラリ統計
-│   │   │   ├── storage.rs      # 容量の内訳・整理候補・サムネイルの掃除
+│   │   │   ├── storage.rs      # 容量の内訳・整理候補・サムネイルの掃除・ゴミ箱と退避フォルダ
+│   │   │   ├── storage_duplicates.rs # 整理画面の重複検出 (中身の一致 + pHash)
 │   │   │   ├── db_export.rs    # バックアップ・エクスポート
 │   │   │   ├── download.rs     # HTTP ダウンロード
-│   │   │   ├── transcode.rs    # ffmpeg トランスコード
+│   │   │   ├── transcode.rs    # ffmpeg 変換 (AV1 / HEVC / 音声だけ / トラック整理・切り詰め)
 │   │   │   ├── ytdlp.rs        # yt-dlp 連携
 │   │   │   ├── watcher.rs      # ファイルシステム監視
 │   │   │   ├── window.rs       # ミニプレイヤーウィンドウ
@@ -265,7 +266,7 @@ pub async fn command_name(
 .invoke_handler(tauri::generate_handler![
     commands::mpv::play,
     commands::library::scan_directory,
-    // ...他 141 個のコマンド
+    // ...他 143 個のコマンド
 ])
 ```
 
@@ -347,6 +348,7 @@ unlisten();
 - IPC ソケットパスは一時ディレクトリに作成し、アプリ終了時に削除する
 - 大量のメディアファイルスキャンは `tokio::task::spawn_blocking` でブロッキング I/O を処理
 - CPU 負荷の高い処理 (transcode) も `spawn_blocking` を使う
+- HEVC 変換 (`hevc_videotoolbox`) は Intel Mac で画質指定 `-q:v` が使えないためビットレート指定にしている。8 ビット入力は `-pix_fmt nv12` を明示しないと失敗する。libopus は `5.1(side)` 等の配置を受け付けないので `aformat` で並べ替える
 - サムネイルは WebP 形式で生成 (ffmpeg 使用)。`start_web_server` で組み込み HTTP サーバー (axum) を起動してフロントエンドへ配信する
 - pHash (知覚的ハッシュ) で重複メディアを検出。`db_compute_video_phash` → `db_find_similar_videos` の流れ
 - AI タグ提案は tract-onnx で ONNX モデルを実行 (WD ViT Tagger v3)。モデルは `download_ai_model` でダウンロード

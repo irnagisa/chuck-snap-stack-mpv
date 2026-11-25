@@ -19,4 +19,5 @@ pub mod ytdlp;
 pub mod webserver;
 pub mod phash;
 pub mod storage;
+pub mod storage_duplicates;
 pub mod system;
