@@ -163,14 +163,13 @@ fn assign_categories_for_ids(
         }
         Ok(())
     })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    } else {
+    if let Err(e) = result {
         if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
             log::error!("[DB] assign_categories_for_ids ROLLBACK 失敗: {rb_err}");
         }
-        return Err(result.unwrap_err());
+        return Err(e);
     }
+    conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
     Ok(assigned)
 }
 
@@ -283,20 +282,19 @@ pub async fn db_scan_and_import(
         }
         Ok(())
     })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    } else {
+    if let Err(e) = result {
         if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
             log::error!("[db_scan_and_import] ROLLBACK 失敗: {rb_err}");
         }
-        return Err(result.unwrap_err());
+        return Err(e);
     }
+    conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
 
     if new_count > 0 {
         if let Err(e) = app.notification()
             .builder()
             .title("インポート完了")
-            .body(&format!("{new_count}件のビデオをライブラリに追加しました"))
+            .body(format!("{new_count}件のビデオをライブラリに追加しました"))
             .show()
         {
             log::warn!("[notification] インポート通知の送信に失敗しました: {e}");
@@ -406,14 +404,13 @@ pub async fn db_rescan_all_dirs(
             }
             Ok(())
         })();
-        if insert_result.is_ok() {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-        } else {
+        if let Err(e) = insert_result {
             if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
                 log::error!("[DB] db_rescan_all_dirs INSERT ROLLBACK 失敗: {rb_err}");
             }
-            return Err(insert_result.unwrap_err());
+            return Err(e);
         }
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
         total_new_count += dir_new_count;
 
         // Assign categories for new files if use_dir_as_category
@@ -429,7 +426,7 @@ pub async fn db_rescan_all_dirs(
                 x
             };
             if !new_ids.is_empty() {
-                let _ = assign_categories_for_ids(&conn, &new_ids, &[dir.clone()]);
+                let _ = assign_categories_for_ids(&conn, &new_ids, std::slice::from_ref(dir));
             }
         }
     }

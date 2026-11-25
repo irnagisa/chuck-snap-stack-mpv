@@ -7,6 +7,9 @@ use crate::db::DbState;
 use super::utils::{normalize_path_str, resolve_unique_path};
 use super::db_videos::auto_graduate_if_complete;
 
+/// (移動前のパス, 移動後のパス) の一覧
+type PathUpdates = Vec<(String, String)>;
+
 #[derive(Serialize, Deserialize)]
 pub struct Tag {
     pub id: i64,
@@ -620,7 +623,7 @@ pub async fn db_delete_category(
 
     // Step 2: FS 操作 (DB ロック外、ブロッキング I/O のため spawn_blocking で実行)
     // (old_path, new_path) のリスト: ファイル移動の追跡用
-    let (exact_updates, prefix_updates): (Vec<(String, String)>, Vec<(String, String)>) =
+    let (exact_updates, prefix_updates): (PathUpdates, PathUpdates) =
         tokio::task::spawn_blocking(move || -> Result<_, String> {
             let mut exact_updates: Vec<(String, String)> = Vec::new(); // ファイル単位
             let mut prefix_updates: Vec<(String, String)> = Vec::new(); // ディレクトリ単位
@@ -854,29 +857,14 @@ pub async fn db_set_category_multiple(
         return Ok(());
     }
     let conn = state.conn()?;
-    if category_id.is_none() {
-        // カテゴリ解除 → status を 'inbox' に戻す。params は id のみ (batch_size 999)
-        let batch_size = 999;
-        for chunk in video_ids.chunks(batch_size) {
-            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let sql = format!(
-                "UPDATE videos SET category_id = NULL, status = 'inbox' WHERE id IN ({ph})"
-            );
-            let params: Vec<rusqlite::types::Value> = chunk
-                .iter()
-                .map(|&id| rusqlite::types::Value::Integer(id))
-                .collect();
-            conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
-                .map_err(|e| e.to_string())?;
-        }
-    } else {
+    if let Some(category_id) = category_id {
         // 1 param for category_id + up to 498 ids per batch
         let batch_size = 498;
         for chunk in video_ids.chunks(batch_size) {
             let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
             let sql = format!("UPDATE videos SET category_id = ? WHERE id IN ({ph})");
             let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() + 1);
-            params.push(rusqlite::types::Value::Integer(category_id.unwrap()));
+            params.push(rusqlite::types::Value::Integer(category_id));
             for &vid in chunk {
                 params.push(rusqlite::types::Value::Integer(vid));
             }
@@ -893,6 +881,21 @@ pub async fn db_set_category_multiple(
             let id_params: Vec<rusqlite::types::Value> =
                 chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
             conn.execute(&graduate_sql, rusqlite::params_from_iter(id_params.iter()))
+                .map_err(|e| e.to_string())?;
+        }
+    } else {
+        // カテゴリ解除 → status を 'inbox' に戻す。params は id のみ (batch_size 999)
+        let batch_size = 999;
+        for chunk in video_ids.chunks(batch_size) {
+            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "UPDATE videos SET category_id = NULL, status = 'inbox' WHERE id IN ({ph})"
+            );
+            let params: Vec<rusqlite::types::Value> = chunk
+                .iter()
+                .map(|&id| rusqlite::types::Value::Integer(id))
+                .collect();
+            conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
                 .map_err(|e| e.to_string())?;
         }
     }
@@ -918,21 +921,14 @@ pub fn build_category_hierarchy(
         if let Some(&cached) = cache.get(&cache_key) {
             leaf_id = Some(cached);
         } else {
-            let existing_id: Option<i64> = if parent_id.is_none() {
-                conn.query_row(
-                    "SELECT id FROM categories WHERE name = ?1 AND parent_id IS NULL",
-                    [name],
+            // IS は NULL 同士も一致とみなすため、ルート (parent_id IS NULL) も同じ文で引ける
+            let existing_id: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM categories WHERE name = ?1 AND parent_id IS ?2",
+                    rusqlite::params![name, parent_id],
                     |r| r.get(0),
                 )
-                .optional()?
-            } else {
-                conn.query_row(
-                    "SELECT id FROM categories WHERE name = ?1 AND parent_id = ?2",
-                    rusqlite::params![name, parent_id.unwrap()],
-                    |r| r.get(0),
-                )
-                .optional()?
-            };
+                .optional()?;
             let id = if let Some(eid) = existing_id {
                 eid
             } else {

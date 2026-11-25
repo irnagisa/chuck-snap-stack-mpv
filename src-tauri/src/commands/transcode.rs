@@ -68,6 +68,12 @@ impl TranscodeState {
     }
 }
 
+impl Default for TranscodeState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// `transcode_video` の結果
 #[derive(Serialize, Debug)]
 #[serde(tag = "status", rename_all = "camelCase", rename_all_fields = "camelCase")]

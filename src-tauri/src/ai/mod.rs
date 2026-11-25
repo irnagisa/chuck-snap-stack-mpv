@@ -33,7 +33,8 @@ pub enum ModelKind {
 }
 
 impl ModelKind {
-    pub fn from_str(s: &str) -> Self {
+    /// 設定値の文字列から。未知の値は既定の WD Tagger として扱う
+    pub fn from_id(s: &str) -> Self {
         match s {
             "joytag" => ModelKind::JoyTag,
             _ => ModelKind::WdTagger,
@@ -66,5 +67,11 @@ impl AiTaggerState {
             downloading: false,
             download_progress: 0.0,
         }))
+    }
+}
+
+impl Default for AiTaggerState {
+    fn default() -> Self {
+        Self::new()
     }
 }

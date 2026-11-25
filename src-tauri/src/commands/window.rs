@@ -13,6 +13,12 @@ impl MiniPlayerWindowState {
     }
 }
 
+impl Default for MiniPlayerWindowState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tauri::command]
 pub async fn enter_mini_player(
     app: AppHandle,

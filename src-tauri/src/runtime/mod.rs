@@ -1,9 +1,9 @@
-/// ONNX Runtime 初期化層。
-///
-/// OS 固有のライブラリロード処理はそれぞれのサブモジュールへ分離し、
-/// AI 推論コード (ai/) はこのモジュールの存在を一切知らない構成にする。
-///
-/// 呼び出し元 (lib.rs) は `initialize_runtime(app)` を一度だけ呼ぶ。
+//! ONNX Runtime 初期化層。
+//!
+//! OS 固有のライブラリロード処理はそれぞれのサブモジュールへ分離し、
+//! AI 推論コード (ai/) はこのモジュールの存在を一切知らない構成にする。
+//!
+//! 呼び出し元 (lib.rs) は `initialize_runtime(app)` を一度だけ呼ぶ。
 
 #[cfg(target_os = "macos")]
 mod macos;

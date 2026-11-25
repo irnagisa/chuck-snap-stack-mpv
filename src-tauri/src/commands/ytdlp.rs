@@ -24,6 +24,12 @@ impl YtdlpState {
     }
 }
 
+impl Default for YtdlpState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Serialize, Clone)]
 struct DownloadProgress {
     downloaded: u64,
@@ -247,7 +253,7 @@ pub async fn download_with_ytdlp(
     if let Err(e) = app.notification()
         .builder()
         .title("ダウンロード完了")
-        .body(&format!("{file_name} をダウンロードしました"))
+        .body(format!("{file_name} をダウンロードしました"))
         .show()
     {
         log::warn!("[notification] yt-dlp ダウンロード通知の送信に失敗しました: {e}");

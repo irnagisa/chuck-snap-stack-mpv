@@ -493,7 +493,7 @@ pub async fn play(
     if let Some(stderr) = child.stderr.take() {
         std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 log::debug!("[mpv stderr] {line}");
             }
         });

@@ -1,13 +1,13 @@
-/// macOS ORT Runtime 初期化。
-///
-/// 探索順序:
-/// 1a. `resource_dir()/libonnxruntime.dylib`          — 本番 (bundle.resources)
-/// 1b. `resource_dir()/../Frameworks/libonnxruntime.dylib` — 本番 (bundle.macOS.frameworks)
-/// 2.  `$ORT_LIB_LOCATION/libonnxruntime.dylib`       — 明示的な環境変数
-/// 3.  `{cwd}/src-tauri/libs/macos/libonnxruntime.dylib` — 開発フォールバック
-///
-/// `pnpm update:onnxruntime` を実行すると (3) に universal2 版 dylib が配置されるため、
-/// 環境変数なしで `pnpm tauri dev` が動作する。
+//! macOS ORT Runtime 初期化。
+//!
+//! 探索順序:
+//! 1a. `resource_dir()/libonnxruntime.dylib`          — 本番 (bundle.resources)
+//! 1b. `resource_dir()/../Frameworks/libonnxruntime.dylib` — 本番 (bundle.macOS.frameworks)
+//! 2.  `$ORT_LIB_LOCATION/libonnxruntime.dylib`       — 明示的な環境変数
+//! 3.  `{cwd}/src-tauri/libs/macos/libonnxruntime.dylib` — 開発フォールバック
+//!
+//! `pnpm update:onnxruntime` を実行すると (3) に universal2 版 dylib が配置されるため、
+//! 環境変数なしで `pnpm tauri dev` が動作する。
 
 use tauri::Manager;
 

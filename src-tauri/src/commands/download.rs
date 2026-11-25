@@ -30,6 +30,12 @@ impl DownloadState {
     }
 }
 
+impl Default for DownloadState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tauri::command]
 pub async fn download_video(
     app: tauri::AppHandle,
@@ -109,11 +115,9 @@ pub async fn download_video(
                 .map_err(|e| format!("書き込みエラー: {e}"))?;
             downloaded += chunk.len() as u64;
 
-            let percent = if total > 0 {
-                ((downloaded * 100) / total).min(100) as u8
-            } else {
-                0
-            };
+            let percent = (downloaded * 100)
+                .checked_div(total)
+                .map_or(0, |p| p.min(100) as u8);
 
             if percent != last_percent {
                 last_percent = percent;
@@ -156,7 +160,7 @@ pub async fn download_video(
     if let Err(e) = app.notification()
         .builder()
         .title("ダウンロード完了")
-        .body(&format!("{file_name} をダウンロードしました"))
+        .body(format!("{file_name} をダウンロードしました"))
         .show()
     {
         log::warn!("[notification] ダウンロード通知の送信に失敗しました: {e}");

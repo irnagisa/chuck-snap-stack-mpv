@@ -28,6 +28,8 @@ pub async fn db_load_settings(state: State<'_, DbState>) -> Result<HashMap<Strin
     Ok(map)
 }
 
+// フロントエンドから名前付き引数で呼ぶ Tauri コマンドのため、引数の多さは許容する
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn db_save_settings(
     state: State<'_, DbState>,

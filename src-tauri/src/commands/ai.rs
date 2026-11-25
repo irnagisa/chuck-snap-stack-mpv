@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tauri::Emitter;
 use tauri_plugin_notification::NotificationExt;
@@ -86,7 +86,7 @@ pub async fn check_ai_model_status(
     state: tauri::State<'_, AiTaggerState>,
     model_type: String,
 ) -> Result<ModelStatus, String> {
-    let kind = ModelKind::from_str(&model_type);
+    let kind = ModelKind::from_id(&model_type);
     let inner = state.0.lock().map_err(|e| e.to_string())?;
     let model_exists = model_path(&app, &kind)?.exists() && tags_path(&app, &kind)?.exists();
     Ok(ModelStatus {
@@ -103,7 +103,7 @@ pub async fn download_ai_model(
     state: tauri::State<'_, AiTaggerState>,
     model_type: String,
 ) -> Result<(), String> {
-    let kind = ModelKind::from_str(&model_type);
+    let kind = ModelKind::from_id(&model_type);
 
     // Guard: already downloading?
     {
@@ -147,7 +147,7 @@ pub async fn download_ai_model(
 
 async fn download_files(
     app: &AppHandle,
-    dir: &PathBuf,
+    dir: &Path,
     state: &tauri::State<'_, AiTaggerState>,
     kind: &ModelKind,
 ) -> Result<(), String> {
@@ -260,7 +260,7 @@ pub async fn uninstall_ai_model(
     model_type: String,
 ) -> Result<(), String> {
     // 1. Parse through whitelist — unknown input silently becomes WdTagger
-    let kind = ModelKind::from_str(&model_type);
+    let kind = ModelKind::from_id(&model_type);
 
     // 2. Resolve deletion directory internally (not from user input)
     let dir = ai_dir(&app, &kind)?;
@@ -316,7 +316,7 @@ pub async fn analyze_thumbnail_for_tags(
                 |r| r.get(0),
             )
             .ok();
-        ModelKind::from_str(kind_str.as_deref().unwrap_or("wd-tagger"))
+        ModelKind::from_id(kind_str.as_deref().unwrap_or("wd-tagger"))
     };
 
     // Fetch thumbnail path and existing tags from DB

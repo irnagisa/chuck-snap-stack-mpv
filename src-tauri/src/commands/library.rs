@@ -709,7 +709,7 @@ pub async fn move_video_file(source_path: String, dest_dir: String) -> Result<St
         tokio::fs::remove_file(&source)
             .await
             .map_err(|e| format!("元ファイルの削除失敗 (コピー先にデータは存在します): {e}"))?;
-        return Ok(normalize_path_str(&canonical_dest.to_string_lossy()));
+        Ok(normalize_path_str(&canonical_dest.to_string_lossy()))
     }
 }
 

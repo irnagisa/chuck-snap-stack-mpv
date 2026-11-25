@@ -77,7 +77,7 @@ pub fn build_suggestions(
 }
 
 fn normalise(s: &str) -> String {
-    s.to_lowercase().replace('_', " ").replace('-', " ")
+    s.to_lowercase().replace(['_', '-'], " ")
 }
 
 #[cfg(test)]

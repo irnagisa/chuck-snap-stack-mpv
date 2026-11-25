@@ -20,9 +20,9 @@ fn phash_from_image(img: &DynamicImage) -> u64 {
         .to_luma8();
 
     let mut pixels = [[0f64; 32]; 32];
-    for y in 0..32usize {
-        for x in 0..32usize {
-            pixels[y][x] = small.get_pixel(x as u32, y as u32).0[0] as f64;
+    for (y, row) in pixels.iter_mut().enumerate() {
+        for (x, px) in row.iter_mut().enumerate() {
+            *px = small.get_pixel(x as u32, y as u32).0[0] as f64;
         }
     }
 
@@ -51,13 +51,13 @@ fn phash_from_image(img: &DynamicImage) -> u64 {
 
 fn dct1d(input: &[f64; 32]) -> [f64; 32] {
     let mut output = [0f64; 32];
-    for k in 0..32usize {
+    for (k, out) in output.iter_mut().enumerate() {
         let mut sum = 0f64;
         for (n, &x) in input.iter().enumerate() {
             sum += x
                 * (std::f64::consts::PI * k as f64 * (2 * n + 1) as f64 / 64.0).cos();
         }
-        output[k] = sum;
+        *out = sum;
     }
     output
 }
@@ -191,11 +191,10 @@ mod tests {
         // Constant signal → all AC components should be 0
         let input = [5f64; 32];
         let output = dct1d(&input);
-        for k in 1..32 {
+        for (k, v) in output.iter().enumerate().skip(1) {
             assert!(
-                output[k].abs() < 1e-9,
-                "AC component k={k} should be ~0 for constant signal, got {}",
-                output[k]
+                v.abs() < 1e-9,
+                "AC component k={k} should be ~0 for constant signal, got {v}"
             );
         }
     }
@@ -437,7 +436,7 @@ mod tests {
 // Union-Find (for grouping similar videos)
 // ---------------------------------------------------------------------------
 
-fn find(parent: &mut Vec<usize>, mut x: usize) -> usize {
+fn find(parent: &mut [usize], mut x: usize) -> usize {
     while parent[x] != x {
         parent[x] = parent[parent[x]]; // path compression (halving)
         x = parent[x];
@@ -445,7 +444,7 @@ fn find(parent: &mut Vec<usize>, mut x: usize) -> usize {
     x
 }
 
-fn union(parent: &mut Vec<usize>, x: usize, y: usize) {
+fn union(parent: &mut [usize], x: usize, y: usize) {
     let px = find(parent, x);
     let py = find(parent, y);
     if px != py {
@@ -520,7 +519,7 @@ async fn extract_frame_with_ffmpeg(
     // Always clean up the temp file, regardless of success or failure
     let _ = tokio::fs::remove_file(&tmp).await;
 
-    Ok(result??)
+    result?
 }
 
 // ---------------------------------------------------------------------------
@@ -707,7 +706,7 @@ pub async fn db_find_similar_videos(
             .collect();
 
         // Largest groups first
-        result.sort_by(|a, b| b.len().cmp(&a.len()));
+        result.sort_by_key(|g| std::cmp::Reverse(g.len()));
 
         result
     })

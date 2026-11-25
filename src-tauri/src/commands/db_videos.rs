@@ -522,6 +522,8 @@ pub async fn db_update_progress(
     Ok(())
 }
 
+// フロントエンドから名前付き引数で呼ぶ Tauri コマンドのため、引数の多さは許容する
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn db_update_video(
     state: State<'_, DbState>,

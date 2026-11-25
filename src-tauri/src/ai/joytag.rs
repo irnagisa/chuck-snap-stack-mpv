@@ -12,6 +12,7 @@ pub const SCORE_THRESHOLD: f32 = 0.35;
 
 /// CLIP image normalization constants (RGB order).
 const MEAN: [f32; 3] = [0.48145466, 0.4578275, 0.40821073];
+#[allow(clippy::excessive_precision)] // 公開されている値をそのまま使う
 const STD: [f32; 3] = [0.26862954, 0.26130258, 0.27577711];
 
 pub struct JoyTagger {

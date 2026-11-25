@@ -280,7 +280,7 @@ mod tests {
         assert_eq!(array.shape(), &[1, 448, 448, 3]);
         // All values must be in [0, 255]
         for &v in array.iter().take(50) {
-            assert!(v >= 0.0 && v <= 255.0, "pixel value out of range: {v}");
+            assert!((0.0..=255.0).contains(&v), "pixel value out of range: {v}");
         }
     }
 }

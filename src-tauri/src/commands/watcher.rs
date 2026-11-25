@@ -88,79 +88,78 @@ pub async fn start_watching(
         };
         let mut dir_removed_emitted = false;
         for result in rx {
-            if let Ok(event) = result {
-                let norm = normalize_event_path;
-                let title_of = event_title;
-                match event.kind {
-                    EventKind::Create(_) => {
+            let Ok(event) = result else { continue };
+            let norm = normalize_event_path;
+            let title_of = event_title;
+            match event.kind {
+                EventKind::Create(_) => {
+                    for p in event.paths.iter().filter(|p| is_video(p)) {
+                        let payload = FileEventPayload {
+                            path: norm(p),
+                            title: title_of(p),
+                        };
+                        let _ = handle.emit("video-file-created", payload);
+                    }
+                }
+                EventKind::Remove(_) => {
+                    // 監視ディレクトリ自体が削除されたか確認
+                    let dir_removed = event.paths.iter().any(|p| norm(p) == watched_dir);
+                    if dir_removed && !dir_removed_emitted {
+                        dir_removed_emitted = true;
+                        let _ = handle.emit("watch-dir-removed", watched_dir.clone());
+                    } else {
                         for p in event.paths.iter().filter(|p| is_video(p)) {
-                            let payload = FileEventPayload {
-                                path: norm(p),
-                                title: title_of(p),
-                            };
-                            let _ = handle.emit("video-file-created", payload);
+                            let _ = handle.emit("video-file-removed", norm(p));
                         }
                     }
-                    EventKind::Remove(_) => {
-                        // 監視ディレクトリ自体が削除されたか確認
-                        let dir_removed = event.paths.iter().any(|p| norm(p) == watched_dir);
-                        if dir_removed && !dir_removed_emitted {
-                            dir_removed_emitted = true;
-                            let _ = handle.emit("watch-dir-removed", watched_dir.clone());
-                        } else {
+                }
+                EventKind::Modify(notify::event::ModifyKind::Name(rename_mode)) => {
+                    use notify::event::RenameMode;
+                    match rename_mode {
+                        RenameMode::Both => {
+                            if event.paths.len() == 2 {
+                                let old = &event.paths[0];
+                                let new = &event.paths[1];
+                                // 監視ディレクトリ自体がリネーム/移動された場合
+                                if norm(old) == watched_dir {
+                                    let payload = WatchDirRenamedPayload {
+                                        old_dir: norm(old),
+                                        new_dir: norm(new),
+                                    };
+                                    let _ = handle.emit("watch-dir-renamed", payload);
+                                } else if is_video(new) {
+                                    let payload = RenameEventPayload {
+                                        old_path: norm(old),
+                                        new_path: norm(new),
+                                        title: title_of(new),
+                                    };
+                                    let _ = handle.emit("video-file-renamed", payload);
+                                } else if is_video(old) {
+                                    // 動画以外の拡張子にリネームされた場合は削除扱い
+                                    let _ = handle.emit("video-file-removed", norm(old));
+                                }
+                            }
+                        }
+                        RenameMode::From => {
+                            // 旧パスのみ判明 (ディレクトリ外へ移動など): 削除扱い
                             for p in event.paths.iter().filter(|p| is_video(p)) {
                                 let _ = handle.emit("video-file-removed", norm(p));
                             }
                         }
-                    }
-                    EventKind::Modify(notify::event::ModifyKind::Name(rename_mode)) => {
-                        use notify::event::RenameMode;
-                        match rename_mode {
-                            RenameMode::Both => {
-                                if event.paths.len() == 2 {
-                                    let old = &event.paths[0];
-                                    let new = &event.paths[1];
-                                    // 監視ディレクトリ自体がリネーム/移動された場合
-                                    if norm(old) == watched_dir {
-                                        let payload = WatchDirRenamedPayload {
-                                            old_dir: norm(old),
-                                            new_dir: norm(new),
-                                        };
-                                        let _ = handle.emit("watch-dir-renamed", payload);
-                                    } else if is_video(new) {
-                                        let payload = RenameEventPayload {
-                                            old_path: norm(old),
-                                            new_path: norm(new),
-                                            title: title_of(new),
-                                        };
-                                        let _ = handle.emit("video-file-renamed", payload);
-                                    } else if is_video(old) {
-                                        // 動画以外の拡張子にリネームされた場合は削除扱い
-                                        let _ = handle.emit("video-file-removed", norm(old));
-                                    }
-                                }
+                        RenameMode::To => {
+                            // 新パスのみ判明 (ディレクトリ内へ移動など): 追加扱い
+                            for p in event.paths.iter().filter(|p| is_video(p)) {
+                                let payload = FileEventPayload {
+                                    path: norm(p),
+                                    title: title_of(p),
+                                };
+                                let _ = handle.emit("video-file-created", payload);
                             }
-                            RenameMode::From => {
-                                // 旧パスのみ判明 (ディレクトリ外へ移動など): 削除扱い
-                                for p in event.paths.iter().filter(|p| is_video(p)) {
-                                    let _ = handle.emit("video-file-removed", norm(p));
-                                }
-                            }
-                            RenameMode::To => {
-                                // 新パスのみ判明 (ディレクトリ内へ移動など): 追加扱い
-                                for p in event.paths.iter().filter(|p| is_video(p)) {
-                                    let payload = FileEventPayload {
-                                        path: norm(p),
-                                        title: title_of(p),
-                                    };
-                                    let _ = handle.emit("video-file-created", payload);
-                                }
-                            }
-                            _ => {}
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
+                _ => {}
             }
         }
         }));

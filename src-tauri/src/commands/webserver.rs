@@ -34,6 +34,12 @@ impl WebServerState {
     }
 }
 
+impl Default for WebServerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Axum shared state
 // ---------------------------------------------------------------------------
@@ -335,10 +341,8 @@ async fn stream_video(
     };
 
     // 指定位置にシーク
-    if start > 0 {
-        if file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
+    if start > 0 && file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
     let content_length = end - start + 1;
