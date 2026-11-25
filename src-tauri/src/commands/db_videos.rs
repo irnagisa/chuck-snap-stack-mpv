@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::db::DbState;
 use super::db_tags::VideoTagRow;
+use super::storage;
 use super::utils::normalize_path_str;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -328,7 +329,7 @@ fn sort_column(sort_by: &str) -> &'static str {
 /// file_size が未取得 (NULL) のレコードについてファイルサイズを取得して保存する。
 /// ファイルサイズ順ソート時のみ呼ばれる。stat は DB ロック外で行う。
 /// 取得に失敗したファイル (存在しない等) は NULL のまま残し、次回再試行する。
-fn fill_missing_file_sizes(state: &DbState) -> Result<(), String> {
+pub(crate) fn fill_missing_file_sizes(state: &DbState) -> Result<(), String> {
     let targets: Vec<(i64, String)> = {
         let conn = state.conn_read()?;
         let mut stmt = conn
@@ -768,16 +769,27 @@ pub async fn db_update_video_thumbnail(
 }
 
 #[tauri::command]
-pub async fn db_delete_video(state: State<'_, DbState>, video_id: i64) -> Result<(), String> {
+pub async fn db_delete_video(
+    app: tauri::AppHandle,
+    state: State<'_, DbState>,
+    video_id: i64,
+) -> Result<(), String> {
     let conn = state.conn()?;
+    let thumbs = storage::thumbnails_for_ids(&conn, &[video_id])?;
     conn.execute("DELETE FROM videos WHERE id = ?1", [video_id])
         .map_err(|e| e.to_string())?;
+    storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn db_remove_video(state: State<'_, DbState>, video_id: i64) -> Result<(), String> {
+pub async fn db_remove_video(
+    app: tauri::AppHandle,
+    state: State<'_, DbState>,
+    video_id: i64,
+) -> Result<(), String> {
     let conn = state.conn()?;
+    let thumbs = storage::thumbnails_for_ids(&conn, &[video_id])?;
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
     let result: Result<(), String> = (|| {
         conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [video_id])
@@ -790,6 +802,7 @@ pub async fn db_remove_video(state: State<'_, DbState>, video_id: i64) -> Result
     })();
     if result.is_ok() {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+        storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
     } else {
         if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
             log::error!("[db_remove_video] ROLLBACK 失敗: {rb_err}");
@@ -800,6 +813,7 @@ pub async fn db_remove_video(state: State<'_, DbState>, video_id: i64) -> Result
 
 #[tauri::command]
 pub async fn db_remove_multiple(
+    app: tauri::AppHandle,
     state: State<'_, DbState>,
     video_ids: Vec<i64>,
 ) -> Result<(), String> {
@@ -807,6 +821,7 @@ pub async fn db_remove_multiple(
         return Ok(());
     }
     let conn = state.conn()?;
+    let thumbs = storage::thumbnails_for_ids(&conn, &video_ids)?;
     // Batch DELETE in chunks of 400
     let batch_size = 400;
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
@@ -835,6 +850,7 @@ pub async fn db_remove_multiple(
     })();
     if result.is_ok() {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+        storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
     } else {
         if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
             log::error!("[db_remove_multiple] ROLLBACK 失敗: {rb_err}");
@@ -878,6 +894,7 @@ pub async fn db_add_video_from_path(
 
 #[tauri::command]
 pub async fn db_remove_video_by_path(
+    app: tauri::AppHandle,
     state: State<'_, DbState>,
     path: String,
 ) -> Result<(), String> {
@@ -888,6 +905,7 @@ pub async fn db_remove_video_by_path(
         .optional()
         .map_err(|e| e.to_string())?;
     if let Some(video_id) = id {
+        let thumbs = storage::thumbnails_for_ids(&conn, &[video_id])?;
         conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
         let result: Result<(), String> = (|| {
             conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [video_id])
@@ -900,6 +918,7 @@ pub async fn db_remove_video_by_path(
         })();
         if result.is_ok() {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
         } else {
             if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
                 log::error!("[db_remove_video_by_path] ROLLBACK 失敗: {rb_err}");
@@ -1067,6 +1086,7 @@ pub async fn db_add_watch_dir(
 
 #[tauri::command]
 pub async fn db_remove_watch_dir(
+    app: tauri::AppHandle,
     state: State<'_, DbState>,
     path: String,
 ) -> Result<(), String> {
@@ -1090,6 +1110,7 @@ pub async fn db_remove_watch_dir(
     // Batch delete
     let batch_size = 400;
     if !videos.is_empty() {
+        let thumbs = storage::thumbnails_for_ids(&conn, &videos)?;
         conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
         let result: Result<(), String> = (|| {
             for chunk in videos.chunks(batch_size) {
@@ -1116,6 +1137,7 @@ pub async fn db_remove_watch_dir(
         })();
         if result.is_ok() {
             conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
         } else {
             if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
                 log::error!("[db_remove_watch_dir] ROLLBACK 失敗: {rb_err}");

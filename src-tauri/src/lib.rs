@@ -187,6 +187,9 @@ pub fn run() {
             commands::db_playlists::db_delete_smart_playlist,
             // db_stats
             commands::db_stats::db_get_library_stats,
+            commands::storage::get_storage_overview,
+            commands::storage::get_cleanup_candidates,
+            commands::storage::cleanup_thumbnails,
             // db_export
             commands::db_export::db_export_backup,
             commands::db_export::db_import_backup,

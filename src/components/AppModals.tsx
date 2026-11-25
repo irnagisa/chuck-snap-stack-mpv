@@ -13,6 +13,7 @@ import { BulkMoveDirModal } from './Library/BulkMoveDirModal';
 import { DuplicatesModal } from './Library/DuplicatesModal';
 import { MissingFilesModal } from './Library/MissingFilesModal';
 import { StatsModal } from './Library/StatsModal';
+import { StorageModal } from './Library/StorageModal';
 import { ExportModal } from './Library/ExportModal';
 import { SmartPlaylistModal } from './Library/SmartPlaylistModal';
 import { DndDestDirModal } from './Library/DndDestDirModal';
@@ -32,6 +33,7 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
     showDuplicates, closeDuplicates,
     showMissingFiles, closeMissingFiles,
     showStats, closeStats,
+    showStorage, closeStorage,
     showExport, closeExport,
     showSmartPlaylist, closeSmartPlaylist,
     activePlaylist, closePlaylist,
@@ -51,6 +53,8 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {showMissingFiles && <MissingFilesModal onClose={closeMissingFiles} />}
 
       {showStats && <StatsModal onClose={closeStats} />}
+
+      {showStorage && <StorageModal onClose={closeStorage} />}
 
       {showExport && <ExportModal onClose={closeExport} />}
 

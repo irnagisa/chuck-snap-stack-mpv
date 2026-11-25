@@ -1,0 +1,179 @@
+/* ストレージ整理モーダル (一覧の行・パネル・状態表示は LibraryModal.module.css を使う) */
+@layer ui {
+  .root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .heading {
+    margin: 0 0 var(--space-3);
+    color: var(--color-fg);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+
+  /* ---- サマリーのタイル ---- */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-3);
+  }
+  .tile {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-hover);
+  }
+  .tileLabel {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+  }
+  .tileValue {
+    margin: var(--space-1) 0 0;
+    color: var(--color-fg);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+  }
+  .tileSub {
+    margin: 0;
+    color: var(--color-fg-subtle);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cols2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--space-6);
+  }
+
+  /* ---- 容量の横棒グラフ ---- */
+  .bars {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+  }
+  .barRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+  }
+  .barLabel {
+    flex-shrink: 0;
+    width: 6rem;
+    overflow: hidden;
+    color: var(--color-fg-muted);
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .barTrack {
+    flex: 1;
+    height: 0.625rem;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-active);
+    overflow: hidden;
+  }
+  .barFill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent-line);
+  }
+  .barValue {
+    flex-shrink: 0;
+    width: 4.5rem;
+    color: var(--color-fg);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* ---- サムネイルの整理 ---- */
+  .thumbsBody {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+  .thumbsText {
+    flex: 1 1 20rem;
+    min-width: 0;
+
+    & .heading {
+      margin-bottom: var(--space-1);
+    }
+  }
+  .thumbStats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-6);
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
+
+    & div {
+      display: flex;
+      gap: var(--space-1-5);
+    }
+    & dt {
+      color: var(--color-fg-muted);
+    }
+    & dd {
+      margin: 0;
+      color: var(--color-fg);
+      font-weight: var(--weight-semibold);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  /* ---- 整理候補 ---- */
+  .candidates {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .candidatesHead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+
+    & .heading {
+      margin: 0;
+    }
+  }
+  .headNote {
+    margin-inline-start: auto;
+    color: var(--color-fg-subtle);
+  }
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    color: var(--color-fg-subtle);
+    font-size: 0.6875rem;
+  }
+  .rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--palette-amber-500);
+    font-weight: var(--weight-bold);
+
+    & svg {
+      width: 0.6875rem;
+      height: 0.6875rem;
+    }
+  }
+  .size {
+    flex-shrink: 0;
+    color: var(--color-fg);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    font-variant-numeric: tabular-nums;
+  }
+}

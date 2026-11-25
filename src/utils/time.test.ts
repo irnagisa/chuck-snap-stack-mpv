@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTime } from './time';
+import { formatFileSize, formatTime, parseSqliteDate } from './time';
 
 describe('formatTime', () => {
   it('formats 0 seconds as 0:00', () => {
@@ -38,5 +38,28 @@ describe('formatTime', () => {
     expect(formatTime(1.9)).toBe('0:01');
     expect(formatTime(59.999)).toBe('0:59');
     expect(formatTime(3600.9)).toBe('1:00:00');
+  });
+});
+
+describe('formatFileSize', () => {
+  it('単位を切り替える', () => {
+    expect(formatFileSize(512 * 1024)).toBe('512.0 KB');
+    expect(formatFileSize(5 * 1024 ** 2)).toBe('5.0 MB');
+    expect(formatFileSize(3 * 1024 ** 3)).toBe('3.00 GB');
+    expect(formatFileSize(2.5 * 1024 ** 4)).toBe('2.50 TB');
+  });
+});
+
+describe('parseSqliteDate', () => {
+  it('CURRENT_TIMESTAMP の形式を UTC として読む', () => {
+    expect(parseSqliteDate('2026-01-02 03:04:05')?.toISOString()).toBe('2026-01-02T03:04:05.000Z');
+  });
+  it('ISO 形式はそのまま読む', () => {
+    expect(parseSqliteDate('2026-01-02T03:04:05.000Z')?.toISOString()).toBe('2026-01-02T03:04:05.000Z');
+  });
+  it('空や不正な値は null', () => {
+    expect(parseSqliteDate(null)).toBeNull();
+    expect(parseSqliteDate('')).toBeNull();
+    expect(parseSqliteDate('not a date')).toBeNull();
   });
 });
