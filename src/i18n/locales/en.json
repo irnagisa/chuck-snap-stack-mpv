@@ -105,7 +105,10 @@
     "audioYesShort": "Yes",
     "audioNoShort": "No",
     "av1OnlyShort": "Converted",
-    "av1ExcludeShort": "Exclude"
+    "av1ExcludeShort": "Exclude",
+    "audioSilentShort": "Silent",
+    "audioSilent": "Silent audio track",
+    "audioSilentNote": "Only videos checked in the Storage screen"
   },
   "batch": {
     "selectedCount": "{{count}} selected",
@@ -656,7 +659,15 @@
     "trimBeyond": "The end is past the video length ({{duration}}).",
     "trimTooShort": "The range to keep is too short.",
     "remuxNothing": "Remove a track or set a range to keep.",
-    "discardNoteSmall": "If the converted file isn't smaller than the original, it is discarded and the original is kept."
+    "discardNoteSmall": "If the converted file isn't smaller than the original, it is discarded and the original is kept.",
+    "mode_dropSilent": "Remove silent tracks",
+    "dropSilentDesc": "Removes only the audio tracks found to be silent. Nothing is re-encoded, so video and other audio stay as they are.",
+    "silentBadge": "Silent",
+    "silenceCheck": "Check for silent tracks",
+    "silenceChecking": "Measuring volume…",
+    "silenceNone": "No silent audio tracks.",
+    "silenceFound": "{{count}} silent audio track(s) found and unchecked.",
+    "silenceError": "Could not measure volume: {{error}}"
   },
   "export": {
     "title": "Export / Import",
@@ -909,6 +920,16 @@
     "aiRemoveConfirmDescInUse": "The model files ({{size}}) will be deleted. This model is used for AI tag suggestions, so it will need to be downloaded again next time.",
     "aiRemoveConfirm": "Delete",
     "aiRemoveDone": "Deleted the AI model ({{size}} freed)",
-    "aiRemoveError": "Could not delete the AI model: {{error}}"
+    "aiRemoveError": "Could not delete the AI model: {{error}}",
+    "kindSilentAudio": "Silent audio",
+    "kindDescSilentAudio": "Videos whose audio tracks contain only silence (screen recordings, muted exports, etc.). Removing the silent tracks frees space without touching the video.",
+    "silenceUnchecked": "{{count}} videos haven't been checked for silent audio yet. Check them to list any here.",
+    "silenceProgress": "Checking volume ({{done}} / {{total}})",
+    "silenceCheck": "Check for silence",
+    "silentTracks": "Silent tracks: {{count}}",
+    "silentFreed": "about {{size}} if removed",
+    "silentSummary": "{{count}} files · about {{size}} freed by removing them",
+    "silentSelectedSummary": "{{count}} selected · about {{size}} if removed",
+    "dropSilent": "Remove silent tracks"
   }
 }

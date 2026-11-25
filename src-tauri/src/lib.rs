@@ -242,6 +242,10 @@ pub fn run() {
             commands::phash::db_find_similar_videos,
             commands::phash::db_get_video_stored_phash,
             commands::phash::db_find_similar_to_video,
+            // 無音の音声トラック
+            commands::silent_audio::get_videos_without_silence_check,
+            commands::silent_audio::detect_silent_audio,
+            commands::silent_audio::get_audio_silence,
             // ai
             commands::ai::check_ai_model_status,
             commands::ai::download_ai_model,

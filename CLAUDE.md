@@ -86,6 +86,7 @@ chuck-snap-stack/
 │   │   │   ├── window.rs       # ミニプレイヤーウィンドウ
 │   │   │   ├── webserver.rs    # 組み込み HTTP サーバー (サムネイル配信)
 │   │   │   ├── phash.rs        # 知覚的ハッシュ・重複検出
+│   │   │   ├── silent_audio.rs # 無音の音声トラックの検出 (volumedetect。数か所を先に読み、無音の候補だけ全体を読む)
 │   │   │   ├── ai.rs           # AI タグ提案 (ONNX)
 │   │   │   ├── link.rs         # URL メタデータ取得・リンクアセット DB
 │   │   │   ├── system.rs       # システム情報 (ディスク情報等)
@@ -133,7 +134,10 @@ CREATE TABLE videos (
   ai_analyzed_at      TEXT,
   phash               TEXT,                  -- 知覚的ハッシュ (重複検出用)
   last_viewed_at      TEXT,                  -- 最終視聴日時
-  file_size           INTEGER                -- ファイルサイズ (bytes, ソート用キャッシュ)
+  file_size           INTEGER,               -- ファイルサイズ (bytes, ソート用キャッシュ)
+  audio_silence       TEXT,                  -- 無音の音声トラック: 'none' | 'partial' | 'all' (NULL = 未確認)
+  silent_audio_streams TEXT,                 -- 無音のトラックの番号 (ffprobe の index、カンマ区切り)
+  silent_audio_bytes  INTEGER                -- 無音のトラックの容量の見込み (外すと空く)
 );
 
 -- カテゴリ (階層構造対応)

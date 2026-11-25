@@ -151,6 +151,7 @@ pub async fn transcode_video(
     let (source_info, encoders) =
         tokio::join!(probe_source(&ffprobe_path, &input_path), detect_encoders(&ffmpeg_path));
     let source_info = source_info?;
+    let mode = mode.resolve(&source_info)?;
     let expected = expectation(&mode, &source_info)?;
     // 進み具合は出力の長さに対する割合で出す (トリミングすると元より短い)
     let duration_secs = match mode {
@@ -531,6 +532,12 @@ pub enum TranscodeMode {
         trim_start: Option<f64>,
         trim_end: Option<f64>,
     },
+    /// 再エンコードせず、指定した音声トラックだけを外す (無音のトラックの整理用)。
+    /// 変換開始時にファイルを調べ、残りを残す `Remux` に置き換える
+    DropStreams {
+        /// 外す音声トラックの番号 (ffprobe の index)
+        streams: Vec<usize>,
+    },
 }
 
 /// 出力ファイル名に付ける印 (`{stem}.{印}.mkv`)
@@ -542,7 +549,7 @@ impl TranscodeMode {
             Self::Av1 { .. } => OUTPUT_SUFFIXES[0],
             Self::Hevc { .. } => OUTPUT_SUFFIXES[1],
             Self::Audio => OUTPUT_SUFFIXES[2],
-            Self::Remux { .. } => OUTPUT_SUFFIXES[3],
+            Self::Remux { .. } | Self::DropStreams { .. } => OUTPUT_SUFFIXES[3],
         }
     }
 
@@ -553,7 +560,7 @@ impl TranscodeMode {
         match self {
             Self::Av1 { .. } | Self::Hevc { .. } => MIN_SAVING_RATIO,
             Self::Audio => 0.01,
-            Self::Remux { .. } => 0.0,
+            Self::Remux { .. } | Self::DropStreams { .. } => 0.0,
         }
     }
 
@@ -570,18 +577,40 @@ impl TranscodeMode {
                 }
                 Ok(())
             }
+            Self::DropStreams { streams } if streams.is_empty() => Err("外すトラックが指定されていません".into()),
             _ => Ok(()),
         }
+    }
+
+    /// `DropStreams` を、外すもの以外をすべて残す `Remux` に置き換える (他のモードはそのまま)。
+    /// 調べた後にファイルが差し替わり、番号が音声トラックを指さなくなっていたら変換しない
+    fn resolve(self, source: &ProbeInfo) -> Result<Self, String> {
+        let Self::DropStreams { streams: dropped } = self else {
+            return Ok(self);
+        };
+        for index in &dropped {
+            match source.streams.iter().find(|s| s.index == *index) {
+                Some(s) if s.codec_type == "audio" => {}
+                _ => return Err(format!("外す音声トラック #{index} が見つかりません (ファイルが変わった可能性があります)")),
+            }
+        }
+        let streams = source
+            .streams
+            .iter()
+            .filter(|s| REMUXABLE_TYPES.contains(&s.codec_type.as_str()) && !dropped.contains(&s.index))
+            .map(|s| s.index)
+            .collect();
+        Ok(Self::Remux { streams, trim_start: None, trim_end: None })
     }
 }
 
 // ── ffprobe によるストリーム構成の取得 ─────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq, Default)]
-struct StreamInfo {
+pub(crate) struct StreamInfo {
     /// ffprobe のストリーム番号 (`-map 0:{index}`)
-    index: usize,
-    codec_type: String,
+    pub(crate) index: usize,
+    pub(crate) codec_type: String,
     codec_name: String,
     /// カバー画像 (attached_pic)。映像として変換せず落とす
     attached_pic: bool,
@@ -589,7 +618,7 @@ struct StreamInfo {
     height: Option<u32>,
     fps: Option<f64>,
     /// ストリームのビットレート (bps)。Matroska では BPS タグから補う
-    bit_rate: Option<u64>,
+    pub(crate) bit_rate: Option<u64>,
     channels: Option<u32>,
     channel_layout: Option<String>,
     pix_fmt: Option<String>,
@@ -610,11 +639,23 @@ impl StreamInfo {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct ProbeInfo {
-    duration: f64,
+pub(crate) struct ProbeInfo {
+    pub(crate) duration: f64,
     /// コンテナ全体のビットレート (bps)
     bit_rate: Option<u64>,
-    streams: Vec<StreamInfo>,
+    pub(crate) streams: Vec<StreamInfo>,
+}
+
+#[cfg(test)]
+impl ProbeInfo {
+    /// 他のモジュールのテスト用: 音声トラックだけのファイル
+    pub(crate) fn audio_only_for_test(duration: f64, tracks: &[(usize, Option<u64>)]) -> Self {
+        let streams = tracks
+            .iter()
+            .map(|(index, bit_rate)| StreamInfo { index: *index, codec_type: "audio".into(), bit_rate: *bit_rate, ..Default::default() })
+            .collect();
+        Self { duration, bit_rate: None, streams }
+    }
 }
 
 /// 変換で保持すべきストリームの本数
@@ -673,7 +714,7 @@ async fn probe_media(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String
 
 /// 元ファイルを調べる。ビットレートが記録されていない音声は、先頭のパケットから実測して補う
 /// (ffmpeg が書いた Matroska には BPS タグがなく、変換するかを決められないため)
-async fn probe_source(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String> {
+pub(crate) async fn probe_source(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String> {
     let mut info = probe_media(ffprobe_path, path).await?;
     for s in info.streams.iter_mut().filter(|s| s.codec_type == "audio" && s.bit_rate.is_none()) {
         s.bit_rate = measure_bitrate(ffprobe_path, path, s.index).await;
@@ -945,7 +986,7 @@ fn opus_layout_fix(stream: &StreamInfo) -> Option<&'static str> {
 // ── ffmpeg の引数 ────────────────────────────────────────────────────────────
 
 /// トラック整理で残せる種類 (データ・タイムコードは Matroska に入らないので外す)
-const REMUXABLE_TYPES: [&str; 4] = ["video", "audio", "subtitle", "attachment"];
+pub(crate) const REMUXABLE_TYPES: [&str; 4] = ["video", "audio", "subtitle", "attachment"];
 
 /// Matroska にそのまま入れられない字幕コーデック → 変換先
 fn subtitle_codec_for_mkv(codec_name: &str) -> &'static str {
@@ -1088,6 +1129,7 @@ fn build_ffmpeg_args(
             args.extend(strings(&["-c:v", "copy"]));
         }
         TranscodeMode::Remux { .. } => unreachable!("上で処理済み"),
+        TranscodeMode::DropStreams { .. } => return Err("外すトラックの指定が解決されていません".into()),
     }
 
     let plans = audio_plan(source);
@@ -1747,6 +1789,38 @@ mod tests {
         assert!(TranscodeMode::Hevc { bitrate_percent: 50 }.validate().is_ok());
         let bad = TranscodeMode::Remux { streams: vec![0], trim_start: Some(-1.0), trim_end: None };
         assert!(bad.validate().is_err());
+        assert!(TranscodeMode::DropStreams { streams: vec![] }.validate().is_err());
+    }
+
+    #[test]
+    fn drop_streams_keeps_everything_else_and_rejects_non_audio() {
+        let m: TranscodeMode = serde_json::from_value(serde_json::json!({"kind": "dropStreams", "streams": [2]})).unwrap();
+        assert_eq!(m.suffix(), "slim");
+        let mut data = stream("data", "bin_data");
+        data.codec_type = "data".into();
+        let src = probe(
+            60.0,
+            vec![
+                video("h264", 1920, 1080, 30.0, None),
+                audio("aac", 2, "stereo", Some(128_000)),
+                audio("aac", 2, "stereo", Some(128_000)),
+                stream("subtitle", "subrip"),
+                data,
+            ],
+        );
+        assert_eq!(
+            m.clone().resolve(&src).unwrap(),
+            TranscodeMode::Remux { streams: vec![0, 1, 3], trim_start: None, trim_end: None }
+        );
+        // 外すと音声 1 本・映像 1 本などが残るので、そのまま検証できる
+        let resolved = m.resolve(&src).unwrap();
+        assert_eq!(expectation(&resolved, &src).unwrap().counts.audio, 1);
+
+        // 映像や存在しない番号は外せない
+        assert!(TranscodeMode::DropStreams { streams: vec![0] }.resolve(&src).is_err());
+        assert!(TranscodeMode::DropStreams { streams: vec![9] }.resolve(&src).is_err());
+        // 他のモードは変わらない
+        assert_eq!(TranscodeMode::Audio.resolve(&src).unwrap(), TranscodeMode::Audio);
     }
 
     #[test]
@@ -1999,6 +2073,7 @@ mod tests {
 
     async fn run_mode(input: &str, mode: TranscodeMode, encoders: Encoders) -> (ProbeInfo, Result<(), String>) {
         let source = probe_source("ffprobe", input).await.unwrap();
+        let mode = mode.resolve(&source).unwrap();
         let expected = expectation(&mode, &source).unwrap();
         let output = format!("{input}.{}.mkv", mode.suffix());
         let size = std::fs::metadata(input).ok().map(|m| m.len());
@@ -2057,6 +2132,12 @@ mod tests {
         let codecs: Vec<&str> = info.streams.iter().map(|s| s.codec_name.as_str()).collect();
         assert_eq!(codecs, vec!["h264", "aac", "subrip"]);
         assert!((info.duration - 10.0).abs() < 3.0, "長さ {}", info.duration);
+
+        // 指定した音声トラックだけ外す: AAC (#2) を外し、残りはそのまま
+        let (info, checked) = run_mode(&input, TranscodeMode::DropStreams { streams: vec![2] }, encoders).await;
+        checked.unwrap();
+        let codecs: Vec<&str> = info.streams.iter().map(|s| s.codec_name.as_str()).collect();
+        assert_eq!(codecs, vec!["h264", "pcm_s16le", "subrip"]);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

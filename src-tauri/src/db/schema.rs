@@ -127,6 +127,10 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE videos ADD COLUMN phash TEXT",
         "ALTER TABLE videos ADD COLUMN last_viewed_at TEXT",
         "ALTER TABLE videos ADD COLUMN file_size INTEGER",
+        // 無音の音声トラックの検出結果 (commands/silent_audio.rs)。NULL は未確認
+        "ALTER TABLE videos ADD COLUMN audio_silence TEXT",
+        "ALTER TABLE videos ADD COLUMN silent_audio_streams TEXT",
+        "ALTER TABLE videos ADD COLUMN silent_audio_bytes INTEGER",
     ];
     for stmt in &alter_stmts {
         let _ = conn.execute_batch(stmt); // ignore "duplicate column" errors

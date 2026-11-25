@@ -222,6 +222,8 @@ export function LibraryFilterBar() {
                       { value: "all", label: t("filters.all") },
                       { value: "1", label: t("filters.audioYesShort") },
                       { value: "0", label: t("filters.audioNoShort") },
+                      // 2: 無音の音声トラックがある (整理画面で調べたものだけ。db_videos.rs の FILTER_SILENT_AUDIO)
+                      { value: "2", label: t("filters.audioSilentShort"), title: t("filters.audioSilentNote") },
                     ]}
                   />
                 </FilterField>
@@ -280,7 +282,13 @@ export function LibraryFilterBar() {
         )}
         {filterHasAudio !== null && (
           <FilterChip
-            label={filterHasAudio === 1 ? t("filters.audioYes") : t("filters.audioNo")}
+            label={
+              filterHasAudio === 2
+                ? t("filters.audioSilent")
+                : filterHasAudio === 1
+                  ? t("filters.audioYes")
+                  : t("filters.audioNo")
+            }
             clearLabel={t("filters.tagClear")}
             onClear={() => setHasAudio(null)}
           />

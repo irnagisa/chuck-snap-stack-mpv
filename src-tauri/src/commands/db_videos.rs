@@ -37,6 +37,9 @@ pub struct FetchVideosResult {
     pub video_tags: Vec<VideoTagRow>,
 }
 
+/// `filter_has_audio` で無音の音声トラックがあるものを選ぶ値
+const FILTER_SILENT_AUDIO: i64 = 2;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoFilter {
@@ -47,6 +50,7 @@ pub struct VideoFilter {
     pub filter_min_rating: i64,
     #[serde(default = "default_rating_mode")]
     pub filter_rating_mode: String,
+    /// 1: 音声あり / 0: 音声なし / 2: 無音の音声トラックあり (`FILTER_SILENT_AUDIO`)
     pub filter_has_audio: Option<i64>,
     pub filter_min_duration: f64,
     pub filter_max_duration: Option<f64>,
@@ -253,9 +257,14 @@ fn build_where_clause(
         params.push(Value::Integer(filter.filter_min_rating));
     }
 
-    if let Some(has_audio) = filter.filter_has_audio {
-        conditions.push("v.has_audio = ?".to_string());
-        params.push(Value::Integer(has_audio));
+    match filter.filter_has_audio {
+        // 音声トラックはあるが無音 (一部のトラックだけ無音も含む。調べたものだけ)
+        Some(FILTER_SILENT_AUDIO) => conditions.push("v.audio_silence IN ('all', 'partial')".to_string()),
+        Some(has_audio) => {
+            conditions.push("v.has_audio = ?".to_string());
+            params.push(Value::Integer(has_audio));
+        }
+        None => {}
     }
 
     if filter.filter_min_duration > 0.0 {
@@ -1686,15 +1695,23 @@ mod tests {
     // ── filter_av1 ───────────────────────────────────────────────────────────
 
     fn filtered_paths(conn: &Connection, av1: &str) -> Vec<String> {
-        let filter: super::VideoFilter = serde_json::from_value(serde_json::json!({
+        filtered_paths_with(conn, serde_json::json!({ "filterAv1": av1 }))
+    }
+
+    /// 既定の条件に `overrides` を重ねて絞り込む
+    fn filtered_paths_with(conn: &Connection, overrides: serde_json::Value) -> Vec<String> {
+        let mut json = serde_json::json!({
             "filterSearch": "", "filterCategoryId": null, "filterTagIds": [],
             "filterTagMode": "and", "filterMinRating": 0, "filterHasAudio": null,
             "filterMinDuration": 0.0, "filterMaxDuration": null, "filterWatchedStatus": "all",
-            "filterWatchDir": null, "filterMediaType": "all", "filterAv1": av1,
+            "filterWatchDir": null, "filterMediaType": "all", "filterAv1": "all",
             "filterSortBy": "created_at", "filterSortOrder": "asc",
             "currentPage": 1, "pageSize": 100,
-        }))
-        .unwrap();
+        });
+        for (k, v) in overrides.as_object().unwrap() {
+            json[k] = v.clone();
+        }
+        let filter: super::VideoFilter = serde_json::from_value(json).unwrap();
         let (where_clause, params) = super::build_where_clause(conn, &filter);
         let mut stmt = conn
             .prepare(&format!("SELECT v.path FROM videos v {where_clause} ORDER BY v.id"))
@@ -1714,6 +1731,29 @@ mod tests {
         assert_eq!(filtered_paths(&conn, "only"), ["/v/a.av1.mkv", "/v/b.av1_2.mkv", "/v/C.AV1.MKV"]);
         assert_eq!(filtered_paths(&conn, "exclude"), ["/v/a.mp4", "/v/av1.mkv", "/v/x.av1.mkv.part"]);
         assert_eq!(filtered_paths(&conn, "all").len(), 6);
+    }
+
+    #[test]
+    fn filter_has_audio_can_select_silent_tracks() {
+        let conn = setup();
+        for (p, has_audio, silence) in [
+            ("/v/loud.mp4", Some(1), Some("none")),
+            ("/v/all.mp4", Some(1), Some("all")),
+            ("/v/part.mp4", Some(1), Some("partial")),
+            ("/v/unchecked.mp4", Some(1), None),
+            ("/v/mute.mp4", Some(0), None),
+        ] {
+            insert_video(&conn, p);
+            conn.execute(
+                "UPDATE videos SET has_audio = ?1, audio_silence = ?2 WHERE path = ?3",
+                rusqlite::params![has_audio, silence, p],
+            )
+            .unwrap();
+        }
+        let with = |v: i64| filtered_paths_with(&conn, serde_json::json!({ "filterHasAudio": v }));
+        assert_eq!(with(2), ["/v/all.mp4", "/v/part.mp4"]);
+        assert_eq!(with(1).len(), 4, "音声ありは従来どおりトラックの有無で選ぶ");
+        assert_eq!(with(0), ["/v/mute.mp4"]);
     }
 
     #[test]

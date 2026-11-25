@@ -683,11 +683,22 @@ struct CandidateSpec {
     /// 高ビットレートの基準 (kbps)
     min_bitrate_kbps: Option<i64>,
     order_by: String,
+    /// 合計に足す容量 (既定はファイルサイズ。無音のトラックは外すと空く分)
+    sum_expr: &'static str,
+    /// まだ調べていない動画の条件 (件数を返す)
+    unchecked_filter: Option<&'static str>,
 }
 
 impl CandidateSpec {
     fn by_size(filter: String, threshold_days: Option<i64>) -> Self {
-        Self { filter, threshold_days, min_bitrate_kbps: None, order_by: "file_size DESC, id".into() }
+        Self {
+            filter,
+            threshold_days,
+            min_bitrate_kbps: None,
+            order_by: "file_size DESC, id".into(),
+            sum_expr: "file_size",
+            unchecked_filter: None,
+        }
     }
 }
 
@@ -704,6 +715,17 @@ fn candidate_spec(kind: &str) -> Result<CandidateSpec, String> {
             threshold_days: None,
             min_bitrate_kbps: Some(HIGH_BITRATE_BPS / 1000),
             order_by: format!("{BITRATE_EXPR} DESC, id"),
+            sum_expr: "file_size",
+            unchecked_filter: None,
+        },
+        // 音声トラックがあるのに無音の動画 (調べたものだけ)。外すと空く容量の大きい順
+        "silentAudio" => CandidateSpec {
+            filter: "AND COALESCE(media_type, 'video') = 'video' AND audio_silence IN ('all', 'partial')".into(),
+            threshold_days: None,
+            min_bitrate_kbps: None,
+            order_by: "COALESCE(silent_audio_bytes, 0) DESC, file_size DESC, id".into(),
+            sum_expr: "COALESCE(silent_audio_bytes, 0)",
+            unchecked_filter: Some(super::silent_audio::UNCHECKED_FILTER),
         },
         "unwatched" => CandidateSpec::by_size(
             format!(
@@ -753,18 +775,31 @@ pub struct CleanupItem {
     /// 同じグループの中で、互いにクローン (中身を共有) になっているものに同じ番号を付ける
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clone_group: Option<u32>,
+    /// 無音と分かった音声トラックの番号 (調べていない・無音のトラックがなければ None)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub silent_streams: Option<Vec<usize>>,
+    /// 無音のトラックが使っている容量の見込み
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub silent_bytes: Option<i64>,
 }
+
+/// `cleanup_item_columns` の列の数 (後ろに列を足して読むときの番号)
+pub(crate) const CLEANUP_ITEM_COLUMN_COUNT: usize = 14;
 
 /// `CleanupItem` を読む SELECT の列 (`item_from_row` と順番を合わせる)
 pub(crate) fn cleanup_item_columns() -> String {
     format!(
         "id, path, title, thumbnail, file_size, COALESCE(media_type, 'video'),
          COALESCE(rating, 0), COALESCE(watch_count, 0), COALESCE(created_at, ''),
-         {LAST_SEEN_EXPR}, duration, category_id"
+         {LAST_SEEN_EXPR}, duration, category_id, silent_audio_streams, silent_audio_bytes"
     )
 }
 
 pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> {
+    let streams = super::silent_audio::parse_stream_list(r.get::<_, Option<String>>(12)?.as_deref());
+    let bytes: Option<i64> = r.get(13)?;
+    let (silent_streams, silent_bytes) =
+        if streams.is_empty() { (None, None) } else { (Some(streams), Some(bytes.unwrap_or(0))) };
     Ok(CleanupItem {
         id: r.get(0)?,
         path: r.get(1)?,
@@ -780,6 +815,8 @@ pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> 
         category_id: r.get(11)?,
         private_bytes: None,
         clone_group: None,
+        silent_streams,
+        silent_bytes,
     })
 }
 
@@ -796,6 +833,9 @@ pub struct CleanupCandidates {
     pub total_bytes: i64,
     pub threshold_days: Option<i64>,
     pub min_bitrate_kbps: Option<i64>,
+    /// まだ調べていない動画の数 (無音の音声トラックのときだけ)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unchecked_count: Option<i64>,
     pub items: Vec<CleanupItem>,
 }
 
@@ -808,9 +848,14 @@ fn query_candidates(
     let base = format!("FROM videos WHERE {ON_DISK_FILTER} {}", spec.filter);
 
     let (total_count, total_bytes): (i64, i64) = conn
-        .query_row(&format!("SELECT COUNT(*), COALESCE(SUM(file_size), 0) {base}"), [], |r| {
+        .query_row(&format!("SELECT COUNT(*), COALESCE(SUM({}), 0) {base}", spec.sum_expr), [], |r| {
             Ok((r.get(0)?, r.get(1)?))
         })
+        .map_err(|e| e.to_string())?;
+    let unchecked_count = spec
+        .unchecked_filter
+        .map(|f| conn.query_row(&format!("SELECT COUNT(*) FROM videos WHERE {f}"), [], |r| r.get(0)))
+        .transpose()
         .map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -831,12 +876,13 @@ fn query_candidates(
         total_bytes,
         threshold_days: spec.threshold_days,
         min_bitrate_kbps: spec.min_bitrate_kbps,
+        unchecked_count,
         items,
     })
 }
 
 /// 整理候補を容量の大きい順 (highBitrate はビットレートの高い順) に返す。
-/// kind: "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed"
+/// kind: "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed" | "silentAudio"
 #[tauri::command]
 pub async fn get_cleanup_candidates(
     state: State<'_, DbState>,
@@ -1164,6 +1210,40 @@ mod tests {
         assert_eq!(ids(&c), vec![high, mid]);
         assert_eq!(c.min_bitrate_kbps, Some(HIGH_BITRATE_BPS / 1000));
         assert_eq!(c.items[1].duration, Some(60.0));
+    }
+
+    #[test]
+    fn silent_audio_lists_checked_videos_by_reclaimable_bytes() {
+        let conn = setup();
+        let small = add_candidate(
+            &conn,
+            "/m/a.mp4",
+            1000,
+            "audio_silence = 'partial', silent_audio_streams = '2', silent_audio_bytes = 10",
+        );
+        let big = add_candidate(
+            &conn,
+            "/m/b.mp4",
+            500,
+            "audio_silence = 'all', silent_audio_streams = '1,3', silent_audio_bytes = 300",
+        );
+        add_candidate(&conn, "/m/loud.mp4", 900, "audio_silence = 'none'");
+        add_candidate(&conn, "/m/unchecked.mp4", 900, "");
+        add_candidate(&conn, "/m/mute.mp4", 900, "has_audio = 0");
+
+        let c = query_candidates(&conn, "silentAudio", 100).unwrap();
+        assert_eq!(ids(&c), vec![big, small]);
+        assert_eq!(c.total_bytes, 310, "合計は外すと空く容量");
+        assert_eq!(c.unchecked_count, Some(1));
+        assert_eq!(c.items[0].silent_streams, Some(vec![1, 3]));
+        assert_eq!(c.items[0].silent_bytes, Some(300));
+
+        // 他の種類では未確認の数を返さず、無音でない行は silent_* を持たない
+        let c = query_candidates(&conn, "large", 100).unwrap();
+        assert_eq!(c.unchecked_count, None);
+        let loud = c.items.iter().find(|i| i.path == "/m/loud.mp4").unwrap();
+        assert_eq!(loud.silent_streams, None);
+        assert_eq!(loud.silent_bytes, None);
     }
 
     // ── 退避フォルダ ─────────────────────────────────────────────────────────
