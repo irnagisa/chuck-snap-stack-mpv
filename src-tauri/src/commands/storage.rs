@@ -6,6 +6,8 @@
 //! - サムネイルの掃除 (どの行からも参照されていないファイルの削除、大きすぎるサムネイルの作り直し)
 //! - ライブラリから行を消すときのサムネイル削除 (`db_videos` の削除コマンドから呼ぶ)
 //! - ゴミ箱と退避フォルダ (`.ChuckSnapStackTrash`) の容量、退避フォルダを空にする
+//! - AI モデルごとの容量と、使っている設定か (削除は `ai::uninstall_ai_model`)
+//! - 途中で止まったダウンロード・変換の残りファイル (`storage_leftovers`)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -356,6 +358,39 @@ fn dir_size(path: &Path) -> u64 {
         .sum()
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiModelUsage {
+    /// "wd-tagger" | "joytag" (設定 `ai_model_type` の値)
+    pub model_type: String,
+    /// 中断したダウンロードの残りも含む
+    pub bytes: u64,
+    /// 設定で選んでいるモデル
+    pub selected: bool,
+}
+
+/// ダウンロード済み (またはファイルが残っている) AI モデル
+fn ai_model_usage(app: &AppHandle, selected: &str) -> Vec<AiModelUsage> {
+    crate::ai::ModelKind::ALL
+        .iter()
+        .filter_map(|kind| {
+            let bytes = dir_size(&super::ai::ai_dir(app, kind).ok()?);
+            (bytes > 0).then(|| AiModelUsage {
+                model_type: kind.as_str().to_string(),
+                bytes,
+                selected: crate::ai::ModelKind::from_id(selected) == *kind,
+            })
+        })
+        .collect()
+}
+
+fn setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>, String> {
+    use rusqlite::OptionalExtension;
+    conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageOverview {
@@ -364,6 +399,9 @@ pub struct StorageOverview {
     /// videos.db とその WAL・共有メモリファイルの合計
     pub database_bytes: u64,
     pub ai_model_bytes: u64,
+    pub ai_models: Vec<AiModelUsage>,
+    /// 設定で AI タグ提案を有効にしているか
+    pub ai_enabled: bool,
     pub trash: TrashUsage,
 }
 
@@ -376,9 +414,15 @@ pub async fn get_storage_overview(app: AppHandle) -> Result<StorageOverview, Str
             log::warn!("[storage] file_size の取得に失敗しました: {e}");
         }
 
-        let (library, refs, quarantine_dirs) = {
+        let (library, refs, quarantine_dirs, ai_enabled, ai_model_type) = {
             let conn = state.conn_read()?;
-            (library_usage(&conn)?, thumbnail_refs(&conn)?, quarantine_dir_candidates(&conn)?)
+            (
+                library_usage(&conn)?,
+                thumbnail_refs(&conn)?,
+                quarantine_dir_candidates(&conn)?,
+                setting(&conn, "ai_enabled")?.as_deref() == Some("true"),
+                setting(&conn, "ai_model_type")?.unwrap_or_default(),
+            )
         };
         let files = list_thumbnail_files(&thumbnail_roots(&app));
         let thumbnails = thumbnail_usage(&files, &refs, SystemTime::now());
@@ -390,9 +434,10 @@ pub async fn get_storage_overview(app: AppHandle) -> Result<StorageOverview, Str
             .map(|m| m.len())
             .sum();
         let ai_model_bytes = dir_size(&data_dir.join("ai"));
+        let ai_models = ai_model_usage(&app, &ai_model_type);
         let trash = trash_usage(&app, &existing_quarantine_dirs(quarantine_dirs));
 
-        Ok(StorageOverview { library, thumbnails, database_bytes, ai_model_bytes, trash })
+        Ok(StorageOverview { library, thumbnails, database_bytes, ai_model_bytes, ai_models, ai_enabled, trash })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -701,6 +746,13 @@ pub struct CleanupItem {
     pub last_seen_at: Option<String>,
     pub duration: Option<f64>,
     pub category_id: Option<i64>,
+    /// 他のファイルと共有していない (消すと空く) 容量。重複の一覧でだけ入れる。
+    /// APFS のクローンでなければ file_size とほぼ同じ
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_bytes: Option<i64>,
+    /// 同じグループの中で、互いにクローン (中身を共有) になっているものに同じ番号を付ける
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clone_group: Option<u32>,
 }
 
 /// `CleanupItem` を読む SELECT の列 (`item_from_row` と順番を合わせる)
@@ -726,6 +778,8 @@ pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> 
         last_seen_at: r.get(9)?,
         duration: r.get(10)?,
         category_id: r.get(11)?,
+        private_bytes: None,
+        clone_group: None,
     })
 }
 

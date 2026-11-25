@@ -64,7 +64,7 @@ chuck-snap-stack/
 │   └── App.tsx
 ├── src-tauri/                  # Rust/Tauri バックエンド
 │   ├── src/
-│   │   ├── commands/           # Tauri コマンド (145 個)
+│   │   ├── commands/           # Tauri コマンド (147 個)
 │   │   │   ├── library.rs      # メディアファイル操作・メタデータ抽出
 │   │   │   ├── mpv.rs          # mpv プロセス管理・IPC
 │   │   │   ├── db_videos.rs    # メディア DB CRUD・Inbox 管理
@@ -74,7 +74,9 @@ chuck-snap-stack/
 │   │   │   ├── db_settings.rs  # 設定 DB
 │   │   │   ├── db_stats.rs     # ライブラリ統計
 │   │   │   ├── storage.rs      # 容量の内訳・整理候補・サムネイルの掃除・ゴミ箱と退避フォルダ
-│   │   │   ├── storage_duplicates.rs # 整理画面の重複検出 (中身の一致 + pHash)
+│   │   │   ├── storage_duplicates.rs # 整理画面の重複検出 (中身の一致 + pHash)。APFS のクローンは空く容量から除く
+│   │   │   ├── storage_leftovers.rs # 途中で止まったダウンロード・変換・AI モデル取得の残りファイル
+│   │   │   ├── fs_clone.rs     # APFS のクローン情報 (共有していない容量・clone id、macOS の getattrlist)
 │   │   │   ├── db_export.rs    # バックアップ・エクスポート
 │   │   │   ├── download.rs     # HTTP ダウンロード
 │   │   │   ├── transcode.rs    # ffmpeg 変換 (AV1 / HEVC / 音声だけ / トラック整理・切り詰め)
@@ -267,7 +269,7 @@ pub async fn command_name(
 .invoke_handler(tauri::generate_handler![
     commands::mpv::play,
     commands::library::scan_directory,
-    // ...他 143 個のコマンド
+    // ...他 145 個のコマンド
 ])
 ```
 

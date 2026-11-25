@@ -67,6 +67,11 @@ impl TranscodeState {
             last_completed: Mutex::new(None),
         }
     }
+
+    /// 変換中の一時出力ファイル。ロックが壊れていれば Err (呼び出し側は何も消さない)
+    pub(crate) fn current_output(&self) -> Result<Option<String>, String> {
+        self.current_output.lock().map(|p| p.clone()).map_err(|e| e.to_string())
+    }
 }
 
 impl Default for TranscodeState {
@@ -435,7 +440,7 @@ pub fn kill_on_exit(state: &TranscodeState) {
 }
 
 /// 変換途中の一時ファイル名 (`._<名前>.<av1|hevc|opus|slim>[_N].mkv.tmp`) かどうか
-fn is_transcode_tmp_name(name: &str) -> bool {
+pub(crate) fn is_transcode_tmp_name(name: &str) -> bool {
     name.starts_with("._")
         && name.ends_with(".mkv.tmp")
         && OUTPUT_SUFFIXES.iter().any(|s| name.contains(&format!(".{s}")))

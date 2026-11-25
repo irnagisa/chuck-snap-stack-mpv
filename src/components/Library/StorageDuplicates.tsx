@@ -36,9 +36,11 @@ export function StorageDuplicates({
   disabled,
 }: Props) {
   const { t } = useTranslation();
+  const hasClones = data.groups.some((g) => g.items.some((i) => i.cloneGroup != null));
 
   return (
     <div className={styles.dupList}>
+      {hasClones && <p className={modal.callout}>{t("storage.dupCloneNote")}</p>}
       {(data.phashMissingCount > 0 || phashProgress) && (
         <div className={modal.callout}>
           <div className={styles.calloutBody}>
@@ -96,7 +98,16 @@ export function StorageDuplicates({
                       onToggle={onToggle}
                       disabled={disabled || lastOne}
                       checkboxTitle={lastOne ? t("storage.dupKeepOne") : undefined}
-                      badge={item.id === group.keepId ? <span className={modal.badge}>{t("storage.dupKeep")}</span> : null}
+                      badge={
+                        <>
+                          {item.cloneGroup != null && (
+                            <span className={modal.badge} data-tone="warning" title={t("storage.dupCloneHint")}>
+                              {t("storage.dupClone", { n: item.cloneGroup + 1 })}
+                            </span>
+                          )}
+                          {item.id === group.keepId && <span className={modal.badge}>{t("storage.dupKeep")}</span>}
+                        </>
+                      }
                     />
                   );
                 })}

@@ -38,7 +38,42 @@ export interface StorageOverview {
   };
   databaseBytes: number;
   aiModelBytes: number;
+  aiModels: AiModelUsage[];
+  /** 設定で AI タグ提案を有効にしているか */
+  aiEnabled: boolean;
   trash: TrashUsage;
+}
+
+export interface AiModelUsage {
+  /** 設定 ai_model_type の値 */
+  modelType: "wd-tagger" | "joytag";
+  /** 中断したダウンロードの残りも含む */
+  bytes: number;
+  /** 設定で選んでいるモデル */
+  selected: boolean;
+}
+
+/** 途中で止まった処理の残りファイル (src-tauri/src/commands/storage_leftovers.rs) */
+export type LeftoverKind = "download" | "transcode" | "aiDownload";
+
+export interface LeftoverFile {
+  path: string;
+  kind: LeftoverKind;
+  bytes: number;
+  /** 最終更新 (Unix ミリ秒) */
+  modifiedMs: number | null;
+}
+
+export interface LeftoverFiles {
+  totalCount: number;
+  totalBytes: number;
+  /** 容量の大きい順 (上位だけ) */
+  files: LeftoverFile[];
+}
+
+export interface LeftoverCleanupResult {
+  removedFiles: number;
+  freedBytes: number;
 }
 
 export interface ThumbnailCleanupResult {
@@ -70,6 +105,10 @@ export interface CleanupItem {
   lastSeenAt: string | null;
   duration: number | null;
   categoryId: number | null;
+  /** 他のファイルと共有していない (消すと空く) 容量。重複の一覧でだけ入る */
+  privateBytes?: number;
+  /** 同じグループで互いに APFS のクローン (中身を共有) になっているものに同じ番号 */
+  cloneGroup?: number;
 }
 
 export interface CleanupCandidates {
@@ -84,6 +123,7 @@ export interface DuplicateGroup {
   /** すべてのファイルの中身が同じ */
   exact: boolean;
   keepId: number;
+  /** 残すもの以外を消したときに空く容量 (クローンで共有している分は除く) */
   reclaimableBytes: number;
   /** 残すものが先頭 */
   items: CleanupItem[];
@@ -99,4 +139,30 @@ export interface DuplicateGroups {
 /** ビットレート (kbps)。長さが分からなければ null */
 export function bitrateKbps(item: Pick<CleanupItem, "fileSize" | "duration">): number | null {
   return item.duration && item.duration > 0 ? (item.fileSize * 8) / 1000 / item.duration : null;
+}
+
+/**
+ * グループのうち `removed` を消したときに空く容量の見込み
+ * (src-tauri/src/commands/storage_duplicates.rs の `freed_bytes` と同じ規則)。
+ * - クローンでないもの: 共有していない容量 (分からなければファイルサイズ)
+ * - 残すものとクローンのもの: 共有していない容量だけ (共有分は残すものが使い続ける)
+ * - 消すものどうしだけでクローンのもの: 共有分は 1 回だけ数える
+ */
+export function freedBytes(items: CleanupItem[], removed: (item: CleanupItem) => boolean): number {
+  const privateOf = (it: CleanupItem) => Math.min(it.privateBytes ?? it.fileSize, it.fileSize);
+  const keptGroups = new Set<number>();
+  for (const it of items) if (!removed(it) && it.cloneGroup != null) keptGroups.add(it.cloneGroup);
+  const counted = new Set<number>();
+  let total = 0;
+  for (const it of items) {
+    if (!removed(it)) continue;
+    const g = it.cloneGroup;
+    if (g != null && !keptGroups.has(g) && !counted.has(g)) {
+      counted.add(g);
+      total += it.fileSize;
+    } else {
+      total += privateOf(it);
+    }
+  }
+  return total;
 }

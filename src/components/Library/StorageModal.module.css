@@ -178,7 +178,7 @@
   }
 }
 
-/* ---- 重複・ゴミ箱 (StorageDuplicates / StorageTrashPanel) ---- */
+/* ---- 重複・ゴミ箱・AI モデル・残りファイル (StorageDuplicates / Storage*Panel) ---- */
 @layer ui {
   .dupList {
     display: flex;
@@ -206,5 +206,11 @@
     gap: var(--space-3);
     padding: var(--space-1-5) var(--space-4);
     border-top: 1px solid var(--color-border);
+  }
+  /* 残りファイルの一覧は長くなりうるので、パネルの中でスクロールさせる */
+  .scrollList {
+    max-height: 15rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 }

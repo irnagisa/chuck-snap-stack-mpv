@@ -5,6 +5,8 @@
 //! - 見た目が似ている: pHash のハミング距離が小さく、(動画なら) 長さもほぼ同じ
 //!
 //! 各グループで残すもの (`keep_id`) を 1 つ選び、残り全部を消したときに空く容量を返す。
+//! APFS のクローン (中身のブロックを共有するコピー) は消しても空きがほとんど増えないため、
+//! `fs_clone` で読んだ共有していない容量で見込みを補正する。
 
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
@@ -14,6 +16,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::State;
 
+use super::fs_clone::{clone_info, CloneInfo};
 use super::phash::hamming_distance;
 use super::storage::{cleanup_item_columns, item_from_row, CleanupItem, ON_DISK_FILTER};
 use crate::db::DbState;
@@ -42,7 +45,7 @@ pub struct DuplicateGroup {
     /// すべてのファイルの中身が同じ
     pub exact: bool,
     pub keep_id: i64,
-    /// 残すもの以外を消したときに空く容量
+    /// 残すもの以外を消したときに空く容量 (クローンで共有している分は除く)
     pub reclaimable_bytes: i64,
     /// 残すものが先頭、残りは容量の大きい順
     pub items: Vec<CleanupItem>,
@@ -139,7 +142,47 @@ fn keep_index(rows: &[Row], members: &[usize], exact: bool) -> usize {
         .expect("グループは 2 件以上")
 }
 
-fn build_groups(rows: Vec<Row>, digest_of: impl Fn(&CleanupItem) -> Option<[u8; 32]>) -> Vec<DuplicateGroup> {
+/// `removed` を消したときに空く容量の見込み (src/components/Library/storageTypes.ts の `freedBytes` と同じ規則)。
+/// - クローンでないもの: 共有していない容量 (分からなければファイルサイズ)
+/// - 残すものとクローンのもの: 共有していない容量だけ (共有分は残すものが使い続ける)
+/// - 消すものどうしだけでクローンのもの: 共有分は 1 回だけ数える (最初の 1 つはファイルサイズ、残りは共有していない容量)
+pub(crate) fn freed_bytes(items: &[CleanupItem], removed: impl Fn(&CleanupItem) -> bool) -> i64 {
+    let private = |it: &CleanupItem| it.private_bytes.map_or(it.file_size, |p| p.min(it.file_size));
+    let kept_groups: std::collections::HashSet<u32> =
+        items.iter().filter(|it| !removed(it)).filter_map(|it| it.clone_group).collect();
+    let mut counted: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    items
+        .iter()
+        .filter(|it| removed(it))
+        .map(|it| match it.clone_group {
+            Some(g) if !kept_groups.contains(&g) && counted.insert(g) => it.file_size,
+            _ => private(it),
+        })
+        .sum()
+}
+
+/// クローンの情報を入れ、互いにクローンのものに同じ番号を付ける
+fn attach_clone_info(items: &mut [CleanupItem], infos: &[Option<CloneInfo>]) {
+    let mut count: HashMap<u64, usize> = HashMap::new();
+    for info in infos.iter().flatten() {
+        *count.entry(info.clone_id).or_default() += 1;
+    }
+    let mut numbers: HashMap<u64, u32> = HashMap::new();
+    for (it, info) in items.iter_mut().zip(infos) {
+        let Some(info) = info else { continue };
+        it.private_bytes = i64::try_from(info.private_bytes).ok();
+        if count[&info.clone_id] > 1 {
+            let next = numbers.len() as u32;
+            it.clone_group = Some(*numbers.entry(info.clone_id).or_insert(next));
+        }
+    }
+}
+
+fn build_groups(
+    rows: Vec<Row>,
+    digest_of: impl Fn(&CleanupItem) -> Option<[u8; 32]>,
+    clone_of: impl Fn(&CleanupItem) -> Option<CloneInfo>,
+) -> Vec<DuplicateGroup> {
     let n = rows.len();
     let mut uf = UnionFind::new(n);
 
@@ -195,17 +238,20 @@ fn build_groups(rows: Vec<Row>, digest_of: impl Fn(&CleanupItem) -> Option<[u8; 
             let first = digests[members[0]];
             let exact = first.is_some() && members.iter().all(|&i| digests[i] == first);
             let keep = keep_index(&rows, &members, exact);
-            let total: i64 = members.iter().map(|&i| rows[i].item.file_size).sum();
             let mut ordered: Vec<usize> = members.into_iter().filter(|&i| i != keep).collect();
             ordered.sort_by(|&a, &b| {
                 rows[b].item.file_size.cmp(&rows[a].item.file_size).then(rows[a].item.id.cmp(&rows[b].item.id))
             });
             ordered.insert(0, keep);
+            let mut items: Vec<CleanupItem> = ordered.into_iter().map(|i| rows[i].item.clone()).collect();
+            let infos: Vec<Option<CloneInfo>> = items.iter().map(&clone_of).collect();
+            attach_clone_info(&mut items, &infos);
+            let keep_id = rows[keep].item.id;
             DuplicateGroup {
                 exact,
-                keep_id: rows[keep].item.id,
-                reclaimable_bytes: total - rows[keep].item.file_size,
-                items: ordered.into_iter().map(|i| rows[i].item.clone()).collect(),
+                keep_id,
+                reclaimable_bytes: freed_bytes(&items, |it| it.id != keep_id),
+                items,
             }
         })
         .collect();
@@ -251,9 +297,11 @@ pub async fn get_duplicate_groups(state: State<'_, DbState>) -> Result<Duplicate
         load_rows(&conn)?
     };
     tokio::task::spawn_blocking(move || {
-        let mut groups = build_groups(rows, |it| {
-            sample_digest(Path::new(&it.path), u64::try_from(it.file_size).ok()?)
-        });
+        let mut groups = build_groups(
+            rows,
+            |it| sample_digest(Path::new(&it.path), u64::try_from(it.file_size).ok()?),
+            |it| clone_info(Path::new(&it.path)),
+        );
         let total_groups = groups.len();
         let total_reclaimable_bytes = groups.iter().map(|g| g.reclaimable_bytes).sum();
         groups.truncate(GROUP_LIMIT);
@@ -282,6 +330,8 @@ mod tests {
                 last_seen_at: None,
                 duration,
                 category_id: None,
+                private_bytes: None,
+                clone_group: None,
             },
             phash,
         }
@@ -304,7 +354,7 @@ mod tests {
             row(3, 100, None, Some(10.0)), // サイズは同じだが中身が違う
             row(4, 999, None, Some(10.0)),
         ];
-        let groups = build_groups(rows, digest_by(&[(1, 1), (2, 1), (3, 2), (4, 1)]));
+        let groups = build_groups(rows, digest_by(&[(1, 1), (2, 1), (3, 2), (4, 1)]), |_| None);
         assert_eq!(groups.len(), 1);
         assert!(groups[0].exact);
         assert_eq!(groups[0].keep_id, 1, "中身が同じなら先に登録したものを残す");
@@ -321,7 +371,7 @@ mod tests {
             row(3, 400, Some(base), Some(300.0)),             // 見た目は同じだが長さが違う
             row(4, 400, Some(base ^ (0x7f << 32)), Some(600.0)), // 1 とは距離 7、2 とは距離 13
         ];
-        let groups = build_groups(rows, |_| None);
+        let groups = build_groups(rows, |_| None, |_| None);
         assert_eq!(groups.len(), 1);
         assert!(!groups[0].exact);
         assert_eq!(groups[0].keep_id, 2, "似ているだけなら容量の大きいものを残す");
@@ -334,7 +384,7 @@ mod tests {
         let mut small = row(1, 100, Some(42), None);
         small.item.rating = 5;
         let rows = vec![small, row(2, 900, Some(42), None)];
-        let groups = build_groups(rows, |_| None);
+        let groups = build_groups(rows, |_| None, |_| None);
         assert_eq!(groups[0].keep_id, 1);
         assert_eq!(groups[0].reclaimable_bytes, 900);
     }
@@ -342,7 +392,52 @@ mod tests {
     #[test]
     fn images_and_videos_are_never_grouped_together() {
         let rows = vec![row(1, 100, Some(42), None), row(2, 200, Some(42), Some(10.0))];
-        assert!(build_groups(rows, |_| None).is_empty());
+        assert!(build_groups(rows, |_| None, |_| None).is_empty());
+    }
+
+    /// id ごとのクローン情報 (id, 共有していない容量, clone_id)
+    fn clones_by(table: &'static [(i64, u64, u64)]) -> impl Fn(&CleanupItem) -> Option<CloneInfo> {
+        move |it| {
+            table
+                .iter()
+                .find(|(id, _, _)| *id == it.id)
+                .map(|&(_, private_bytes, clone_id)| CloneInfo { private_bytes, clone_id })
+        }
+    }
+
+    #[test]
+    fn clones_of_the_kept_file_free_almost_nothing() {
+        let rows = vec![row(1, 1000, None, Some(10.0)), row(2, 1000, None, Some(10.0)), row(3, 1000, None, Some(10.0))];
+        // 1 と 2 はクローン (共有していない分は 0)、3 は別に書いたコピー (割り当て単位で切り上がる)
+        let groups = build_groups(
+            rows,
+            digest_by(&[(1, 1), (2, 1), (3, 1)]),
+            clones_by(&[(1, 0, 7), (2, 0, 7), (3, 4096, 9)]),
+        );
+        let g = &groups[0];
+        assert_eq!(g.keep_id, 1);
+        assert_eq!(g.reclaimable_bytes, 1000, "2 はクローンなので空かず、3 はファイルサイズまで");
+        let group_of = |id: i64| g.items.iter().find(|i| i.id == id).unwrap().clone_group;
+        assert_eq!(group_of(1), group_of(2));
+        assert!(group_of(1).is_some());
+        assert_eq!(group_of(3), None, "クローン相手がグループにいなければ番号を付けない");
+    }
+
+    #[test]
+    fn clones_among_removed_files_count_shared_blocks_once() {
+        let item = |id: i64, private_bytes: Option<i64>, clone_group: Option<u32>| CleanupItem {
+            private_bytes,
+            clone_group,
+            ..row(id, 1000, None, None).item
+        };
+        let items = vec![item(1, Some(1000), None), item(2, Some(0), Some(0)), item(3, Some(0), Some(0))];
+        // 2 と 3 を両方消せば共有分も空く
+        assert_eq!(freed_bytes(&items, |it| it.id != 1), 1000);
+        // 3 を残すなら 2 を消しても空かない
+        assert_eq!(freed_bytes(&items, |it| it.id == 2), 0);
+        // クローン情報がなければファイルサイズ
+        let plain = vec![row(1, 300, None, None).item, row(2, 500, None, None).item];
+        assert_eq!(freed_bytes(&plain, |_| true), 800);
     }
 
     #[test]

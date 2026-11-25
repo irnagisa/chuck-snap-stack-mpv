@@ -59,7 +59,7 @@ pub struct ModelStatus {
     pub progress: f32,
 }
 
-fn ai_dir(app: &AppHandle, model_kind: &ModelKind) -> Result<PathBuf, String> {
+pub(crate) fn ai_dir(app: &AppHandle, model_kind: &ModelKind) -> Result<PathBuf, String> {
     let base = app
         .path()
         .app_data_dir()
@@ -251,8 +251,9 @@ fn emit_progress(
 /// - The deletion path is derived internally via `ai_dir()`, never from user-supplied path input.
 /// - We verify the resolved path equals the path we independently expect for this model kind,
 ///   ensuring no path traversal is possible even if the internal helpers were somehow changed.
-/// - Only two known filenames (`model.onnx` and the kind-specific tags file) are deleted;
-///   the directory itself is never removed.
+/// - Only known filenames (`model.onnx`, the kind-specific tags file and the unfinished
+///   download `model.onnx.tmp`) are deleted; the directory itself is never removed.
+/// - Refused while a download is running (the download writes into the same directory).
 #[tauri::command]
 pub async fn uninstall_ai_model(
     app: AppHandle,
@@ -261,6 +262,10 @@ pub async fn uninstall_ai_model(
 ) -> Result<(), String> {
     // 1. Parse through whitelist — unknown input silently becomes WdTagger
     let kind = ModelKind::from_id(&model_type);
+
+    if state.0.lock().map_err(|e| e.to_string())?.downloading {
+        return Err("モデルのダウンロード中は削除できません".into());
+    }
 
     // 2. Resolve deletion directory internally (not from user input)
     let dir = ai_dir(&app, &kind)?;
@@ -277,8 +282,10 @@ pub async fn uninstall_ai_model(
     // 4. Delete only known filenames — never the directory itself
     let model_file = dir.join("model.onnx");
     let tags_file = tags_path(&app, &kind)?;
+    // 中断したダウンロードの残り
+    let partial_file = dir.join("model.onnx.tmp");
 
-    for file in &[&model_file, &tags_file] {
+    for file in &[&model_file, &tags_file, &partial_file] {
         if file.exists() {
             std::fs::remove_file(file)
                 .map_err(|e| format!("ファイルの削除に失敗しました: {}", e))?;
