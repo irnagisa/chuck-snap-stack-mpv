@@ -625,6 +625,8 @@
     "encoder_remux": "再エンコードなし (コピー)",
     "estimateAlreadyEfficient": "このファイルは既に {{codec}} です。HEVC にしてもほとんど小さくなりません。",
     "hevcUnavailable": "この ffmpeg では HEVC (VideoToolbox) が使えません。macOS 向けにビルドされた ffmpeg が必要です。",
+    "av1Unavailable": "この ffmpeg には AV1 のエンコーダー (SVT-AV1 / libaom) がありません。",
+    "av1AomNote": "SVT-AV1 を含まない ffmpeg のため libaom で変換します。SVT-AV1 より数倍〜十倍ほど時間がかかります。",
     "hevcDesc": "Mac のハードウェアで変換するので、AV1 よりずっと速く終わります。同じ画質なら AV1 より大きくなります。",
     "hevcBitrateLabel": "目標ビットレート",
     "hevcBitrateHint": "元の映像に対する割合。小さいほど縮み、画質も下がります",

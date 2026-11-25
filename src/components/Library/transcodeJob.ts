@@ -67,7 +67,12 @@ export interface TranscodeEstimate {
   audio: AudioPlan[];
   audioSavingBytes: number;
   hevcAvailable: boolean;
+  /** AV1 変換に使うエンコーダー (transcode.rs の Av1Encoder)。null ならこの ffmpeg では AV1 変換できない */
+  av1Encoder: Av1Encoder | null;
 }
+
+/** svt: SVT-AV1 (速い) / aom: libaom (SVT-AV1 を含まない ffmpeg での代わり。かなり遅い) */
+export type Av1Encoder = 'svt' | 'aom';
 
 /** 出力ファイル名に付ける印 (transcode.rs の OUTPUT_SUFFIXES と合わせる) */
 const OUTPUT_SUFFIX: Record<TranscodeKind, string> = {

@@ -625,6 +625,8 @@
     "encoder_remux": "No re-encoding (copy)",
     "estimateAlreadyEfficient": "This file is already {{codec}}. Converting it to HEVC will barely make it smaller.",
     "hevcUnavailable": "HEVC (VideoToolbox) isn't available in this ffmpeg. An ffmpeg built for macOS is required.",
+    "av1Unavailable": "This ffmpeg has no AV1 encoder (SVT-AV1 / libaom).",
+    "av1AomNote": "This ffmpeg doesn't include SVT-AV1, so libaom will be used. Expect it to take several to ten times longer than SVT-AV1.",
     "hevcDesc": "Uses your Mac's hardware, so it finishes much faster than AV1. At the same quality, files are larger than AV1.",
     "hevcBitrateLabel": "Target bitrate",
     "hevcBitrateHint": "Relative to the original video. Lower is smaller but lower quality",

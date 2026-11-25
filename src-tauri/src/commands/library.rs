@@ -5,6 +5,7 @@ use std::fs;
 
 use super::settings::SharedAppSettings;
 use super::utils::{normalize_path_str, resolve_unique_path, validate_image_output_path, validate_media_path, validate_path, validate_text_path, validate_video_path};
+use super::webp_thumb::{ffmpeg_to_webp, write_webp};
 use crate::db::DbState;
 
 #[derive(Serialize)]
@@ -64,48 +65,12 @@ fn decode_first_frame(src: &Path) -> Result<image::DynamicImage, String> {
     })
 }
 
-/// アニメーション WebP から静止画のサムネイルを作る。
-/// 先頭フレームを一時 PNG に書き出し、ほかのサムネイルと同じく ffmpeg で非可逆 WebP にする。
-/// ffmpeg が WebP を書けない (libwebp なしでビルドされている) ときは image クレートの
-/// 可逆 WebP で書く (非可逆より数倍大きいが、元のアニメーションよりはずっと小さい)。
-async fn animated_webp_first_frame_thumbnail(
-    ffmpeg_path: &str,
-    video_path: &str,
-    output_path: &str,
-) -> Result<(), String> {
-    let src = PathBuf::from(video_path);
-    let frame = tokio::task::spawn_blocking(move || decode_first_frame(&src))
-        .await
-        .map_err(|e| e.to_string())??;
-
-    let tmp_png = format!("{output_path}.frame.png");
-    let png = PathBuf::from(&tmp_png);
-    let (frame, png_written) = tokio::task::spawn_blocking(move || {
-        let ok = frame.save_with_format(&png, image::ImageFormat::Png).is_ok();
-        (frame, ok)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let ffmpeg_ok = png_written
-        && tokio::process::Command::new(ffmpeg_path)
-            .args(["-y", "-i", &tmp_png, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80", output_path])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .is_ok_and(|s| s.success())
-        && tokio::fs::metadata(output_path).await.is_ok_and(|m| m.len() > 0);
-    let _ = tokio::fs::remove_file(&tmp_png).await;
-    if ffmpeg_ok {
-        return Ok(());
-    }
-
-    let out = PathBuf::from(output_path);
-    tokio::task::spawn_blocking(move || frame.save_with_format(&out, image::ImageFormat::WebP))
+/// アニメーション WebP から静止画のサムネイルを作る (先頭フレームを非可逆 WebP にする)
+async fn animated_webp_first_frame_thumbnail(video_path: &str, output_path: &str) -> Result<(), String> {
+    let (src, out) = (PathBuf::from(video_path), output_path.to_string());
+    tokio::task::spawn_blocking(move || write_webp(&decode_first_frame(&src)?, &out))
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -264,28 +229,14 @@ pub async fn generate_thumbnail(
                     .await
                     .map_err(|e| e.to_string())?;
             } else {
-                animated_webp_first_frame_thumbnail(&ffmpeg_path, &video_path, &output_path).await?;
+                animated_webp_first_frame_thumbnail(&video_path, &output_path).await?;
             }
             return Ok(ThumbnailResult { thumbnail_path: output_path, duration: None, has_audio: false });
         }
 
-        let status = tokio::process::Command::new(&ffmpeg_path)
-            .args([
-                "-y", "-i", &video_path,
-                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
-                &output_path,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        return if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
-            Ok(ThumbnailResult { thumbnail_path: output_path, duration: None, has_audio: false })
-        } else {
-            Err("ffmpeg failed".to_string())
-        };
+        ffmpeg_to_webp(&ffmpeg_path, &["-i", &video_path, "-frames:v", "1", "-vf", "scale=320:-2"], &output_path)
+            .await?;
+        return Ok(ThumbnailResult { thumbnail_path: output_path, duration: None, has_audio: false });
     }
 
     // ffprobe で duration と音声ストリーム有無を一括取得 (1プロセス)
@@ -315,19 +266,8 @@ pub async fn generate_thumbnail(
 
     if is_audio {
         // 音声ファイル: 埋め込みアルバムアートを抽出し WebP へ再エンコードする
-        let status = tokio::process::Command::new(&ffmpeg_path)
-            .args([
-                "-y", "-i", &video_path,
-                "-an", "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
-                &output_path,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
+        let art = ["-i", &video_path, "-an", "-frames:v", "1", "-vf", "scale=320:-2"];
+        if ffmpeg_to_webp(&ffmpeg_path, &art, &output_path).await.is_ok() {
             return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio: true });
         }
 
@@ -336,24 +276,11 @@ pub async fn generate_thumbnail(
         let wave_filter = "color=c=#1f2937:s=320x180,format=rgb24[bg];\
                            showwavespic=s=320x180:colors=#4ade80:scale=sqrt[wv];\
                            [bg][wv]overlay";
-        let status_wave = tokio::process::Command::new(&ffmpeg_path)
-            .args([
-                "-y", "-i", &video_path,
-                "-filter_complex", wave_filter,
-                "-frames:v", "1", "-q:v", "80",
-                &output_path,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if status_wave.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
-            return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio: true });
-        }
-
-        return Err("波形画像の生成に失敗しました".to_string());
+        let wave = ["-i", &video_path, "-filter_complex", wave_filter, "-frames:v", "1"];
+        return match ffmpeg_to_webp(&ffmpeg_path, &wave, &output_path).await {
+            Ok(()) => Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio: true }),
+            Err(e) => Err(format!("波形画像の生成に失敗しました: {e}")),
+        };
     }
 
     // duration に応じてシーク位置を決定する
@@ -365,58 +292,20 @@ pub async fn generate_thumbnail(
         _ => None, // duration 不明または 1 秒未満: シークなし
     };
 
-    let status = if let Some(ss) = seek_secs {
-        let ss_str = ss.to_string();
-        tokio::process::Command::new(&ffmpeg_path)
-            .args([
-                "-y", "-ss", &ss_str, "-i", &video_path,
-                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
-                &output_path,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map_err(|e| e.to_string())?
-    } else {
-        // 1 秒未満: 先頭フレームを直接抽出
-        tokio::process::Command::new(&ffmpeg_path)
-            .args([
-                "-y", "-i", &video_path,
-                "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
-                &output_path,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map_err(|e| e.to_string())?
+    let first_frame = ["-i", video_path.as_str(), "-frames:v", "1", "-vf", "scale=320:-2"];
+    let result = match seek_secs {
+        Some(ss) => {
+            let ss = ss.to_string();
+            let seeked = ["-ss", &ss, "-i", &video_path, "-frames:v", "1", "-vf", "scale=320:-2"];
+            match ffmpeg_to_webp(&ffmpeg_path, &seeked, &output_path).await {
+                Ok(()) => Ok(()),
+                // シーク先で失敗した・空だった → 先頭フレームで再試行
+                Err(_) => ffmpeg_to_webp(&ffmpeg_path, &first_frame, &output_path).await,
+            }
+        }
+        None => ffmpeg_to_webp(&ffmpeg_path, &first_frame, &output_path).await,
     };
-
-    // 出力ファイルが実際に生成されたか確認する
-    // (短い動画では ffmpeg が成功扱いで終了しても空出力になる場合がある)
-    if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
-        return Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio });
-    }
-
-    // シークありで失敗 or 出力が空 → 先頭フレームで再試行
-    let status2 = tokio::process::Command::new(&ffmpeg_path)
-        .args([
-            "-y", "-i", &video_path,
-            "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80",
-            &output_path,
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if status2.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
-        Ok(ThumbnailResult { thumbnail_path: output_path, duration, has_audio })
-    } else {
-        Err("ffmpeg failed".to_string())
-    }
+    result.map(|()| ThumbnailResult { thumbnail_path: output_path, duration, has_audio })
 }
 
 /// ffprobe で音声ストリームの有無を確認する。
@@ -470,23 +359,10 @@ pub async fn generate_waveform(
     let wave_filter = "color=c=#1f2937:s=320x180,format=rgb24[bg];\
                        showwavespic=s=320x180:colors=#4ade80:scale=sqrt[wv];\
                        [bg][wv]overlay";
-    let status = tokio::process::Command::new(&ffmpeg_path)
-        .args([
-            "-y", "-i", &audio_path,
-            "-filter_complex", wave_filter,
-            "-frames:v", "1", "-q:v", "80",
-            &output_path,
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if status.success() && tokio::fs::metadata(&output_path).await.map(|m| m.len() > 0).unwrap_or(false) {
-        Ok(output_path)
-    } else {
-        Err("波形画像の生成に失敗しました".to_string())
+    let wave = ["-i", &audio_path, "-filter_complex", wave_filter, "-frames:v", "1"];
+    match ffmpeg_to_webp(&ffmpeg_path, &wave, &output_path).await {
+        Ok(()) => Ok(output_path),
+        Err(e) => Err(format!("波形画像の生成に失敗しました: {e}")),
     }
 }
 

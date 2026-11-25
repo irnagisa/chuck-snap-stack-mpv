@@ -625,6 +625,8 @@
     "encoder_remux": "不重新编码（复制）",
     "estimateAlreadyEfficient": "此文件已经是 {{codec}}。转换为 HEVC 几乎不会变小。",
     "hevcUnavailable": "此 ffmpeg 无法使用 HEVC（VideoToolbox）。需要为 macOS 构建的 ffmpeg。",
+    "av1Unavailable": "此 ffmpeg 没有 AV1 编码器（SVT-AV1 / libaom）。",
+    "av1AomNote": "此 ffmpeg 不包含 SVT-AV1，将使用 libaom 转换。耗时约为 SVT-AV1 的数倍至十倍。",
     "hevcDesc": "使用 Mac 的硬件进行转换，比 AV1 快得多。相同画质下文件比 AV1 大。",
     "hevcBitrateLabel": "目标码率",
     "hevcBitrateHint": "相对于原视频的比例。越小体积越小，画质也越低",

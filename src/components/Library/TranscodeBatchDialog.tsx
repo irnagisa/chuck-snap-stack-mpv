@@ -11,6 +11,7 @@ import {
   PRESET_OPTIONS,
   enqueueTranscode,
   suggestCrf,
+  type Av1Encoder,
   type TranscodeEstimate,
   type TranscodeMode,
 } from "./transcodeJob";
@@ -38,6 +39,8 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
   const [trashOriginal, setTrashOriginal] = useState(false);
   /** HEVC (VideoToolbox) が使えるか (先頭の動画で調べる) */
   const [hevcAvailable, setHevcAvailable] = useState<boolean | null>(null);
+  /** AV1 に使うエンコーダー (先頭の動画で調べる)。undefined は未確認 (調べられなかったときも変換は止めない) */
+  const [av1Encoder, setAv1Encoder] = useState<Av1Encoder | null | undefined>(undefined);
   const totalBytes = items.reduce((s, i) => s + i.fileSize, 0);
   const presetDesc = PRESET_OPTIONS.find((o) => String(o.value) === preset)?.descKey;
   const firstPath = items[0]?.path;
@@ -45,7 +48,10 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
   useEffect(() => {
     if (!open || !firstPath || hevcAvailable != null) return;
     invoke<TranscodeEstimate>("estimate_transcode", { inputPath: firstPath })
-      .then((e) => setHevcAvailable(e.hevcAvailable))
+      .then((e) => {
+        setHevcAvailable(e.hevcAvailable);
+        setAv1Encoder(e.av1Encoder);
+      })
       .catch(() => setHevcAvailable(false));
   }, [open, firstPath, hevcAvailable]);
 
@@ -86,7 +92,8 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
     onQueued();
   };
 
-  const canStart = items.length > 0 && (kind !== "hevc" || hevcAvailable === true);
+  const canStart =
+    items.length > 0 && (kind !== "hevc" || hevcAvailable === true) && (kind !== "av1" || av1Encoder !== null);
 
   return (
     <Dialog
@@ -116,8 +123,12 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
           options={BATCH_KINDS.map((k) => ({ value: k, label: t(`transcode.mode_${k}`) }))}
         />
 
-        {kind === "av1" && (
+        {kind === "av1" && av1Encoder === null && (
+          <p className={modal.callout} data-tone="warning">{t("transcode.av1Unavailable")}</p>
+        )}
+        {kind === "av1" && av1Encoder !== null && (
           <div>
+            {av1Encoder === "aom" && <p className={modal.note}>{t("transcode.av1AomNote")}</p>}
             <p className={modal.label}>{t("transcode.presetLabel")}</p>
             <SegmentedControl
               aria-label={t("transcode.presetLabel")}

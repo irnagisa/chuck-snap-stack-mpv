@@ -37,9 +37,13 @@ interface Av1Props {
 
 export function Av1Panel({ estimate, inputSizeBytes, crf, onCrfChange, crfReasonKey, preset, onPresetChange }: Av1Props) {
   const { t } = useTranslation();
+  if (estimate && !estimate.av1Encoder) {
+    return <p className={styles.callout} data-tone="warning">{t("transcode.av1Unavailable")}</p>;
+  }
   return (
     <>
       <VideoWarning estimate={estimate} kind="av1" />
+      {estimate?.av1Encoder === "aom" && <p className={styles.note}>{t("transcode.av1AomNote")}</p>}
       <div>
         <p className={styles.label}>
           {t("transcode.crfLabel")}

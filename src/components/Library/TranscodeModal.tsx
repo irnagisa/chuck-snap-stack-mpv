@@ -112,7 +112,7 @@ export function TranscodeModal({ video, onClose }: Props) {
   const mode: TranscodeMode | null = (() => {
     switch (kind) {
       case 'av1':
-        return { kind, crf, preset };
+        return estimate && !estimate.av1Encoder ? null : { kind, crf, preset };
       case 'hevc':
         return estimate?.hevcAvailable && estimate.videoBitrateKbps != null ? { kind, bitratePercent: hevcPercent } : null;
       case 'audio':
