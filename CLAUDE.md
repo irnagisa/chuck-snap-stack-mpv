@@ -64,7 +64,7 @@ chuck-snap-stack/
 │   └── App.tsx
 ├── src-tauri/                  # Rust/Tauri バックエンド
 │   ├── src/
-│   │   ├── commands/           # Tauri コマンド (139 個)
+│   │   ├── commands/           # Tauri コマンド (142 個)
 │   │   │   ├── library.rs      # メディアファイル操作・メタデータ抽出
 │   │   │   ├── mpv.rs          # mpv プロセス管理・IPC
 │   │   │   ├── db_videos.rs    # メディア DB CRUD・Inbox 管理
@@ -73,6 +73,7 @@ chuck-snap-stack/
 │   │   │   ├── db_playlists.rs # プレイリスト DB
 │   │   │   ├── db_settings.rs  # 設定 DB
 │   │   │   ├── db_stats.rs     # ライブラリ統計
+│   │   │   ├── storage.rs      # 容量の内訳・整理候補・サムネイルの掃除
 │   │   │   ├── db_export.rs    # バックアップ・エクスポート
 │   │   │   ├── download.rs     # HTTP ダウンロード
 │   │   │   ├── transcode.rs    # ffmpeg トランスコード
@@ -264,7 +265,7 @@ pub async fn command_name(
 .invoke_handler(tauri::generate_handler![
     commands::mpv::play,
     commands::library::scan_directory,
-    // ...他 137 個のコマンド
+    // ...他 140 個のコマンド
 ])
 ```
 

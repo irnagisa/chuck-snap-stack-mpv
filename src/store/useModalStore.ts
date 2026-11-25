@@ -10,6 +10,7 @@ interface ModalStore {
   showDuplicates: boolean;
   showMissingFiles: boolean;
   showStats: boolean;
+  showStorage: boolean;
   showQueuePanel: boolean;
   showExport: boolean;
   showSmartPlaylist: boolean;
@@ -30,6 +31,8 @@ interface ModalStore {
   closeMissingFiles: () => void;
   openStats: () => void;
   closeStats: () => void;
+  openStorage: () => void;
+  closeStorage: () => void;
   toggleQueuePanel: () => void;
   closeQueuePanel: () => void;
   openExport: () => void;
@@ -55,6 +58,7 @@ export const useModalStore = create<ModalStore>((set) => ({
   showDuplicates: false,
   showMissingFiles: false,
   showStats: false,
+  showStorage: false,
   showQueuePanel: false,
   showExport: false,
   showSmartPlaylist: false,
@@ -75,6 +79,8 @@ export const useModalStore = create<ModalStore>((set) => ({
   closeMissingFiles: () => set({ showMissingFiles: false }),
   openStats: () => set({ showStats: true }),
   closeStats: () => set({ showStats: false }),
+  openStorage: () => set({ showStorage: true }),
+  closeStorage: () => set({ showStorage: false }),
   toggleQueuePanel: () => set((s) => ({ showQueuePanel: !s.showQueuePanel })),
   closeQueuePanel: () => set({ showQueuePanel: false }),
   openExport: () => set({ showExport: true }),
@@ -102,6 +108,7 @@ export const useModalStore = create<ModalStore>((set) => ({
     showDuplicates: false,
     showMissingFiles: false,
     showStats: false,
+    showStorage: false,
     showQueuePanel: false,
     showExport: false,
     showSmartPlaylist: false,

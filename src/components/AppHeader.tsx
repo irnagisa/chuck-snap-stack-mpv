@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   FileQuestionMark,
+  HardDrive,
   FolderPlus,
   House,
   Inbox,
@@ -67,6 +68,7 @@ export function AppHeader({
     openSettings,
     openDownload,
     openStats,
+    openStorage,
     openExport,
     openDuplicates,
     openMissingFiles,
@@ -76,6 +78,7 @@ export function AppHeader({
 
   const tools: { label: string; icon: ReactNode; onClick: () => void; needsDb: boolean }[] = [
     { label: t("app.statsTitle"), icon: <ChartColumn />, onClick: openStats, needsDb: true },
+    { label: t("app.storageTitle"), icon: <HardDrive />, onClick: openStorage, needsDb: true },
     { label: t("app.exportTitle"), icon: <ArrowLeftRight />, onClick: openExport, needsDb: true },
     { label: t("app.duplicatesTitle"), icon: <Copy />, onClick: openDuplicates, needsDb: true },
     { label: t("app.missingTitle"), icon: <FileQuestionMark />, onClick: openMissingFiles, needsDb: true },

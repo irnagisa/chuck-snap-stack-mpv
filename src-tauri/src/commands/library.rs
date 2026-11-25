@@ -1,6 +1,6 @@
 use serde::Serialize;
 use walkdir::WalkDir;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::fs;
 
 use super::settings::SharedAppSettings;
@@ -46,6 +46,66 @@ fn is_animated_webp(path: &str) -> bool {
         && &buf[8..12] == b"WEBP"
         && &buf[12..16] == b"VP8X"
         && (buf[20] & 0x02) != 0
+}
+
+/// アニメーション WebP の先頭フレームを幅 320px に縮めて返す。
+/// 画像が 320px より狭いときは拡大しない。
+fn decode_first_frame(src: &Path) -> Result<image::DynamicImage, String> {
+    let img = image::ImageReader::open(src)
+        .map_err(|e| e.to_string())?
+        .with_guessed_format()
+        .map_err(|e| e.to_string())?
+        .decode() // アニメーション WebP は先頭フレームが返る
+        .map_err(|e| e.to_string())?;
+    Ok(if img.width() > 320 {
+        img.resize(320, u32::MAX, image::imageops::FilterType::Triangle)
+    } else {
+        img
+    })
+}
+
+/// アニメーション WebP から静止画のサムネイルを作る。
+/// 先頭フレームを一時 PNG に書き出し、ほかのサムネイルと同じく ffmpeg で非可逆 WebP にする。
+/// ffmpeg が WebP を書けない (libwebp なしでビルドされている) ときは image クレートの
+/// 可逆 WebP で書く (非可逆より数倍大きいが、元のアニメーションよりはずっと小さい)。
+async fn animated_webp_first_frame_thumbnail(
+    ffmpeg_path: &str,
+    video_path: &str,
+    output_path: &str,
+) -> Result<(), String> {
+    let src = PathBuf::from(video_path);
+    let frame = tokio::task::spawn_blocking(move || decode_first_frame(&src))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    let tmp_png = format!("{output_path}.frame.png");
+    let png = PathBuf::from(&tmp_png);
+    let (frame, png_written) = tokio::task::spawn_blocking(move || {
+        let ok = frame.save_with_format(&png, image::ImageFormat::Png).is_ok();
+        (frame, ok)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let ffmpeg_ok = png_written
+        && tokio::process::Command::new(ffmpeg_path)
+            .args(["-y", "-i", &tmp_png, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "80", output_path])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .is_ok_and(|s| s.success())
+        && tokio::fs::metadata(output_path).await.is_ok_and(|m| m.len() > 0);
+    let _ = tokio::fs::remove_file(&tmp_png).await;
+    if ffmpeg_ok {
+        return Ok(());
+    }
+
+    let out = PathBuf::from(output_path);
+    tokio::task::spawn_blocking(move || frame.save_with_format(&out, image::ImageFormat::WebP))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -193,12 +253,19 @@ pub async fn generate_thumbnail(
     // 画像ファイルはffprobeスキップ・シークなしでリサイズのみ
     // scale=320:-2: 高さを2の倍数に丸めることで偶数次元を保証する
     if is_image {
-        // アニメーション WebP はファイルヘッダー (24 バイト) でフラグを確認し、
-        // そのままコピーしてアニメーションを保持する
+        // アニメーション WebP はファイルヘッダー (24 バイト) でフラグを確認する。
+        // 小さいものはそのままコピーしてアニメーションを保持し、
+        // 大きいものは丸ごとコピーすると元ファイルと同じ容量を食うため先頭フレームの静止画にする
+        // (ffmpeg はアニメーション WebP を読めないことがあるので image クレートで先頭フレームを取り出す)
         if ext == "webp" && is_animated_webp(&video_path) {
-            tokio::fs::copy(&video_path, &output_path)
-                .await
-                .map_err(|e| e.to_string())?;
+            let size = tokio::fs::metadata(&video_path).await.map_err(|e| e.to_string())?.len();
+            if size <= super::storage::MAX_THUMBNAIL_BYTES {
+                tokio::fs::copy(&video_path, &output_path)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            } else {
+                animated_webp_first_frame_thumbnail(&ffmpeg_path, &video_path, &output_path).await?;
+            }
             return Ok(ThumbnailResult { thumbnail_path: output_path, duration: None, has_audio: false });
         }
 
