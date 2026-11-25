@@ -43,7 +43,9 @@
     "transcodeRemoveFromQueue": "キューから外す",
     "transcodeBatchSuccess": "変換完了: {{total}} 件",
     "transcodeBatchPartial": "変換終了: {{total}} 件中 {{failed}} 件失敗",
-    "storageTitle": "ストレージ整理"
+    "storageTitle": "ストレージ整理",
+    "transcodeDiscarded": "変換後のファイルを破棄: {{name}} (元のファイルを残しました)",
+    "transcodeBatchDiscarded": " ({{count}} 件は小さくならず破棄)"
   },
   "sidebar": {
     "label": "ライブラリのナビゲーション",
@@ -599,7 +601,7 @@
     "close": "閉じる",
     "start": "変換開始",
     "trashOriginal": "変換完了後、元ファイルをゴミ箱に移動する",
-    "trashOriginalNote": "変換後ファイルの再生時間・映像/音声ストリームを検証し、問題がない場合のみ元ファイルをゴミ箱へ移動します（完全削除はしません）。ゴミ箱が使えない外部ストレージ等では、同じフォルダ内の「.ChuckSnapStackTrash」に「.trashed」を付けて退避します。検証に失敗した場合や変換中に元ファイルが変更された場合は元ファイルを残します。プレイリスト・視聴履歴は引き継がれません。",
+    "trashOriginalNote": "変換後ファイルの再生時間と、映像・音声・字幕・添付ファイルのトラック数を検証し、問題がない場合のみ元ファイルをゴミ箱へ移動します（完全削除はしません）。ゴミ箱が使えない外部ストレージ等では、同じフォルダ内の「.ChuckSnapStackTrash」に「.trashed」を付けて退避します。検証に失敗した場合や変換中に元ファイルが変更された場合は元ファイルを残します。プレイリスト・視聴履歴は引き継がれません。",
     "trashOriginalDone": "元ファイルをゴミ箱に移動しました",
     "trashOriginalQuarantined": "ゴミ箱を使用できなかったため、元ファイルを退避しました（不要なら手動で削除してください）: {{location}}",
     "trashOriginalFailed": "元ファイルは削除せずに残しました: {{error}}",
@@ -608,7 +610,11 @@
     "queueNote": "別の動画を変換中です。キューに追加すると、前の変換が終わった後に順番に処理します（{{count}} 番目に待機）。キューはアプリを終了すると消えます。",
     "queued": "変換キューに追加しました（{{count}} 番目に待機）",
     "alreadyQueued": "この動画は変換中、またはキューで待機中です。",
-    "sourceMissing": "元ファイルが見つかりません（待機中に移動・削除された可能性があります）"
+    "sourceMissing": "元ファイルが見つかりません（待機中に移動・削除された可能性があります）",
+    "discarded": "{{name}} は変換しても {{percent}}% しか小さくならなかったため、変換後のファイルを破棄して元のファイルを残しました",
+    "estimateAlreadyAv1": "このファイルは既に AV1 です。変換してもほとんど小さくなりません。",
+    "estimateLowBitrate": "ビットレートが低いため ({{codec}} {{resolution}} · {{kbps}} kbps)、変換してもあまり小さくならない見込みです。",
+    "discardNote": "変換後のファイルが元より {{percent}}% 以上小さくならなかった場合は、変換後のファイルを破棄して元のファイルを残します。音声・字幕トラックはすべて引き継ぎます (カバー画像は除く)。"
   },
   "export": {
     "title": "エクスポート / インポート",

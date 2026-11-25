@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "motion/react";
-import { useTranscodeStore } from "../store/useTranscodeStore";
+import { finishedCount, useTranscodeStore } from "../store/useTranscodeStore";
 import { ChevronRight, X } from "lucide-react";
 import { Button, motionPresets, useFrozenWhileExiting } from "./ui";
 
@@ -39,7 +39,7 @@ function TranscodeStatusCard() {
 
   const isMulti = batch.total > 1;
   const hasError = isDone && batch.failed > 0;
-  const position = batch.succeeded + batch.failed + 1;
+  const position = finishedCount(batch) + 1;
 
   let doneLabel = "";
   if (isDone) {
@@ -47,8 +47,11 @@ function TranscodeStatusCard() {
       doneLabel = hasError
         ? t("app.transcodeBatchPartial", { total: batch.total, failed: batch.failed })
         : t("app.transcodeBatchSuccess", { total: batch.total });
+      if (batch.discarded > 0) doneLabel += t("app.transcodeBatchDiscarded", { count: batch.discarded });
     } else if (hasError && lastError) {
       doneLabel = t("app.transcodeError", { name: lastError.videoName });
+    } else if (batch.discarded > 0) {
+      doneLabel = t("app.transcodeDiscarded", { name: batch.lastDiscardedName });
     } else {
       doneLabel = t("app.transcodeSuccess", { name: batch.lastSucceededName });
     }

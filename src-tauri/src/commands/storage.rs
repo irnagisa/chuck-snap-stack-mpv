@@ -674,7 +674,7 @@ mod tests {
 
         let thumbs = thumbnails_for_ids(&conn, &[id]).unwrap();
         conn.execute("DELETE FROM videos WHERE id = ?1", [id]).unwrap();
-        assert_eq!(remove_unreferenced_thumbnails(&conn, &[root.clone()], &thumbs), 0);
+        assert_eq!(remove_unreferenced_thumbnails(&conn, std::slice::from_ref(&root), &thumbs), 0);
         assert!(outside.exists());
 
         // `..` でディレクトリの外へ出るパスも消さない
@@ -696,7 +696,7 @@ mod tests {
         insert(&conn, "/m/a.mp4", Some(&s(&used)), "video");
 
         // 作ったばかりのファイルは猶予時間内なので残る
-        let r = cleanup_thumbnail_files(&conn, &list_thumbnail_files(&[root.clone()]), SystemTime::now()).unwrap();
+        let r = cleanup_thumbnail_files(&conn, &list_thumbnail_files(std::slice::from_ref(&root)), SystemTime::now()).unwrap();
         assert_eq!(r.removed_orphans, 0);
         assert!(orphan.exists());
 

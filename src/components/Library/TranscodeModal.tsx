@@ -31,6 +31,21 @@ function suggestCrf(bitrateKbps: number): { crf: number; reasonKey: string } {
   return { crf: 50, reasonKey: 'transcode.crfVeryLowBitrate' };
 }
 
+/** estimate_transcode の戻り値 (src-tauri/src/commands/transcode.rs の TranscodeEstimate) */
+interface TranscodeEstimate {
+  verdict: 'worth' | 'alreadyAv1' | 'lowBitrate' | 'unknown';
+  videoCodec: string | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  videoBitrateKbps: number | null;
+  bitsPerPixel: number | null;
+  minSavingPercent: number;
+}
+
+/** 変換後にこの割合以上小さくならなければ破棄する (バックエンドの値が取れるまでの表示用) */
+const DEFAULT_MIN_SAVING_PERCENT = 15;
+
 /** trash_transcode_source の戻り値 */
 type SourceDisposal =
   | { method: 'trash' }
@@ -57,6 +72,7 @@ export function TranscodeModal({ video, onClose }: Props) {
   const [preset, setPreset] = useState<number>(8);
   const [crfReasonKey, setCrfReasonKey] = useState<string>('');
   const [trashOriginal, setTrashOriginal] = useState(false);
+  const [estimate, setEstimate] = useState<TranscodeEstimate | null>(null);
   const dialog = useDialogClose(onClose);
 
   const PRESET_OPTIONS = [
@@ -82,6 +98,27 @@ export function TranscodeModal({ video, onClose }: Props) {
       })
       .catch(() => {});
   }, [video.path, video.duration]);
+
+  // 変換で縮みそうかを見積もる (既に AV1・低ビットレートなら警告を出す)
+  useEffect(() => {
+    let cancelled = false;
+    invoke<TranscodeEstimate>('estimate_transcode', { inputPath: video.path })
+      .then((e) => { if (!cancelled) setEstimate(e); })
+      .catch((e: unknown) => console.warn('[transcode] 変換効果の見積もりに失敗:', e));
+    return () => { cancelled = true; };
+  }, [video.path]);
+
+  const minSavingPercent = estimate?.minSavingPercent ?? DEFAULT_MIN_SAVING_PERCENT;
+  const estimateWarning =
+    estimate?.verdict === 'alreadyAv1'
+      ? t('transcode.estimateAlreadyAv1')
+      : estimate?.verdict === 'lowBitrate'
+        ? t('transcode.estimateLowBitrate', {
+            codec: estimate.videoCodec?.toUpperCase() ?? '',
+            kbps: estimate.videoBitrateKbps?.toFixed(0) ?? '?',
+            resolution: estimate.width && estimate.height ? `${estimate.width}×${estimate.height}` : '',
+          })
+        : null;
 
   const handleStart = async () => {
     const stem = previewOutput.split('/').pop()?.replace(/\.av1\.mkv$/, '') ?? previewOutput;
@@ -201,6 +238,10 @@ export function TranscodeModal({ video, onClose }: Props) {
             <li><b>{t('transcode.output')}</b> {previewOutput}</li>
           </ul>
 
+          {estimateWarning && (
+            <p className={styles.callout} data-tone="warning">{estimateWarning}</p>
+          )}
+
           {/* CRF */}
           <div>
             <p className={styles.label}>
@@ -272,6 +313,7 @@ export function TranscodeModal({ video, onClose }: Props) {
             )}
           </div>
 
+          <p className={styles.note}>{t('transcode.discardNote', { percent: minSavingPercent })}</p>
           <p className={styles.note}>{t('transcode.timeEstimate')}</p>
 
           {isBusy && (

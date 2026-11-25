@@ -43,7 +43,9 @@
     "transcodeRemoveFromQueue": "从队列中移除",
     "transcodeBatchSuccess": "转码完成: {{total}} 个",
     "transcodeBatchPartial": "转码结束: {{total}} 个中 {{failed}} 个失败",
-    "storageTitle": "存储整理"
+    "storageTitle": "存储整理",
+    "transcodeDiscarded": "已丢弃转换后的文件: {{name}} (保留原文件)",
+    "transcodeBatchDiscarded": " ({{count}} 个未变小已丢弃)"
   },
   "sidebar": {
     "label": "媒体库导航",
@@ -599,7 +601,7 @@
     "close": "关闭",
     "start": "开始转码",
     "trashOriginal": "转换完成后将原文件移至废纸篓",
-    "trashOriginalNote": "将先校验转换后文件的时长及视频/音频流，仅在校验通过时才将原文件移至废纸篓（不会永久删除）。在无法使用废纸篓的外部存储等卷上，会将其加上“.trashed”后缀移至同一文件夹内的“.ChuckSnapStackTrash”。若校验失败或原文件在转换期间被修改，则保留原文件。播放列表和观看记录不会迁移。",
+    "trashOriginalNote": "将先校验转换后文件的时长及视频、音频、字幕和附件轨道的数量，仅在校验通过时才将原文件移至废纸篓（不会永久删除）。在无法使用废纸篓的外部存储等卷上，会将其加上“.trashed”后缀移至同一文件夹内的“.ChuckSnapStackTrash”。若校验失败或原文件在转换期间被修改，则保留原文件。播放列表和观看记录不会迁移。",
     "trashOriginalDone": "已将原文件移至废纸篓",
     "trashOriginalQuarantined": "无法使用废纸篓，已将原文件移至暂存位置（如不再需要请手动删除）：{{location}}",
     "trashOriginalFailed": "已保留原文件：{{error}}",
@@ -608,7 +610,11 @@
     "queueNote": "另一个视频正在转码中。加入队列后，将在当前转码完成后按顺序处理（第 {{count}} 位）。退出应用后队列将被清空。",
     "queued": "已加入转码队列（第 {{count}} 位）",
     "alreadyQueued": "该视频正在转码或已在队列中等待。",
-    "sourceMissing": "找不到原文件（可能在等待期间被移动或删除）"
+    "sourceMissing": "找不到原文件（可能在等待期间被移动或删除）",
+    "discarded": "{{name}} 转换后仅缩小 {{percent}}%，已丢弃转换后的文件并保留原文件",
+    "estimateAlreadyAv1": "此文件已是 AV1，转换后几乎不会变小。",
+    "estimateLowBitrate": "码率已经较低 ({{codec}} {{resolution}} · {{kbps}} kbps)，转换后预计不会明显变小。",
+    "discardNote": "如果转换后的文件没有比原文件小 {{percent}}% 以上，将丢弃转换后的文件并保留原文件。所有音轨和字幕轨都会保留 (封面图除外)。"
   },
   "export": {
     "title": "导出 / 导入",

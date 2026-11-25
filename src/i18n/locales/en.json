@@ -43,7 +43,9 @@
     "transcodeRemoveFromQueue": "Remove from queue",
     "transcodeBatchSuccess": "Transcode complete: {{total}} files",
     "transcodeBatchPartial": "Transcode finished: {{failed}} of {{total}} failed",
-    "storageTitle": "Storage cleanup"
+    "storageTitle": "Storage cleanup",
+    "transcodeDiscarded": "Converted file discarded: {{name}} (original kept)",
+    "transcodeBatchDiscarded": " ({{count}} discarded as not smaller)"
   },
   "sidebar": {
     "label": "Library navigation",
@@ -599,7 +601,7 @@
     "close": "Close",
     "start": "Start Transcode",
     "trashOriginal": "Move the original file to Trash after conversion",
-    "trashOriginalNote": "The converted file's duration and video/audio streams are verified first; the original is moved to Trash (never permanently deleted) only if the checks pass. On volumes where Trash is unavailable (e.g. external storage), it is moved into a \".ChuckSnapStackTrash\" folder in the same directory with a \".trashed\" suffix. If verification fails or the original is modified during conversion, it is kept. Playlists and watch history are not carried over.",
+    "trashOriginalNote": "The converted file's duration and number of video, audio, subtitle and attachment tracks are verified first; the original is moved to Trash (never permanently deleted) only if the checks pass. On volumes where Trash is unavailable (e.g. external storage), it is moved into a \".ChuckSnapStackTrash\" folder in the same directory with a \".trashed\" suffix. If verification fails or the original is modified during conversion, it is kept. Playlists and watch history are not carried over.",
     "trashOriginalDone": "Moved the original file to Trash",
     "trashOriginalQuarantined": "Trash was unavailable, so the original file was moved aside (delete it manually if no longer needed): {{location}}",
     "trashOriginalFailed": "Kept the original file: {{error}}",
@@ -608,7 +610,11 @@
     "queueNote": "Another video is being transcoded. Queued videos are processed in order after the current one finishes (position {{count}}). The queue is cleared when the app quits.",
     "queued": "Added to the transcode queue (position {{count}})",
     "alreadyQueued": "This video is already being transcoded or waiting in the queue.",
-    "sourceMissing": "Source file not found (it may have been moved or deleted while queued)"
+    "sourceMissing": "Source file not found (it may have been moved or deleted while queued)",
+    "discarded": "{{name}} only shrank by {{percent}}%, so the converted file was discarded and the original was kept",
+    "estimateAlreadyAv1": "This file is already AV1. Converting it will barely reduce its size.",
+    "estimateLowBitrate": "The bitrate is already low ({{codec}} {{resolution}} · {{kbps}} kbps), so converting is unlikely to save much space.",
+    "discardNote": "If the converted file is not at least {{percent}}% smaller than the original, it is discarded and the original is kept. All audio and subtitle tracks are preserved (cover art excluded)."
   },
   "export": {
     "title": "Export / Import",

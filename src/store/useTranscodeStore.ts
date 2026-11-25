@@ -26,12 +26,22 @@ export interface TranscodeJob {
 
 export type EnqueueOptions = Omit<TranscodeJob, 'id'>;
 
+/** transcode_video の戻り値 */
+export type TranscodeOutcome =
+  | { status: 'done'; outputPath: string }
+  /** 十分に小さくならなかったため変換後のファイルを破棄した (元ファイルはそのまま) */
+  | { status: 'discarded'; inputBytes: number; outputBytes: number };
+
 /** 現在のバッチ (キューが空になるまでの一連の変換) の集計 */
 export interface TranscodeBatch {
   /** キャンセル・除外分を除いたジョブ総数 */
   total: number;
   succeeded: number;
   failed: number;
+  /** 小さくならなかったため変換後のファイルを破棄したジョブ数 */
+  discarded: number;
+  /** 直近に破棄したジョブの表示名 */
+  lastDiscardedName: string;
   /** 成功したジョブの変換前後サイズ合計 (どちらかが取得できなかったジョブは含めない) */
   inputSizeBytes: number;
   outputSizeBytes: number;
@@ -64,7 +74,21 @@ interface TranscodeStore {
 
 const CANCELLED_MESSAGE = 'キャンセルされました';
 
-const EMPTY_BATCH: TranscodeBatch = { total: 0, succeeded: 0, failed: 0, inputSizeBytes: 0, outputSizeBytes: 0, lastSucceededName: '' };
+const EMPTY_BATCH: TranscodeBatch = {
+  total: 0,
+  succeeded: 0,
+  failed: 0,
+  discarded: 0,
+  lastDiscardedName: '',
+  inputSizeBytes: 0,
+  outputSizeBytes: 0,
+  lastSucceededName: '',
+};
+
+/** バッチ内で処理が終わったジョブ数 */
+export function finishedCount(batch: TranscodeBatch): number {
+  return batch.succeeded + batch.failed + batch.discarded;
+}
 
 let _nextId = 1;
 let _processing = false;
@@ -72,7 +96,7 @@ let _processing = false;
 let _cancelRequested = false;
 
 export const useTranscodeStore = create<TranscodeStore>((set, get) => {
-  async function runJob(job: TranscodeJob): Promise<'succeeded' | 'failed' | 'cancelled'> {
+  async function runJob(job: TranscodeJob): Promise<'succeeded' | 'failed' | 'cancelled' | 'discarded'> {
     try {
       // 待機中に移動・削除された可能性があるため、実行直前に存在を確認する
       const inputSize = await invoke<number>('get_file_size', { path: job.videoPath }).catch(() => null);
@@ -81,12 +105,24 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
       }
       if (_cancelRequested) return 'cancelled';
 
-      const outputPath = await invoke<string>('transcode_video', {
+      const outcome = await invoke<TranscodeOutcome>('transcode_video', {
         inputPath: job.videoPath,
         durationSecs: job.durationSecs,
         crf: job.crf,
         preset: job.preset,
       });
+      if (outcome.status === 'discarded') {
+        // 変換後のファイルは破棄済み。元ファイル・メタデータには触らない (onSuccess も呼ばない)
+        set((s) => ({
+          batch: { ...s.batch, discarded: s.batch.discarded + 1, lastDiscardedName: job.videoName },
+        }));
+        const savedPercent = outcome.inputBytes > 0
+          ? Math.max(0, (1 - outcome.outputBytes / outcome.inputBytes) * 100)
+          : 0;
+        toast.info(i18n.t('transcode.discarded', { name: job.videoName, percent: savedPercent.toFixed(1) }), 8000);
+        return 'discarded';
+      }
+      const { outputPath } = outcome;
       // onSuccess (元ファイルのゴミ箱移動を含む) は次の変換開始前に完了させる。
       // バックエンドの完了記録は次の transcode_video 開始時に破棄されるため。
       await job.onSuccess(outputPath);
@@ -149,7 +185,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
       _processing = false;
       _cancelRequested = false;
       const { batch } = get();
-      const finished = batch.succeeded + batch.failed;
+      const finished = finishedCount(batch);
       // すべてキャンセルされた場合は何も表示しない
       set({ current: null, progress: null, isDone: finished > 0, ...(finished === 0 && { batch: EMPTY_BATCH, lastError: null }) });
     }

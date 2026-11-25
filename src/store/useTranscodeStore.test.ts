@@ -4,12 +4,17 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(() => Promise.resolve(() => {})) }));
 
 import { invoke } from '@tauri-apps/api/core';
-import { useTranscodeStore, type EnqueueOptions } from './useTranscodeStore';
+import { useTranscodeStore, type EnqueueOptions, type TranscodeOutcome } from './useTranscodeStore';
 
 const mockInvoke = vi.mocked(invoke);
 
 /** transcode_video の呼び出しごとに resolve / reject を外から制御する */
-let pending: { path: string; resolve: (out: string) => void; reject: (e: unknown) => void }[] = [];
+let pending: {
+  path: string;
+  resolve: (out: string) => void;
+  discard: (inputBytes: number, outputBytes: number) => void;
+  reject: (e: unknown) => void;
+}[] = [];
 
 function makeOpts(path: string, overrides: Partial<EnqueueOptions> = {}): EnqueueOptions {
   return {
@@ -37,8 +42,13 @@ beforeEach(async () => {
       return String(args?.path).endsWith('missing.mp4') ? Promise.reject('not found') : Promise.resolve(1000);
     }
     if (cmd === 'transcode_video') {
-      return new Promise<string>((resolve, reject) => {
-        pending.push({ path: String(args?.inputPath), resolve, reject });
+      return new Promise<TranscodeOutcome>((resolve, reject) => {
+        pending.push({
+          path: String(args?.inputPath),
+          resolve: (out) => resolve({ status: 'done', outputPath: out }),
+          discard: (inputBytes, outputBytes) => resolve({ status: 'discarded', inputBytes, outputBytes }),
+          reject,
+        });
       });
     }
     return Promise.resolve();
@@ -109,6 +119,40 @@ describe('enqueue', () => {
     const st = useTranscodeStore.getState();
     expect(st.batch).toMatchObject({ total: 2, succeeded: 1, failed: 1 });
     expect(st.lastError?.videoName).toBe('missing.mp4');
+  });
+});
+
+describe('discarded', () => {
+  it('counts a discarded job without calling onSuccess and continues', async () => {
+    const onSuccess = vi.fn(() => Promise.resolve());
+    const s = useTranscodeStore.getState();
+    s.enqueue(makeOpts('/v/a.mp4', { onSuccess }));
+    s.enqueue(makeOpts('/v/b.mp4'));
+    await flush();
+
+    pending[0].discard(1000, 950);
+    await flush();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(pending.map((p) => p.path)).toEqual(['/v/a.mp4', '/v/b.mp4']);
+    expect(useTranscodeStore.getState().batch).toMatchObject({ discarded: 1, lastDiscardedName: 'a.mp4' });
+
+    pending[1].resolve('/v/b.av1.mkv');
+    await flush();
+    const st = useTranscodeStore.getState();
+    expect(st.isDone).toBe(true);
+    expect(st.batch).toMatchObject({ total: 2, succeeded: 1, failed: 0, discarded: 1 });
+    // 破棄したジョブは変換前後サイズの集計に含めない
+    expect(st.batch.inputSizeBytes).toBe(1000);
+  });
+
+  it('shows the result even when every job was discarded', async () => {
+    useTranscodeStore.getState().enqueue(makeOpts('/v/a.mp4'));
+    await flush();
+    pending[0].discard(1000, 990);
+    await flush();
+    const st = useTranscodeStore.getState();
+    expect(st.isDone).toBe(true);
+    expect(st.batch).toMatchObject({ total: 1, succeeded: 0, discarded: 1 });
   });
 });
 
