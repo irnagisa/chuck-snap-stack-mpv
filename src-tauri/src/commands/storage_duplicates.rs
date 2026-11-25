@@ -18,7 +18,7 @@ use tauri::State;
 
 use super::fs_clone::{clone_info, CloneInfo};
 use super::phash::hamming_distance;
-use super::storage::{cleanup_item_columns, item_from_row, CleanupItem, ON_DISK_FILTER};
+use super::storage::{cleanup_item_columns, item_from_row, CleanupItem, CLEANUP_ITEM_COLUMN_COUNT, ON_DISK_FILTER};
 use crate::db::DbState;
 
 /// 「見た目が似ている」とみなす pHash のハミング距離の上限。
@@ -267,7 +267,7 @@ fn load_rows(conn: &rusqlite::Connection) -> Result<(Vec<Row>, i64), String> {
     let rows = stmt
         .query_map([], |r| {
             let phash = r
-                .get::<_, Option<String>>(12)?
+                .get::<_, Option<String>>(CLEANUP_ITEM_COLUMN_COUNT)?
                 .and_then(|p| p.parse::<u64>().ok())
                 // 単色のフレームなどは何でも一致してしまうので使わない
                 .filter(|&h| h != 0 && h != u64::MAX);
@@ -332,6 +332,8 @@ mod tests {
                 category_id: None,
                 private_bytes: None,
                 clone_group: None,
+                silent_streams: None,
+                silent_bytes: None,
             },
             phash,
         }

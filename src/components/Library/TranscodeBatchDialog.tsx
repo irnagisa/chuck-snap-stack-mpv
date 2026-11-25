@@ -18,22 +18,28 @@ import {
 import { bitrateKbps, type CleanupItem } from "./storageTypes";
 import modal from "./LibraryModal.module.css";
 
-/** まとめて変換で選べる種類 (トラック整理は動画ごとに選ぶので対象外) */
-type BatchKind = "av1" | "hevc" | "audio";
-const BATCH_KINDS: BatchKind[] = ["av1", "hevc", "audio"];
+/**
+ * まとめて変換で選べる種類 (トラック整理は動画ごとに選ぶので対象外)。
+ * dropSilent は無音と分かった音声トラックを外す (整理画面の無音の一覧から開いたときだけ)
+ */
+export type BatchKind = "av1" | "hevc" | "audio" | "dropSilent";
+const DEFAULT_KINDS: BatchKind[] = ["av1", "hevc", "audio"];
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: CleanupItem[];
+  /** 選べる種類 (既定は AV1 / HEVC / 音声だけ)。1 つだけなら切り替えを出さない */
+  kinds?: BatchKind[];
   /** キューに追加した後 */
   onQueued: () => void;
 }
 
 /** 選んだ動画をまとめて変換のキューに入れる。AV1 の CRF は動画ごとにビットレートから決める */
-export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Props) {
+export function TranscodeBatchDialog({ open, onOpenChange, items, kinds = DEFAULT_KINDS, onQueued }: Props) {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<BatchKind>("av1");
+  const firstKind = kinds[0];
+  const [kind, setKind] = useState<BatchKind>(firstKind);
   const [preset, setPreset] = useState<string>(String(DEFAULT_PRESET));
   const [hevcPercent, setHevcPercent] = useState<number>(HEVC_PERCENT_RANGE.default);
   const [trashOriginal, setTrashOriginal] = useState(false);
@@ -44,9 +50,16 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
   const totalBytes = items.reduce((s, i) => s + i.fileSize, 0);
   const presetDesc = PRESET_OPTIONS.find((o) => String(o.value) === preset)?.descKey;
   const firstPath = items[0]?.path;
+  // 開くたびに、その画面で選べる最初の種類から始める
+  useEffect(() => {
+    if (open) setKind(firstKind);
+  }, [open, firstKind]);
+  /** 無音のトラックを外すとき、外すトラックが分かっている動画 */
+  const dropTargets = items.filter((i) => (i.silentStreams?.length ?? 0) > 0);
+  const silentBytes = dropTargets.reduce((s, i) => s + (i.silentBytes ?? 0), 0);
 
   useEffect(() => {
-    if (!open || !firstPath || hevcAvailable != null) return;
+    if (!open || !firstPath || hevcAvailable != null || !kinds.some((k) => k !== "dropSilent")) return;
     invoke<TranscodeEstimate>("estimate_transcode", { inputPath: firstPath })
       .then((e) => {
         setHevcAvailable(e.hevcAvailable);
@@ -55,8 +68,10 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
       .catch(() => setHevcAvailable(false));
   }, [open, firstPath, hevcAvailable]);
 
-  const modeFor = (item: CleanupItem): TranscodeMode => {
+  const modeFor = (item: CleanupItem): TranscodeMode | null => {
     switch (kind) {
+      case "dropSilent":
+        return item.silentStreams?.length ? { kind: "dropStreams", streams: item.silentStreams } : null;
       case "av1": {
         const kbps = bitrateKbps(item);
         return { kind, crf: kbps != null ? suggestCrf(kbps).crf : 32, preset: Number(preset) };
@@ -71,6 +86,8 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
   const handleStart = () => {
     let added = 0;
     for (const item of items) {
+      const mode = modeFor(item);
+      if (!mode) continue;
       const ok = enqueueTranscode(
         {
           id: item.id,
@@ -81,7 +98,7 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
           rating: item.rating,
           createdAt: item.createdAt || null,
         },
-        modeFor(item),
+        mode,
         { trashOriginal },
       );
       if (ok) added++;
@@ -93,7 +110,10 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
   };
 
   const canStart =
-    items.length > 0 && (kind !== "hevc" || hevcAvailable === true) && (kind !== "av1" || av1Encoder !== null);
+    items.length > 0 &&
+    (kind !== "hevc" || hevcAvailable === true) &&
+    (kind !== "av1" || av1Encoder !== null) &&
+    (kind !== "dropSilent" || dropTargets.length > 0);
 
   return (
     <Dialog
@@ -116,12 +136,23 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
       <div className={modal.stack}>
         <p className={modal.note}>{t("storage.batchDesc", { size: formatFileSize(totalBytes) })}</p>
 
-        <SegmentedControl
-          aria-label={t("transcode.modeLabel")}
-          value={kind}
-          onValueChange={setKind}
-          options={BATCH_KINDS.map((k) => ({ value: k, label: t(`transcode.mode_${k}`) }))}
-        />
+        {kinds.length > 1 && (
+          <SegmentedControl
+            aria-label={t("transcode.modeLabel")}
+            value={kind}
+            onValueChange={setKind}
+            options={kinds.map((k) => ({ value: k, label: t(`transcode.mode_${k}`) }))}
+          />
+        )}
+
+        {kind === "dropSilent" && (
+          <div>
+            <p className={modal.note}>{t("transcode.dropSilentDesc")}</p>
+            {silentBytes > 0 && (
+              <p className={modal.hintAccent}>{t("transcode.audioSaving", { size: formatFileSize(silentBytes) })}</p>
+            )}
+          </div>
+        )}
 
         {kind === "av1" && av1Encoder === null && (
           <p className={modal.callout} data-tone="warning">{t("transcode.av1Unavailable")}</p>
@@ -179,7 +210,9 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, onQueued }: Pr
         </div>
 
         <p className={modal.note}>
-          {kind === "audio" ? t("transcode.discardNoteSmall") : t("transcode.discardNote", { percent: MIN_SAVING_PERCENT })}
+          {kind === "audio" || kind === "dropSilent"
+            ? t("transcode.discardNoteSmall")
+            : t("transcode.discardNote", { percent: MIN_SAVING_PERCENT })}
         </p>
       </div>
     </Dialog>

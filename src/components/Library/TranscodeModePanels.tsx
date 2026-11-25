@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next";
+import { AudioLines, LoaderCircle } from "lucide-react";
 import { formatFileSize } from "../../utils/time";
-import { Checkbox, Input, Slider } from "../ui";
+import { Button, Checkbox, Input, Slider } from "../ui";
+import type { StoredSilence } from "./storageTypes";
 import { HEVC_PERCENT_RANGE, PRESET_OPTIONS, isEfficientCodec, type StreamSummary, type TranscodeEstimate } from "./transcodeJob";
 import styles from "./LibraryModal.module.css";
 
@@ -224,11 +226,67 @@ interface RemuxProps {
   /** 入力の誤り (なければ null) */
   error: string | null;
   durationLabel: string;
+  /** 無音の音声トラックを調べた結果。undefined は読み込み中、null は未確認 */
+  silence: StoredSilence | null | undefined;
+  checkingSilence: boolean;
+  silenceError: string | null;
+  onCheckSilence: () => void;
 }
 
-export function RemuxPanel({ estimate, kept, onToggle, startText, endText, onStartChange, onEndChange, error, durationLabel }: RemuxProps) {
+/** 無音の音声トラックを調べるボタンと結果 */
+function SilenceStatus({
+  silence,
+  checking,
+  error,
+  onCheck,
+}: {
+  silence: StoredSilence | null | undefined;
+  checking: boolean;
+  error: string | null;
+  onCheck: () => void;
+}) {
+  const { t } = useTranslation();
+  if (silence === undefined) return null;
+  return (
+    <>
+      {silence === null ? (
+        <div>
+          <Button variant="soft" size="sm" disabled={checking} onClick={onCheck}>
+            {checking ? <LoaderCircle className={styles.spinner} aria-hidden /> : <AudioLines aria-hidden />}
+            {checking ? t("transcode.silenceChecking") : t("transcode.silenceCheck")}
+          </Button>
+        </div>
+      ) : (
+        <p className={silence.silentStreams.length > 0 ? styles.hintAccent : styles.note}>
+          {silence.silentStreams.length > 0
+            ? t("transcode.silenceFound", { count: silence.silentStreams.length })
+            : t("transcode.silenceNone")}
+        </p>
+      )}
+      {error && <p className={styles.callout} data-tone="warning">{t("transcode.silenceError", { error })}</p>}
+    </>
+  );
+}
+
+export function RemuxPanel({
+  estimate,
+  kept,
+  onToggle,
+  startText,
+  endText,
+  onStartChange,
+  onEndChange,
+  error,
+  durationLabel,
+  silence,
+  checkingSilence,
+  silenceError,
+  onCheckSilence,
+}: RemuxProps) {
   const { t } = useTranslation();
   if (!estimate) return null;
+  const silent = new Set(silence?.silentStreams ?? []);
+  const hasAudio = estimate.streams.some((s) => s.codecType === "audio");
   const mainVideos = estimate.streams.filter((s) => s.codecType === "video" && !s.coverArt);
   const keptMainVideos = mainVideos.filter((s) => kept.has(s.index)).length;
   return (
@@ -248,11 +306,17 @@ export function RemuxPanel({ estimate, kept, onToggle, startText, endText, onSta
                   #{s.index} {streamLabel(s, t)}
                   {!s.remuxable && <span className={styles.labelHint}>{t("transcode.streamDropped")}</span>}
                 </span>
+                {s.codecType === "audio" && silent.has(s.index) && (
+                  <span className={styles.badge} data-tone="warning">{t("transcode.silentBadge")}</span>
+                )}
               </label>
             );
           })}
         </div>
       </div>
+      {hasAudio && (
+        <SilenceStatus silence={silence} checking={checkingSilence} error={silenceError} onCheck={onCheckSilence} />
+      )}
       <div>
         <p className={styles.label}>
           {t("transcode.trimLabel")}

@@ -23,4 +23,5 @@ pub mod phash;
 pub mod storage;
 pub mod storage_duplicates;
 pub mod storage_leftovers;
+pub mod silent_audio;
 pub mod system;

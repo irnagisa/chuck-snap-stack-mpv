@@ -80,6 +80,7 @@ const OUTPUT_SUFFIX: Record<TranscodeKind, string> = {
   hevc: 'hevc',
   audio: 'opus',
   remux: 'slim',
+  dropStreams: 'slim',
 };
 
 /** 映像を再エンコードしたとき、この割合以上小さくならなければ破棄する (transcode.rs の MIN_SAVING_RATIO) */

@@ -88,7 +88,7 @@ export interface QuarantineCleanupResult {
 }
 
 /** get_cleanup_candidates の種類 */
-export type ListKind = "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed";
+export type ListKind = "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed" | "silentAudio";
 /** 画面で選べる整理候補の種類 (重複は別のコマンドで取る) */
 export type CandidateKind = ListKind | "duplicates";
 
@@ -109,6 +109,10 @@ export interface CleanupItem {
   privateBytes?: number;
   /** 同じグループで互いに APFS のクローン (中身を共有) になっているものに同じ番号 */
   cloneGroup?: number;
+  /** 無音と分かった音声トラックの番号 (無音のトラックがなければ入らない) */
+  silentStreams?: number[];
+  /** 無音のトラックが使っている容量の見込み (外すと空く) */
+  silentBytes?: number;
 }
 
 export interface CleanupCandidates {
@@ -116,7 +120,30 @@ export interface CleanupCandidates {
   totalBytes: number;
   thresholdDays: number | null;
   minBitrateKbps: number | null;
+  /** まだ無音かどうかを調べていない動画の数 (silentAudio のときだけ) */
+  uncheckedCount?: number;
   items: CleanupItem[];
+}
+
+// ── 無音の音声トラック (src-tauri/src/commands/silent_audio.rs) ─────────────
+
+export type AudioSilence = "none" | "partial" | "all";
+
+/** get_audio_silence の戻り値 (調べていなければ null) */
+export interface StoredSilence {
+  status: AudioSilence;
+  silentStreams: number[];
+  silentBytes: number;
+}
+
+/** detect_silent_audio の戻り値 */
+export interface SilenceReport extends StoredSilence {
+  tracks: { index: number; peakDb: number | null; silent: boolean }[];
+}
+
+export interface UncheckedVideo {
+  id: number;
+  path: string;
 }
 
 export interface DuplicateGroup {

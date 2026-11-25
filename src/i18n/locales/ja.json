@@ -105,7 +105,10 @@
     "audioYesShort": "あり",
     "audioNoShort": "なし",
     "av1OnlyShort": "変換済み",
-    "av1ExcludeShort": "除外"
+    "av1ExcludeShort": "除外",
+    "audioSilentShort": "無音",
+    "audioSilent": "無音の音声トラック",
+    "audioSilentNote": "整理画面で調べた動画だけが対象です"
   },
   "batch": {
     "selectedCount": "{{count}} 件選択中",
@@ -656,7 +659,15 @@
     "trimBeyond": "終了が動画の長さ ({{duration}}) を超えています。",
     "trimTooShort": "残す範囲が短すぎます。",
     "remuxNothing": "外すトラックか、残す範囲を指定してください。",
-    "discardNoteSmall": "変換後のファイルが元より小さくならなかった場合は、変換後のファイルを破棄して元のファイルを残します。"
+    "discardNoteSmall": "変換後のファイルが元より小さくならなかった場合は、変換後のファイルを破棄して元のファイルを残します。",
+    "mode_dropSilent": "無音のトラックを外す",
+    "dropSilentDesc": "無音と分かった音声トラックだけを外します。再エンコードしないので、映像や他の音声はそのままです。",
+    "silentBadge": "無音",
+    "silenceCheck": "無音のトラックを調べる",
+    "silenceChecking": "音量を調べています…",
+    "silenceNone": "無音の音声トラックはありません。",
+    "silenceFound": "無音の音声トラックが {{count}} 本あります。最初から外してあります。",
+    "silenceError": "音量を調べられませんでした: {{error}}"
   },
   "export": {
     "title": "エクスポート / インポート",
@@ -909,6 +920,16 @@
     "aiRemoveConfirmDescInUse": "モデルのファイル ({{size}}) を削除します。このモデルは AI タグ提案で使っているため、次に使うときにまたダウンロードが必要になります。",
     "aiRemoveConfirm": "削除",
     "aiRemoveDone": "AI モデルを削除しました ({{size}} 空きました)",
-    "aiRemoveError": "AI モデルを削除できませんでした: {{error}}"
+    "aiRemoveError": "AI モデルを削除できませんでした: {{error}}",
+    "kindSilentAudio": "無音の音声",
+    "kindDescSilentAudio": "音声トラックがあるのに中身が無音の動画です (画面収録やミュートで書き出したものなど)。無音のトラックを外すと、映像はそのままで容量を減らせます。",
+    "silenceUnchecked": "無音かどうかを調べていない動画が {{count}} 件あります。調べると一覧に出ます。",
+    "silenceProgress": "音量を調べています ({{done}} / {{total}})",
+    "silenceCheck": "無音かどうかを調べる",
+    "silentTracks": "無音のトラック {{count}} 本",
+    "silentFreed": "外すと約 {{size}}",
+    "silentSummary": "{{count}} 件 · 外すと約 {{size}} 空きます",
+    "silentSelectedSummary": "{{count}} 件を選択 · 外すと約 {{size}}",
+    "dropSilent": "無音のトラックを外す"
   }
 }

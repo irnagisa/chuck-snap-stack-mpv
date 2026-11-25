@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle, Shrink, Sparkles, Trash2 } from "lucide-react";
+import { AudioLines, LoaderCircle, Shrink, Sparkles, Trash2, VolumeX } from "lucide-react";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { toast } from "../../store/useToastStore";
 import { formatFileSize } from "../../utils/time";
@@ -11,7 +11,7 @@ import { StorageCandidateRow } from "./StorageCandidateRow";
 import { StorageDuplicates, suggestedIds } from "./StorageDuplicates";
 import { StorageLeftoversPanel } from "./StorageLeftoversPanel";
 import { StorageTrashPanel } from "./StorageTrashPanel";
-import { TranscodeBatchDialog } from "./TranscodeBatchDialog";
+import { TranscodeBatchDialog, type BatchKind } from "./TranscodeBatchDialog";
 import {
   bitrateKbps,
   freedBytes,
@@ -21,6 +21,7 @@ import {
   type DuplicateGroups,
   type StorageOverview,
   type ThumbnailCleanupResult,
+  type UncheckedVideo,
 } from "./storageTypes";
 import modal from "./LibraryModal.module.css";
 import styles from "./StorageModal.module.css";
@@ -30,11 +31,20 @@ const CANDIDATE_LIMIT = 200;
 /** 拡張子の内訳で個別に出す件数 (残りは「その他」にまとめる) */
 const EXTENSION_ROWS = 8;
 
-const KINDS: CandidateKind[] = ["large", "highBitrate", "duplicates", "unwatched", "staleInbox", "longUnviewed"];
+const KINDS: CandidateKind[] = [
+  "large",
+  "highBitrate",
+  "duplicates",
+  "silentAudio",
+  "unwatched",
+  "staleInbox",
+  "longUnviewed",
+];
 const KIND_LABEL: Record<CandidateKind, string> = {
   large: "storage.kindLarge",
   highBitrate: "storage.kindHighBitrate",
   duplicates: "storage.kindDuplicates",
+  silentAudio: "storage.kindSilentAudio",
   unwatched: "storage.kindUnwatched",
   staleInbox: "storage.kindStaleInbox",
   longUnviewed: "storage.kindLongUnviewed",
@@ -43,6 +53,7 @@ const KIND_DESC: Record<CandidateKind, string> = {
   large: "storage.kindDescLarge",
   highBitrate: "storage.kindDescHighBitrate",
   duplicates: "storage.kindDescDuplicates",
+  silentAudio: "storage.kindDescSilentAudio",
   unwatched: "storage.kindDescUnwatched",
   staleInbox: "storage.kindDescStaleInbox",
   longUnviewed: "storage.kindDescLongUnviewed",
@@ -111,16 +122,21 @@ export function StorageModal({ onClose }: Props) {
   const [batchOpen, setBatchOpen] = useState(false);
   /** 変換ダイアログに渡す動画 (開いた時点の選択。閉じるアニメーション中も表示を保つ) */
   const [batchItems, setBatchItems] = useState<CleanupItem[]>([]);
+  const [batchKinds, setBatchKinds] = useState<BatchKind[] | undefined>(undefined);
   const [phashProgress, setPhashProgress] = useState<{ done: number; total: number } | null>(null);
+  /** 無音の音声トラックを調べている間の進み具合 */
+  const [silenceProgress, setSilenceProgress] = useState<{ done: number; total: number } | null>(null);
   const dialog = useDialogClose(onClose, { locked: trashing || cleaningThumbs || panelBusy });
 
   /** 種類を切り替えたとき、前の種類の結果で上書きしないための番号 */
   const loadSeq = useRef(0);
-  /** 閉じたら pHash の計算を止める */
+  /** 閉じたら pHash の計算・無音の確認を止める */
   const phashCancelled = useRef(false);
+  const silenceCancelled = useRef(false);
   useEffect(
     () => () => {
       phashCancelled.current = true;
+      silenceCancelled.current = true;
     },
     [],
   );
@@ -249,6 +265,31 @@ export function StorageModal({ onClose }: Props) {
     if (!phashCancelled.current) await loadCandidates("duplicates");
   };
 
+  // ── 無音の音声トラック: まだ調べていない動画を調べる ────────────────────
+
+  const handleCheckSilence = async () => {
+    silenceCancelled.current = false;
+    try {
+      const pending = await invoke<UncheckedVideo[]>("get_videos_without_silence_check");
+      setSilenceProgress({ done: 0, total: pending.length });
+      for (let i = 0; i < pending.length; i++) {
+        if (silenceCancelled.current) return;
+        try {
+          await invoke("detect_silent_audio", { videoId: pending[i].id });
+        } catch (e) {
+          // 読めないファイルは飛ばす (次回また試す)
+          console.warn("[StorageModal] detect_silent_audio:", pending[i].path, e);
+        }
+        setSilenceProgress({ done: i + 1, total: pending.length });
+      }
+    } catch (e) {
+      toast.error(t("storage.candidatesError", { error: errorText(e) }));
+    } finally {
+      setSilenceProgress(null);
+    }
+    if (!silenceCancelled.current) await loadCandidates("silentAudio");
+  };
+
   // ── 整理候補の選択とゴミ箱移動 ──────────────────────────────────────────
 
   const items: CleanupItem[] = useMemo(
@@ -264,9 +305,10 @@ export function StorageModal({ onClose }: Props) {
         : items.filter((i) => selected.has(i.id)).reduce((s, i) => s + i.fileSize, 0),
     [kind, dupes, items, selected],
   );
+  const selectedSilentBytes = selectedItems.reduce((s, i) => s + (i.silentBytes ?? 0), 0);
   const allChecked = items.length > 0 && selectedItems.length === items.length;
   const headChecked = allChecked ? true : selectedItems.length > 0 ? "indeterminate" : false;
-  const busy = trashing || !!phashProgress;
+  const busy = trashing || !!phashProgress || !!silenceProgress;
 
   const toggle = (id: number, on: boolean) => {
     setSelected((prev) => {
@@ -412,11 +454,50 @@ export function StorageModal({ onClose }: Props) {
     );
   };
 
+  /** 無音の一覧の上に出す、まだ調べていない動画の案内 */
+  const renderSilenceCheck = () => {
+    const unchecked = candidates?.uncheckedCount ?? 0;
+    if (kind !== "silentAudio" || (unchecked === 0 && !silenceProgress)) return null;
+    return (
+      <div className={modal.callout}>
+        <div className={styles.calloutBody}>
+          <span>
+            {silenceProgress
+              ? t("storage.silenceProgress", silenceProgress)
+              : t("storage.silenceUnchecked", { count: unchecked })}
+          </span>
+          <Button variant="soft" size="sm" disabled={busy} onClick={handleCheckSilence}>
+            {silenceProgress ? <LoaderCircle className={modal.spinner} aria-hidden /> : <AudioLines aria-hidden />}
+            {t("storage.silenceCheck")}
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const silentMeta = (item: CleanupItem) => {
+    const count = item.silentStreams?.length ?? 0;
+    if (count === 0) return null;
+    return (
+      <span>
+        · {t("storage.silentTracks", { count })}
+        {(item.silentBytes ?? 0) > 0 && <> · {t("storage.silentFreed", { size: formatFileSize(item.silentBytes ?? 0) })}</>}
+      </span>
+    );
+  };
+
   const renderList = () => {
     if (!candidates || items.length === 0) {
-      return <div className={modal.status}>{t("storage.candidatesEmpty")}</div>;
+      return (
+        <>
+          {renderSilenceCheck()}
+          <div className={modal.status}>{t("storage.candidatesEmpty")}</div>
+        </>
+      );
     }
     return (
+      <>
+      {renderSilenceCheck()}
       <div className={modal.panel}>
         <label className={modal.panelHead}>
           <Checkbox checked={headChecked} onCheckedChange={toggleAll} disabled={busy} />
@@ -436,11 +517,16 @@ export function StorageModal({ onClose }: Props) {
               checked={selected.has(item.id)}
               onToggle={toggle}
               disabled={busy}
-              extraMeta={kbps != null && <span>· {t("storage.bitrate", { mbps: (kbps / 1000).toFixed(1) })}</span>}
+              extraMeta={
+                kind === "silentAudio"
+                  ? silentMeta(item)
+                  : kbps != null && <span>· {t("storage.bitrate", { mbps: (kbps / 1000).toFixed(1) })}</span>
+              }
             />
           );
         })}
       </div>
+      </>
     );
   };
 
@@ -480,7 +566,10 @@ export function StorageModal({ onClose }: Props) {
     }
     return candidates && candidates.totalCount > 0 ? (
       <span className={modal.strong}>
-        {t("storage.candidatesSummary", { count: candidates.totalCount, size: formatFileSize(candidates.totalBytes) })}
+        {t(kind === "silentAudio" ? "storage.silentSummary" : "storage.candidatesSummary", {
+          count: candidates.totalCount,
+          size: formatFileSize(candidates.totalBytes),
+        })}
       </span>
     ) : null;
   };
@@ -498,10 +587,15 @@ export function StorageModal({ onClose }: Props) {
           <>
             <span className={`${modal.note} ${modal.footerLead}`}>
               {selectedItems.length > 0 &&
-                t(kind === "duplicates" ? "storage.dupSelectedSummary" : "storage.selectedSummary", {
-                  count: selectedItems.length,
-                  size: formatFileSize(selectedBytes),
-                })}
+                (kind === "silentAudio"
+                  ? t("storage.silentSelectedSummary", {
+                      count: selectedItems.length,
+                      size: formatFileSize(selectedSilentBytes),
+                    })
+                  : t(kind === "duplicates" ? "storage.dupSelectedSummary" : "storage.selectedSummary", {
+                      count: selectedItems.length,
+                      size: formatFileSize(selectedBytes),
+                    }))}
             </span>
             <Button variant="secondary" disabled={trashing} onClick={() => dialog.close()}>
               {t("storage.close")}
@@ -512,11 +606,26 @@ export function StorageModal({ onClose }: Props) {
                 disabled={selectedItems.length === 0 || busy}
                 onClick={() => {
                   setBatchItems(selectedItems);
+                  setBatchKinds(undefined);
                   setBatchOpen(true);
                 }}
               >
                 <Shrink aria-hidden />
                 {t("storage.convertAv1")}
+              </Button>
+            )}
+            {kind === "silentAudio" && (
+              <Button
+                variant="soft"
+                disabled={selectedItems.length === 0 || busy}
+                onClick={() => {
+                  setBatchItems(selectedItems);
+                  setBatchKinds(["dropSilent"]);
+                  setBatchOpen(true);
+                }}
+              >
+                <VolumeX aria-hidden />
+                {t("storage.dropSilent")}
               </Button>
             )}
             <Button variant="danger" disabled={selectedItems.length === 0 || busy} onClick={() => setConfirmOpen(true)}>
@@ -572,6 +681,7 @@ export function StorageModal({ onClose }: Props) {
         open={batchOpen}
         onOpenChange={setBatchOpen}
         items={batchItems}
+        kinds={batchKinds}
         onQueued={() => setSelected(new Set())}
       />
     </>

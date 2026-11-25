@@ -105,7 +105,10 @@
     "audioYesShort": "有",
     "audioNoShort": "无",
     "av1OnlyShort": "已转换",
-    "av1ExcludeShort": "排除"
+    "av1ExcludeShort": "排除",
+    "audioSilentShort": "静音",
+    "audioSilent": "静音音轨",
+    "audioSilentNote": "仅限在整理界面中检查过的视频"
   },
   "batch": {
     "selectedCount": "已选 {{count}} 个",
@@ -656,7 +659,15 @@
     "trimBeyond": "结束时间超过了视频长度（{{duration}}）。",
     "trimTooShort": "保留范围太短。",
     "remuxNothing": "请移除轨道或指定保留范围。",
-    "discardNoteSmall": "如果转换后的文件没有比原文件小，将丢弃转换后的文件并保留原文件。"
+    "discardNoteSmall": "如果转换后的文件没有比原文件小，将丢弃转换后的文件并保留原文件。",
+    "mode_dropSilent": "移除静音音轨",
+    "dropSilentDesc": "仅移除已确认为静音的音轨。不会重新编码，视频和其他音频保持不变。",
+    "silentBadge": "静音",
+    "silenceCheck": "检查静音音轨",
+    "silenceChecking": "正在测量音量…",
+    "silenceNone": "没有静音音轨。",
+    "silenceFound": "发现 {{count}} 条静音音轨，已取消勾选。",
+    "silenceError": "无法测量音量：{{error}}"
   },
   "export": {
     "title": "导出 / 导入",
@@ -909,6 +920,16 @@
     "aiRemoveConfirmDescInUse": "将删除模型文件（{{size}}）。AI 标签建议正在使用此模型，下次使用时需要重新下载。",
     "aiRemoveConfirm": "删除",
     "aiRemoveDone": "已删除 AI 模型（释放了 {{size}}）",
-    "aiRemoveError": "无法删除 AI 模型：{{error}}"
+    "aiRemoveError": "无法删除 AI 模型：{{error}}",
+    "kindSilentAudio": "静音音轨",
+    "kindDescSilentAudio": "带有音轨但内容为静音的视频（屏幕录制、静音导出等）。移除静音音轨可在不改动画面的情况下节省空间。",
+    "silenceUnchecked": "有 {{count}} 个视频尚未检查是否为静音。检查后会显示在列表中。",
+    "silenceProgress": "正在检查音量（{{done}} / {{total}}）",
+    "silenceCheck": "检查是否静音",
+    "silentTracks": "静音音轨 {{count}} 条",
+    "silentFreed": "移除可省约 {{size}}",
+    "silentSummary": "{{count}} 个 · 移除后约可释放 {{size}}",
+    "silentSelectedSummary": "已选 {{count}} 个 · 移除约 {{size}}",
+    "dropSilent": "移除静音音轨"
   }
 }

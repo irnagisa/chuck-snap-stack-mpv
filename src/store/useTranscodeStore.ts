@@ -22,7 +22,9 @@ export type TranscodeMode =
   /** 映像はコピーし、音声だけ Opus に */
   | { kind: 'audio' }
   /** 再エンコードせず、選んだトラックだけ残す・切り詰める */
-  | { kind: 'remux'; streams: number[]; trimStart: number | null; trimEnd: number | null };
+  | { kind: 'remux'; streams: number[]; trimStart: number | null; trimEnd: number | null }
+  /** 再エンコードせず、指定した音声トラックだけ外す (無音のトラックの整理用) */
+  | { kind: 'dropStreams'; streams: number[] };
 
 export interface TranscodeJob {
   id: number;

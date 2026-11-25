@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
 import { useTranscodeStore } from '../../store/useTranscodeStore';
@@ -18,9 +18,12 @@ import {
   type TranscodeKind,
   type TranscodeMode,
 } from "./transcodeJob";
+import type { SilenceReport, StoredSilence } from "./storageTypes";
 import styles from "./LibraryModal.module.css";
 
-const KINDS: TranscodeKind[] = ['av1', 'hevc', 'audio', 'remux'];
+/** 画面で選べる種類 (dropStreams は整理画面の「無音のトラックを外す」専用) */
+type ModalKind = Exclude<TranscodeKind, 'dropStreams'>;
+const KINDS: ModalKind[] = ['av1', 'hevc', 'audio', 'remux'];
 
 interface Props {
   video: Video;
@@ -36,7 +39,7 @@ export function TranscodeModal({ video, onClose }: Props) {
     s.current?.videoPath === video.path || s.queue.some((j) => j.videoPath === video.path),
   );
 
-  const [kind, setKind] = useState<TranscodeKind>('av1');
+  const [kind, setKind] = useState<ModalKind>('av1');
   const [inputSizeBytes, setInputSizeBytes] = useState<number | null>(null);
   const [estimate, setEstimate] = useState<TranscodeEstimate | null>(null);
   const [trashOriginal, setTrashOriginal] = useState(false);
@@ -50,6 +53,12 @@ export function TranscodeModal({ video, onClose }: Props) {
   const [kept, setKept] = useState<Set<number>>(new Set());
   const [startText, setStartText] = useState('');
   const [endText, setEndText] = useState('');
+  // 無音の音声トラック (undefined: 読み込み中 / null: まだ調べていない)
+  const [silence, setSilence] = useState<StoredSilence | null | undefined>(undefined);
+  const [checkingSilence, setCheckingSilence] = useState(false);
+  const [silenceError, setSilenceError] = useState<string | null>(null);
+  /** 無音のトラックを残すトラックから外したか (一度だけ。その後の選び直しは上書きしない) */
+  const silenceApplied = useRef(false);
   const dialog = useDialogClose(onClose);
 
   const displayName = video.title ?? video.path.split('/').pop() ?? video.path;
@@ -80,6 +89,33 @@ export function TranscodeModal({ video, onClose }: Props) {
       .catch((e: unknown) => console.warn('[transcode] 変換効果の見積もりに失敗:', e));
     return () => { cancelled = true; };
   }, [video.path]);
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<StoredSilence | null>('get_audio_silence', { videoId: video.id })
+      .then((s) => { if (!cancelled) setSilence(s); })
+      .catch(() => { if (!cancelled) setSilence(null); });
+    return () => { cancelled = true; };
+  }, [video.id]);
+
+  // 無音と分かっているトラックは、最初から残すトラックに含めない
+  useEffect(() => {
+    if (!estimate || !silence || silenceApplied.current || silence.silentStreams.length === 0) return;
+    silenceApplied.current = true;
+    setKept((prev) => new Set([...prev].filter((i) => !silence.silentStreams.includes(i))));
+  }, [estimate, silence]);
+
+  const handleCheckSilence = async () => {
+    setCheckingSilence(true);
+    setSilenceError(null);
+    try {
+      setSilence(await invoke<SilenceReport>('detect_silent_audio', { videoId: video.id }));
+    } catch (e) {
+      setSilenceError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCheckingSilence(false);
+    }
+  };
 
   const duration = estimate?.duration ?? video.duration ?? 0;
 
@@ -236,6 +272,10 @@ export function TranscodeModal({ video, onClose }: Props) {
               onEndChange={setEndText}
               error={remux.error}
               durationLabel={formatTime(duration)}
+              silence={silence}
+              checkingSilence={checkingSilence}
+              silenceError={silenceError}
+              onCheckSilence={handleCheckSilence}
             />
           )}
 
