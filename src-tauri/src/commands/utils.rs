@@ -17,6 +17,22 @@ pub fn normalize_path_str(s: &str) -> String {
     s.nfc().collect()
 }
 
+/// 整理画面の確認など、急がない処理で ffmpeg / ffprobe を起動するときのコマンド。
+/// macOS では `taskpolicy -c utility` を通して CPU と読み書きの優先度を下げ、
+/// 再生や他のアプリの操作を先に回す (taskpolicy は exec で置き換わるので、pid は ffmpeg 自身になる)
+pub fn background_command(program: &str) -> tokio::process::Command {
+    #[cfg(target_os = "macos")]
+    {
+        const TASKPOLICY: &str = "/usr/sbin/taskpolicy";
+        if Path::new(TASKPOLICY).exists() {
+            let mut cmd = tokio::process::Command::new(TASKPOLICY);
+            cmd.args(["-c", "utility", program]);
+            return cmd;
+        }
+    }
+    tokio::process::Command::new(program)
+}
+
 /// 絶対パスであり `..` コンポーネントや制御文字を含まないことを検証する。
 pub fn validate_path(path: &str) -> Result<PathBuf, String> {
     // null バイト・改行文字はパスインジェクションに使われる可能性がある

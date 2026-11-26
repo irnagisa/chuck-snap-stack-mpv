@@ -207,7 +207,9 @@
     "aiModelDownloading": "ダウンロード中",
     "aiModelUninstallConfirmTitle": "モデルをアンインストールしますか？",
     "aiModelUninstallConfirmDesc": "モデルファイルが削除されます。再度 AI タグ提案を使用するには再インストールが必要です。",
-    "aiModelUninstallConfirm": "アンインストール"
+    "aiModelUninstallConfirm": "アンインストール",
+    "backgroundChecks": "整理用の確認を裏で進める",
+    "backgroundChecksDesc": "何もしていないとき、重複の比較に使う pHash と無音のトラックの簡易判定を少しずつ済ませておきます。再生中・変換中は休みます"
   },
   "keybindings": {
     "pause": "一時停止/再開",
@@ -680,7 +682,12 @@
     "silenceChecking": "音量を調べています…",
     "silenceNone": "無音の音声トラックはありません。",
     "silenceFound": "無音の音声トラックが {{count}} 本あります。最初から外してあります。",
-    "silenceError": "音量を調べられませんでした: {{error}}"
+    "silenceError": "音量を調べられませんでした: {{error}}",
+    "silenceSampled": "何か所かを読んだ簡易判定では、無音の見込みのトラックが {{count}} 本あります。外す前に全体を読んで確かめてください。",
+    "silenceVerify": "全体を読んで確かめる",
+    "silentBadgeSampled": "無音?",
+    "dropSilentVerify": "{{count}} 件は簡易判定です。変換の直前に全体を読んで確かめ、音があったトラックは外しません。",
+    "dropSilentNotSilent": "「{{name}}」は音が見つかったので、トラックを外しませんでした"
   },
   "export": {
     "title": "エクスポート / インポート",
@@ -951,7 +958,8 @@
     "silentFreed": "外すと約 {{size}}",
     "silentSummary": "{{count}} 件 · 外すと約 {{size}} 空きます",
     "silentSelectedSummary": "{{count}} 件を選択 · 外すと約 {{size}}",
-    "dropSilent": "無音のトラックを外す"
+    "dropSilent": "無音のトラックを外す",
+    "silentSampled": "簡易判定"
   },
   "groups": {
     "section": "グループ",

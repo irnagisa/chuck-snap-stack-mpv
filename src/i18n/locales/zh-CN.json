@@ -207,7 +207,9 @@
     "aiModelDownloading": "下载中",
     "aiModelUninstallConfirmTitle": "卸载 AI 模型？",
     "aiModelUninstallConfirmDesc": "模型文件将被删除。如需再次使用 AI 标签建议，需要重新安装。",
-    "aiModelUninstallConfirm": "卸载"
+    "aiModelUninstallConfirm": "卸载",
+    "backgroundChecks": "在后台进行整理检查",
+    "backgroundChecksDesc": "空闲时逐步计算用于重复检测的 pHash，并快速检查静音音轨。播放或转换时暂停"
   },
   "keybindings": {
     "pause": "播放/暂停",
@@ -680,7 +682,12 @@
     "silenceChecking": "正在测量音量…",
     "silenceNone": "没有静音音轨。",
     "silenceFound": "发现 {{count}} 条静音音轨，已取消勾选。",
-    "silenceError": "无法测量音量：{{error}}"
+    "silenceError": "无法测量音量：{{error}}",
+    "silenceSampled": "快速检查了几个位置，有 {{count}} 条音轨可能是静音。移除前请读取整个文件确认。",
+    "silenceVerify": "读取整个文件确认",
+    "silentBadgeSampled": "静音?",
+    "dropSilentVerify": "其中 {{count}} 项仅经过快速检查。转换前会读取整个文件确认，有声音的音轨不会被移除。",
+    "dropSilentNotSilent": "“{{name}}”中检测到声音，未移除音轨"
   },
   "export": {
     "title": "导出 / 导入",
@@ -951,7 +958,8 @@
     "silentFreed": "移除可省约 {{size}}",
     "silentSummary": "{{count}} 个 · 移除后约可释放 {{size}}",
     "silentSelectedSummary": "已选 {{count}} 个 · 移除约 {{size}}",
-    "dropSilent": "移除静音音轨"
+    "dropSilent": "移除静音音轨",
+    "silentSampled": "快速检查"
   },
   "groups": {
     "section": "分组",

@@ -15,7 +15,7 @@ import {
   type TranscodeEstimate,
   type TranscodeMode,
 } from "./transcodeJob";
-import { bitrateKbps, type CleanupItem } from "./storageTypes";
+import { bitrateKbps, type CleanupItem, type SilenceReport } from "./storageTypes";
 import modal from "./LibraryModal.module.css";
 
 /**
@@ -57,6 +57,8 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, kinds = DEFAUL
   /** 無音のトラックを外すとき、外すトラックが分かっている動画 */
   const dropTargets = items.filter((i) => (i.silentStreams?.length ?? 0) > 0);
   const silentBytes = dropTargets.reduce((s, i) => s + (i.silentBytes ?? 0), 0);
+  /** 簡易判定の動画 (外す前に全体を読んで確かめる) */
+  const sampledCount = dropTargets.filter((i) => i.silentSampled).length;
 
   useEffect(() => {
     if (!open || !firstPath || hevcAvailable != null || !kinds.some((k) => k !== "dropSilent")) return;
@@ -83,6 +85,19 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, kinds = DEFAUL
     }
   };
 
+  /**
+   * 簡易判定で無音とした動画は、変換の直前にファイル全体を読んで確かめ、本当に無音のトラックだけ外す。
+   * 音が見つかって外すものがなくなったら変換しない
+   */
+  const confirmSilent = (item: CleanupItem) => async (): Promise<TranscodeMode | null> => {
+    const report = await invoke<SilenceReport>("detect_silent_audio", { videoId: item.id, thorough: true });
+    if (report.silentStreams.length === 0) {
+      toast.info(t("transcode.dropSilentNotSilent", { name: item.title ?? item.path.split("/").pop() ?? item.path }));
+      return null;
+    }
+    return { kind: "dropStreams", streams: report.silentStreams };
+  };
+
   const handleStart = () => {
     let added = 0;
     for (const item of items) {
@@ -99,7 +114,7 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, kinds = DEFAUL
           createdAt: item.createdAt || null,
         },
         mode,
-        { trashOriginal },
+        { trashOriginal, prepare: kind === "dropSilent" && item.silentSampled ? confirmSilent(item) : undefined },
       );
       if (ok) added++;
     }
@@ -148,6 +163,7 @@ export function TranscodeBatchDialog({ open, onOpenChange, items, kinds = DEFAUL
         {kind === "dropSilent" && (
           <div>
             <p className={modal.note}>{t("transcode.dropSilentDesc")}</p>
+            {sampledCount > 0 && <p className={modal.note}>{t("transcode.dropSilentVerify", { count: sampledCount })}</p>}
             {silentBytes > 0 && (
               <p className={modal.hintAccent}>{t("transcode.audioSaving", { size: formatFileSize(silentBytes) })}</p>
             )}

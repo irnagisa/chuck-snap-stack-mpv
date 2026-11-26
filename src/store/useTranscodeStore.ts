@@ -32,6 +32,11 @@ export interface TranscodeJob {
   videoName: string;
   durationSecs: number;
   mode: TranscodeMode;
+  /**
+   * 変換の直前に呼ばれ、実際に使う指定を返す (null なら変換せずに外す)。
+   * 待機中に変わりうるもの (簡易判定だった無音のトラックの確認など) を最新にするために使う
+   */
+  prepare?: () => Promise<TranscodeMode | null>;
   /** 変換成功後に呼ばれる (メタデータのコピー等)。モーダルが閉じた後に実行されるため、ストアの関数だけで完結させること */
   onSuccess: (outputPath: string) => Promise<void>;
 }
@@ -108,7 +113,7 @@ let _processing = false;
 let _cancelRequested = false;
 
 export const useTranscodeStore = create<TranscodeStore>((set, get) => {
-  async function runJob(job: TranscodeJob): Promise<'succeeded' | 'failed' | 'cancelled' | 'discarded'> {
+  async function runJob(job: TranscodeJob): Promise<'succeeded' | 'failed' | 'cancelled' | 'discarded' | 'skipped'> {
     try {
       // 待機中に移動・削除された可能性があるため、実行直前に存在を確認する
       const inputSize = await invoke<number>('get_file_size', { path: job.videoPath }).catch(() => null);
@@ -117,10 +122,14 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
       }
       if (_cancelRequested) return 'cancelled';
 
+      const mode = job.prepare ? await job.prepare() : job.mode;
+      if (_cancelRequested) return 'cancelled';
+      if (!mode) return 'skipped';
+
       const outcome = await invoke<TranscodeOutcome>('transcode_video', {
         inputPath: job.videoPath,
         durationSecs: job.durationSecs,
-        mode: job.mode,
+        mode,
       });
       if (outcome.status === 'discarded') {
         // 変換後のファイルは破棄済み。元ファイル・メタデータには触らない (onSuccess も呼ばない)
@@ -187,7 +196,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
         _cancelRequested = false;
         set((s) => ({ current: job, queue: s.queue.slice(1), progress: null }));
         const outcome = await runJob(job);
-        if (outcome === 'cancelled') {
+        if (outcome === 'cancelled' || outcome === 'skipped') {
           set((s) => ({ batch: { ...s.batch, total: s.batch.total - 1 } }));
         }
       }

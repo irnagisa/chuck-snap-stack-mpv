@@ -468,7 +468,7 @@ async fn extract_frame_with_ffmpeg(
     let tmp = std::env::temp_dir().join(format!("phash_{:016x}.jpg", name_hash));
 
     // Try seeking to 10 s first; some short videos may fail here
-    let status = tokio::process::Command::new(ffmpeg_path)
+    let status = crate::commands::utils::background_command(ffmpeg_path)
         .args([
             "-y",
             "-ss", "00:00:10",
@@ -489,7 +489,7 @@ async fn extract_frame_with_ffmpeg(
         || tmp.metadata().map(|m| m.len() == 0).unwrap_or(true)
     {
         // Fallback: extract from beginning
-        let status2 = tokio::process::Command::new(ffmpeg_path)
+        let status2 = crate::commands::utils::background_command(ffmpeg_path)
             .args([
                 "-y",
                 "-i", video_path,

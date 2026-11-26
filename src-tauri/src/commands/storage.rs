@@ -781,25 +781,33 @@ pub struct CleanupItem {
     /// 無音のトラックが使っている容量の見込み
     #[serde(skip_serializing_if = "Option::is_none")]
     pub silent_bytes: Option<i64>,
+    /// 無音のトラックは一部を読んだだけの見込み (外す前に全体を読んで確かめる)。無音のトラックがなければ None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub silent_sampled: Option<bool>,
 }
 
 /// `cleanup_item_columns` の列の数 (後ろに列を足して読むときの番号)
-pub(crate) const CLEANUP_ITEM_COLUMN_COUNT: usize = 14;
+pub(crate) const CLEANUP_ITEM_COLUMN_COUNT: usize = 15;
 
 /// `CleanupItem` を読む SELECT の列 (`item_from_row` と順番を合わせる)
 pub(crate) fn cleanup_item_columns() -> String {
     format!(
         "id, path, title, thumbnail, file_size, COALESCE(media_type, 'video'),
          COALESCE(rating, 0), COALESCE(watch_count, 0), COALESCE(created_at, ''),
-         {LAST_SEEN_EXPR}, duration, category_id, silent_audio_streams, silent_audio_bytes"
+         {LAST_SEEN_EXPR}, duration, category_id, silent_audio_streams, silent_audio_bytes,
+         COALESCE(audio_silence_sampled, 0)"
     )
 }
 
 pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> {
     let streams = super::silent_audio::parse_stream_list(r.get::<_, Option<String>>(12)?.as_deref());
     let bytes: Option<i64> = r.get(13)?;
-    let (silent_streams, silent_bytes) =
-        if streams.is_empty() { (None, None) } else { (Some(streams), Some(bytes.unwrap_or(0))) };
+    let sampled: bool = r.get::<_, i64>(14)? != 0;
+    let (silent_streams, silent_bytes, silent_sampled) = if streams.is_empty() {
+        (None, None, None)
+    } else {
+        (Some(streams), Some(bytes.unwrap_or(0)), Some(sampled))
+    };
     Ok(CleanupItem {
         id: r.get(0)?,
         path: r.get(1)?,
@@ -817,6 +825,7 @@ pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> 
         clone_group: None,
         silent_streams,
         silent_bytes,
+        silent_sampled,
     })
 }
 

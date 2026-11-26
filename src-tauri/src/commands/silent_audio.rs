@@ -2,19 +2,23 @@
 //!
 //! 画面収録やミュートで書き出した動画には、音声トラックがあっても中身が無音のものがある。
 //! ffmpeg の volumedetect で音声トラックごとの最大音量を測り、どれも基準以下なら無音とみなす。
-//! 多くのファイルは音があるので、まず数か所だけを読んで音が見つかったトラックを外し、
-//! 残ったトラックだけファイル全体を読んで確かめる。
+//! 多くのファイルは音があるので、まず数か所だけを読んで音が見つかったトラックを外す。
+//! 残ったトラックは、調べ方によって次のように確かめる。
+//! - 簡易 (`Depth::Quick`): さらに多くの位置を 1 回の ffmpeg でまとめて読み、どこにも音がなければ無音とみなす。
+//!   ファイル全体は読まないので速いが、ごく一部にだけ音があるトラックは見落としうる
+//! - 精密 (`Depth::Full`): ファイル全体を読んで確かめる
 //!
 //! 結果は `videos` の次の列に保存する (NULL は未確認):
 //! - `audio_silence`: `none` (無音のトラックなし) / `partial` (一部が無音) / `all` (すべて無音)
 //! - `silent_audio_streams`: 無音のトラックの番号 (ffprobe の index、カンマ区切り)
 //! - `silent_audio_bytes`: 無音のトラックが使っている容量の見込み (外すと空く)
+//! - `audio_silence_sampled`: 1 なら無音のトラックは簡易判定 (外す前に精密に確かめる)
 
 use serde::Serialize;
 
 use super::settings::SharedAppSettings;
 use super::transcode::{probe_source, ProbeInfo, StreamInfo};
-use super::utils::validate_video_path;
+use super::utils::{background_command, validate_video_path};
 use crate::db::DbState;
 
 /// 最大音量 (dBFS) がこれ以下なら無音とみなす。
@@ -23,9 +27,21 @@ const SILENCE_DB: f64 = -60.0;
 
 /// これより短いファイルは最初から全体を読む
 const SAMPLE_MIN_DURATION: f64 = 120.0;
-/// 先に読む位置 (長さに対する割合) と、1 か所あたりの秒数
+/// 先に読む位置 (長さに対する割合) と、1 か所あたりの秒数。たいていの動画はここで音が見つかって終わる
 const SAMPLE_POSITIONS: [f64; 5] = [0.05, 0.25, 0.5, 0.75, 0.92];
 const SAMPLE_SECS: f64 = 6.0;
+/// 簡易判定で、先の位置で音が見つからなかったトラックをさらに読む箇所の数と、1 か所あたりの秒数
+const MORE_WINDOWS: usize = 24;
+const MORE_SECS: f64 = 4.0;
+
+/// 調べ方
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Depth {
+    /// 何か所かを読んで判定する (全体は読まない)
+    Quick,
+    /// 音が見つからなかったトラックはファイル全体を読んで確かめる
+    Full,
+}
 
 /// まだ調べていない動画の条件 (音声トラックがないと分かっているものは調べない)
 pub(crate) const UNCHECKED_FILTER: &str = "COALESCE(media_type, 'video') = 'video'
@@ -50,6 +66,8 @@ pub struct SilenceReport {
     pub status: String,
     pub silent_streams: Vec<usize>,
     pub silent_bytes: i64,
+    /// 無音のトラックは一部を読んだだけの簡易判定 (無音のトラックがなければ false)
+    pub sampled: bool,
     pub tracks: Vec<TrackLevel>,
 }
 
@@ -60,6 +78,7 @@ pub struct StoredSilence {
     pub status: String,
     pub silent_streams: Vec<usize>,
     pub silent_bytes: i64,
+    pub sampled: bool,
 }
 
 #[derive(Serialize)]
@@ -105,27 +124,27 @@ fn parse_peaks(stderr: &str, count: usize) -> Vec<Option<f64>> {
         .collect()
 }
 
-/// 指定した音声トラックの最大音量を測る。`window` は (開始秒, 長さ秒)。None ならファイル全体
+/// 指定した音声トラックの最大音量を測る。`windows` は読む区間 (開始秒, 長さ秒) で、空ならファイル全体。
+/// 区間ごとに入力を開き直して 1 回の ffmpeg でまとめて測り、トラックごとに全区間での最大を返す
 async fn measure_peaks(
     ffmpeg_path: &str,
     path: &str,
     indices: &[usize],
-    window: Option<(f64, f64)>,
+    windows: &[(f64, f64)],
 ) -> Result<Vec<Option<f64>>, String> {
-    let mut cmd = tokio::process::Command::new(ffmpeg_path);
+    let mut cmd = background_command(ffmpeg_path);
     cmd.args(["-nostdin", "-hide_banner", "-nostats", "-v", "info"]);
-    if let Some((start, len)) = window {
-        cmd.args(["-ss", &format!("{start:.3}"), "-t", &format!("{len:.3}")]);
+    if windows.is_empty() {
+        cmd.args(["-i", path]);
     }
-    let graph = indices
-        .iter()
-        .enumerate()
-        .map(|(i, idx)| format!("[0:{idx}]volumedetect[a{i}]"))
-        .collect::<Vec<_>>()
-        .join(";");
-    cmd.args(["-i", path, "-filter_complex", &graph]);
-    for i in 0..indices.len() {
-        cmd.args(["-map", &format!("[a{i}]")]);
+    for (start, len) in windows {
+        cmd.args(["-ss", &format!("{start:.3}"), "-t", &format!("{len:.3}"), "-i", path]);
+    }
+    let graph = volumedetect_graph(windows.len().max(1), indices);
+    let filters = windows.len().max(1) * indices.len();
+    cmd.args(["-filter_complex", &graph]);
+    for k in 0..filters {
+        cmd.args(["-map", &format!("[a{k}]")]);
     }
     cmd.args(["-f", "null", "-"]);
     let out = cmd
@@ -139,7 +158,29 @@ async fn measure_peaks(
         let tail: Vec<&str> = stderr.lines().rev().take(3).collect();
         return Err(format!("音量を測れませんでした: {}", tail.into_iter().rev().collect::<Vec<_>>().join(" / ")));
     }
-    Ok(parse_peaks(&stderr, indices.len()))
+    Ok(max_per_track(&parse_peaks(&stderr, filters), indices.len()))
+}
+
+/// 入力ごと・トラックごとの volumedetect。k 番目 (`[a{k}]`) は入力 k / tracks のトラック k % tracks
+fn volumedetect_graph(inputs: usize, indices: &[usize]) -> String {
+    (0..inputs)
+        .flat_map(|input| indices.iter().map(move |idx| (input, idx)))
+        .enumerate()
+        .map(|(k, (input, idx))| format!("[{input}:{idx}]volumedetect[a{k}]"))
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+/// 区間ごとの値 (入力順にトラックが並ぶ) を、トラックごとの最大にまとめる。どの区間も標本がなければ None
+fn max_per_track(peaks: &[Option<f64>], tracks: usize) -> Vec<Option<f64>> {
+    (0..tracks)
+        .map(|i| {
+            peaks.iter().skip(i).step_by(tracks.max(1)).fold(None, |acc: Option<f64>, p| match (acc, *p) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (a, b) => a.or(b),
+            })
+        })
+        .collect()
 }
 
 fn is_silent(peak: Option<f64>) -> bool {
@@ -152,8 +193,18 @@ fn sample_windows(duration: f64) -> Option<Vec<(f64, f64)>> {
         .then(|| SAMPLE_POSITIONS.iter().map(|f| ((duration * f).min(duration - SAMPLE_SECS), SAMPLE_SECS)).collect())
 }
 
+/// 簡易判定でさらに読む区間。全体に等間隔に散らす
+fn more_windows(duration: f64) -> Vec<(f64, f64)> {
+    (0..MORE_WINDOWS)
+        .map(|k| {
+            let center = duration * (k as f64 + 0.5) / MORE_WINDOWS as f64;
+            ((center - MORE_SECS / 2.0).clamp(0.0, (duration - MORE_SECS).max(0.0)), MORE_SECS)
+        })
+        .collect()
+}
+
 /// 測った結果をまとめる
-fn build_report(info: &ProbeInfo, audio: &[&StreamInfo], peaks: &[Option<f64>]) -> SilenceReport {
+fn build_report(info: &ProbeInfo, audio: &[&StreamInfo], peaks: &[Option<f64>], sampled: bool) -> SilenceReport {
     let tracks: Vec<TrackLevel> = audio
         .iter()
         .zip(peaks)
@@ -179,61 +230,73 @@ fn build_report(info: &ProbeInfo, audio: &[&StreamInfo], peaks: &[Option<f64>]) 
         status: status.into(),
         silent_streams: silent.iter().map(|s| s.index).collect(),
         silent_bytes,
+        sampled: sampled && !silent.is_empty(),
         tracks,
     }
 }
 
 /// ファイルの音声トラックが無音かを調べる
-async fn detect(ffmpeg_path: &str, ffprobe_path: &str, path: &str) -> Result<SilenceReport, String> {
+async fn detect(ffmpeg_path: &str, ffprobe_path: &str, path: &str, depth: Depth) -> Result<SilenceReport, String> {
     let info = probe_source(ffprobe_path, path).await?;
     let audio: Vec<&StreamInfo> = info.streams.iter().filter(|s| s.codec_type == "audio").collect();
     if audio.is_empty() {
-        return Ok(build_report(&info, &[], &[]));
+        return Ok(build_report(&info, &[], &[], false));
     }
 
-    // peaks[i] は audio[i] の最大音量。数か所読んで音が見つかったものは確定 (無音ではない)
+    // peaks[i] は audio[i] の最大音量。どこかで音が見つかったものは確定 (無音ではない)
     let mut peaks: Vec<Option<f64>> = vec![None; audio.len()];
     let mut loud = vec![false; audio.len()];
-    if let Some(windows) = sample_windows(info.duration) {
-        let indices: Vec<usize> = audio.iter().map(|s| s.index).collect();
-        for window in windows {
-            match measure_peaks(ffmpeg_path, path, &indices, Some(window)).await {
+    if let Some(first) = sample_windows(info.duration) {
+        let mut rounds = vec![first];
+        if depth == Depth::Quick {
+            rounds.push(more_windows(info.duration));
+        }
+        let mut readable = true;
+        for windows in rounds {
+            let rest: Vec<usize> = (0..audio.len()).filter(|i| !loud[*i]).collect();
+            let indices: Vec<usize> = rest.iter().map(|i| audio[*i].index).collect();
+            match measure_peaks(ffmpeg_path, path, &indices, &windows).await {
                 Ok(found) => {
-                    for (i, p) in found.into_iter().enumerate() {
-                        if !is_silent(p) && !loud[i] {
-                            loud[i] = true;
-                            peaks[i] = p;
-                        }
+                    for (i, p) in rest.into_iter().zip(found) {
+                        peaks[i] = max_per_track(&[peaks[i], p], 1)[0];
+                        loud[i] = !is_silent(peaks[i]);
                     }
                 }
                 // 途中を読めない形式は全体を読んで確かめる
                 Err(e) => {
                     log::debug!("[silent_audio] 一部だけ読めませんでした ({path}): {e}");
+                    readable = false;
                     break;
                 }
             }
             if loud.iter().all(|l| *l) {
-                return Ok(build_report(&info, &audio, &peaks));
+                return Ok(build_report(&info, &audio, &peaks, false));
             }
+        }
+        if readable && depth == Depth::Quick {
+            return Ok(build_report(&info, &audio, &peaks, true));
         }
     }
 
     let rest: Vec<usize> = (0..audio.len()).filter(|i| !loud[*i]).collect();
     let indices: Vec<usize> = rest.iter().map(|i| audio[*i].index).collect();
-    let found = measure_peaks(ffmpeg_path, path, &indices, None).await?;
+    let found = measure_peaks(ffmpeg_path, path, &indices, &[]).await?;
     for (i, p) in rest.into_iter().zip(found) {
         peaks[i] = p;
     }
-    Ok(build_report(&info, &audio, &peaks))
+    Ok(build_report(&info, &audio, &peaks, false))
 }
 
 fn save_report(conn: &rusqlite::Connection, video_id: i64, report: &SilenceReport) -> Result<(), String> {
     conn.execute(
-        "UPDATE videos SET audio_silence = ?1, silent_audio_streams = ?2, silent_audio_bytes = ?3 WHERE id = ?4",
+        "UPDATE videos SET audio_silence = ?1, silent_audio_streams = ?2, silent_audio_bytes = ?3,
+                           audio_silence_sampled = ?4
+         WHERE id = ?5",
         rusqlite::params![
             report.status,
             format_stream_list(&report.silent_streams),
             report.silent_bytes,
+            report.sampled as i64,
             video_id
         ],
     )
@@ -242,21 +305,25 @@ fn save_report(conn: &rusqlite::Connection, video_id: i64, report: &SilenceRepor
 }
 
 fn load_stored(conn: &rusqlite::Connection, video_id: i64) -> Result<Option<StoredSilence>, String> {
-    let row: Option<(Option<String>, Option<String>, Option<i64>)> = conn
-        .query_row(
-            "SELECT audio_silence, silent_audio_streams, silent_audio_bytes FROM videos WHERE id = ?1",
-            [video_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
-        .map(Some)
-        .or_else(|e| if e == rusqlite::Error::QueryReturnedNoRows { Ok(None) } else { Err(e.to_string()) })?;
-    Ok(row.and_then(|(status, streams, bytes)| {
-        status.map(|status| StoredSilence {
-            status,
-            silent_streams: parse_stream_list(streams.as_deref()),
-            silent_bytes: bytes.unwrap_or(0),
-        })
-    }))
+    let stored = conn.query_row(
+        "SELECT audio_silence, silent_audio_streams, silent_audio_bytes, audio_silence_sampled
+         FROM videos WHERE id = ?1",
+        [video_id],
+        |r| {
+            let Some(status) = r.get::<_, Option<String>>(0)? else { return Ok(None) };
+            Ok(Some(StoredSilence {
+                status,
+                silent_streams: parse_stream_list(r.get::<_, Option<String>>(1)?.as_deref()),
+                silent_bytes: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                sampled: r.get::<_, Option<i64>>(3)?.unwrap_or(0) != 0,
+            }))
+        },
+    );
+    match stored {
+        Ok(s) => Ok(s),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 // ── Tauri コマンド ───────────────────────────────────────────────────────────
@@ -285,12 +352,14 @@ pub async fn get_videos_without_silence_check(
     query_unchecked(&conn, limit)
 }
 
-/// 1 本の動画の音声トラックが無音かを調べ、結果を保存して返す
+/// 1 本の動画の音声トラックが無音かを調べ、結果を保存して返す。
+/// `thorough` が true なら、音が見つからなかったトラックはファイル全体を読んで確かめる (既定は簡易判定)
 #[tauri::command]
 pub async fn detect_silent_audio(
     db_state: tauri::State<'_, DbState>,
     app_settings: tauri::State<'_, SharedAppSettings>,
     video_id: i64,
+    thorough: Option<bool>,
 ) -> Result<SilenceReport, String> {
     let path: String = {
         let conn = db_state.conn_read()?;
@@ -302,7 +371,8 @@ pub async fn detect_silent_audio(
         let s = app_settings.lock().map_err(|e| e.to_string())?;
         (s.ffmpeg_path.clone(), s.ffprobe_path.clone())
     };
-    let report = detect(&ffmpeg_path, &ffprobe_path, &path).await?;
+    let depth = if thorough.unwrap_or(false) { Depth::Full } else { Depth::Quick };
+    let report = detect(&ffmpeg_path, &ffprobe_path, &path, depth).await?;
     let conn = db_state.conn()?;
     save_report(&conn, video_id, &report)?;
     Ok(report)
@@ -351,21 +421,23 @@ mod tests {
         let info = ProbeInfo::audio_only_for_test(100.0, &[(1, Some(128_000)), (2, Some(64_000))]);
         let audio: Vec<&StreamInfo> = info.streams.iter().collect();
 
-        let r = build_report(&info, &audio, &[Some(-10.0), Some(-91.0)]);
+        let r = build_report(&info, &audio, &[Some(-10.0), Some(-91.0)], true);
         assert_eq!(r.status, "partial");
         assert_eq!(r.silent_streams, vec![2]);
         assert_eq!(r.silent_bytes, 800_000);
+        assert!(r.sampled);
 
-        let r = build_report(&info, &audio, &[None, Some(f64::NEG_INFINITY)]);
+        let r = build_report(&info, &audio, &[None, Some(f64::NEG_INFINITY)], false);
         assert_eq!(r.status, "all");
         assert_eq!(r.silent_bytes, 2_400_000);
         assert_eq!(r.tracks[1].peak_db, None, "-inf は JSON にできないので None");
 
-        let r = build_report(&info, &audio, &[Some(-3.0), Some(-20.0)]);
+        let r = build_report(&info, &audio, &[Some(-3.0), Some(-20.0)], true);
         assert_eq!(r.status, "none");
         assert!(r.silent_streams.is_empty());
+        assert!(!r.sampled, "無音のトラックがなければ簡易判定の印は付けない");
 
-        assert_eq!(build_report(&info, &[], &[]).status, "none");
+        assert_eq!(build_report(&info, &[], &[], false).status, "none");
     }
 
     #[test]
@@ -374,6 +446,22 @@ mod tests {
         let w = sample_windows(600.0).unwrap();
         assert_eq!(w.len(), SAMPLE_POSITIONS.len());
         assert!(w.iter().all(|(s, l)| *s >= 0.0 && s + l <= 600.0));
+        let more = more_windows(600.0);
+        assert_eq!(more.len(), MORE_WINDOWS);
+        assert!(more.iter().all(|(s, l)| *s >= 0.0 && s + l <= 600.0));
+        assert!(more.windows(2).all(|p| p[0].0 < p[1].0), "前から順に並ぶ");
+    }
+
+    #[test]
+    fn graph_lists_tracks_per_input_and_peaks_fold_per_track() {
+        assert_eq!(
+            volumedetect_graph(2, &[1, 3]),
+            "[0:1]volumedetect[a0];[0:3]volumedetect[a1];[1:1]volumedetect[a2];[1:3]volumedetect[a3]"
+        );
+        // 入力 0: トラック 1 = -80, トラック 3 = 標本なし / 入力 1: トラック 1 = -20, トラック 3 = -inf
+        let folded = max_per_track(&[Some(-80.0), None, Some(-20.0), Some(f64::NEG_INFINITY)], 2);
+        assert_eq!(folded, vec![Some(-20.0), Some(f64::NEG_INFINITY)]);
+        assert_eq!(max_per_track(&[None, None], 1), vec![None]);
     }
 
     #[test]
@@ -410,16 +498,18 @@ mod tests {
         conn.execute("DELETE FROM videos WHERE id IN (?1, ?2)", [big, small]).unwrap();
 
         assert_eq!(load_stored(&conn, a).unwrap(), None);
-        let report = SilenceReport { status: "partial".into(), silent_streams: vec![2, 3], silent_bytes: 42, tracks: vec![] };
+        let report =
+            SilenceReport { status: "partial".into(), silent_streams: vec![2, 3], silent_bytes: 42, sampled: true, tracks: vec![] };
         save_report(&conn, a, &report).unwrap();
         assert_eq!(
             load_stored(&conn, a).unwrap(),
-            Some(StoredSilence { status: "partial".into(), silent_streams: vec![2, 3], silent_bytes: 42 })
+            Some(StoredSilence { status: "partial".into(), silent_streams: vec![2, 3], silent_bytes: 42, sampled: true })
         );
         assert_eq!(load_stored(&conn, 9999).unwrap(), None);
     }
 
-    /// 実際の ffmpeg で、無音と音ありのトラックを見分けられるか (ffmpeg がない環境では飛ばす)
+    /// 実際の ffmpeg で、無音と音ありのトラックを見分けられるか (ffmpeg がない環境では飛ばす)。
+    /// トラック 1 は無音、2 は全体に音、3 は読む位置のすき間 (5.5 秒から 1.5 秒) にだけ音がある
     #[tokio::test]
     async fn detects_silent_track_with_real_ffmpeg() {
         let (ffmpeg, ffprobe) = ("ffmpeg", "ffprobe");
@@ -434,17 +524,26 @@ mod tests {
             .args(["-f", "lavfi", "-i", "testsrc=d=150:s=64x48:r=5"])
             .args(["-f", "lavfi", "-i", "anullsrc=r=8000:cl=mono"])
             .args(["-f", "lavfi", "-i", "sine=f=440:r=8000:d=150"])
-            .args(["-map", "0", "-map", "1", "-map", "2", "-t", "150", "-c:v", "mpeg4", "-c:a", "pcm_s16le"])
+            .args(["-f", "lavfi", "-i", "sine=f=440:r=8000:d=1.5,adelay=5500,apad=whole_dur=150"])
+            .args(["-map", "0", "-map", "1", "-map", "2", "-map", "3", "-t", "150"])
+            .args(["-c:v", "mpeg4", "-c:a", "pcm_s16le"])
             .arg(&input)
             .status()
             .unwrap();
         assert!(status.success());
+        let path = input.to_str().unwrap();
 
-        let report = detect(ffmpeg, ffprobe, input.to_str().unwrap()).await.unwrap();
+        let quick = detect(ffmpeg, ffprobe, path, Depth::Quick).await.unwrap();
+        let full = detect(ffmpeg, ffprobe, path, Depth::Full).await.unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(report.status, "partial");
-        assert_eq!(report.silent_streams, vec![1]);
-        assert!(report.silent_bytes > 0);
-        assert!(!report.tracks[1].silent);
+
+        assert_eq!(quick.status, "partial");
+        assert_eq!(quick.silent_streams, vec![1, 3], "簡易判定は読まなかった部分の音を見落とす");
+        assert!(quick.sampled);
+        assert!(quick.silent_bytes > 0);
+        assert!(!quick.tracks[1].silent);
+
+        assert_eq!(full.silent_streams, vec![1], "精密に調べれば短い音も見つかる");
+        assert!(!full.sampled);
     }
 }
