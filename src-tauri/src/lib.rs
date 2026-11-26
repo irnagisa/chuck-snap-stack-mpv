@@ -3,7 +3,6 @@ pub mod commands;
 pub mod db;
 pub mod runtime;
 
-use std::sync::Mutex;
 
 use tauri::Manager;
 use ai::AiTaggerState;
@@ -26,28 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let db_path = app.path().app_data_dir()?.join("videos.db");
-            // 書き込み用接続: スキーマ初期化・マイグレーションはここで実施
-            let writer = rusqlite::Connection::open(&db_path)?;
-            db::schema::init_db(&writer)?;
-            db::migrations::run_data_migrations(&writer)?;
-            // watchDir/Inbox → watchDir/Unsorted への一回限りのディレクトリ名変更
-            if let Ok(mut stmt) = writer.prepare("SELECT path FROM watch_dirs") {
-                let paths: Vec<String> = stmt
-                    .query_map([], |r| r.get(0))
-                    .map(|rows| rows.filter_map(|r| r.ok()).collect())
-                    .unwrap_or_default();
-                for dir in paths {
-                    let old_inbox = std::path::Path::new(&dir).join("Inbox");
-                    let new_unsorted = std::path::Path::new(&dir).join("Unsorted");
-                    if old_inbox.is_dir() && !new_unsorted.exists() {
-                        let _ = std::fs::rename(&old_inbox, &new_unsorted);
-                    }
-                }
-            }
-            // 読み取り専用接続: WAL モードで writer と並行読み取りが可能
-            let reader = rusqlite::Connection::open(&db_path)?;
-            reader.execute_batch("PRAGMA journal_mode=WAL; PRAGMA query_only=ON;")?;
-            app.manage(DbState { writer: Mutex::new(writer), reader: Mutex::new(reader) });
+            app.manage(DbState::open(&db_path)?);
             // 前回の強制終了・クラッシュで残った AV1 変換の一時ファイルを掃除する
             {
                 let handle = app.handle().clone();

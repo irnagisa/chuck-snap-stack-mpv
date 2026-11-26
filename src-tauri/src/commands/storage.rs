@@ -190,7 +190,7 @@ type ThumbRefs = HashMap<String, Vec<(i64, String, String)>>;
 fn thumbnail_refs(conn: &rusqlite::Connection) -> Result<ThumbRefs, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, thumbnail, COALESCE(media_type, 'video') FROM videos
+            "SELECT id, thumbnail, media_type FROM videos
              WHERE thumbnail IS NOT NULL AND thumbnail != ''",
         )
         .map_err(|e| e.to_string())?;
@@ -306,8 +306,8 @@ fn sorted_buckets(map: HashMap<String, (u64, u64)>) -> Vec<SizeBucket> {
 fn library_usage(conn: &rusqlite::Connection) -> Result<LibraryUsage, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT path, COALESCE(media_type, 'video'), file_size, COALESCE(status, '')
-             FROM videos WHERE COALESCE(media_type, 'video') != 'link'",
+            "SELECT path, media_type, file_size, status
+             FROM videos WHERE media_type != 'link'",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -489,7 +489,7 @@ fn readable_dir_size(path: &Path) -> Option<u64> {
 fn quarantine_dir_candidates(conn: &rusqlite::Connection) -> Result<Vec<PathBuf>, String> {
     let mut parents: HashSet<PathBuf> = HashSet::new();
     let mut stmt = conn
-        .prepare("SELECT path FROM videos WHERE COALESCE(media_type, 'video') != 'link'")
+        .prepare("SELECT path FROM videos WHERE media_type != 'link'")
         .map_err(|e| e.to_string())?;
     for row in stmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())? {
         if let Some(parent) = Path::new(&row.map_err(|e| e.to_string())?).parent() {
@@ -679,7 +679,7 @@ const BITRATE_EXPR: &str = "(file_size * 8.0 / duration)";
 /// このアプリで再エンコードした出力 (`*.av1.mkv` / `*.hevc.mkv`) は対象外
 fn high_bitrate_filter() -> String {
     format!(
-        "AND COALESCE(media_type, 'video') = 'video' AND duration > 0
+        "AND media_type = 'video' AND duration > 0
          AND {BITRATE_EXPR} >= {HIGH_BITRATE_BPS}
          AND path NOT LIKE '%.av1.mkv' AND path NOT LIKE '%.hevc.mkv'"
     )
@@ -743,16 +743,16 @@ fn candidate_spec(kind: &str) -> Result<CandidateSpec, String> {
         },
         // 音声トラックがあるのに無音の動画 (調べたものだけ)。外すと空く容量の大きい順
         "silentAudio" => CandidateSpec {
-            filter: "AND COALESCE(media_type, 'video') = 'video' AND audio_silence IN ('all', 'partial')".into(),
+            filter: "AND media_type = 'video' AND sa.silence IN ('all', 'partial')".into(),
             threshold_days: None,
             min_bitrate_kbps: None,
-            order_by: CandidateOrder::Sql("COALESCE(silent_audio_bytes, 0) DESC, file_size DESC, id".into()),
-            sum_expr: "COALESCE(silent_audio_bytes, 0)",
+            order_by: CandidateOrder::Sql("COALESCE(sa.bytes, 0) DESC, file_size DESC, id".into()),
+            sum_expr: "COALESCE(sa.bytes, 0)",
             unchecked_filter: Some(super::silent_audio::UNCHECKED_FILTER.into()),
         },
         "unwatched" => CandidateSpec::by_size(
             format!(
-                "AND COALESCE(rating, 0) = 0 AND COALESCE(watch_count, 0) = 0
+                "AND rating = 0 AND watch_count = 0
                  AND watched_at IS NULL AND last_viewed_at IS NULL
                  AND datetime(created_at) < datetime('now', '-{UNWATCHED_DAYS} days')"
             ),
@@ -816,13 +816,15 @@ pub struct CleanupItem {
 /// `cleanup_item_columns` の列の数 (後ろに列を足して読むときの番号)
 pub(crate) const CLEANUP_ITEM_COLUMN_COUNT: usize = 15;
 
+/// `cleanup_item_columns` を読むときの FROM (無音の判定を横に付ける)
+pub(crate) const CLEANUP_FROM: &str = "videos LEFT JOIN media_silent_audio sa ON sa.video_id = videos.id";
+
 /// `CleanupItem` を読む SELECT の列 (`item_from_row` と順番を合わせる)
 pub(crate) fn cleanup_item_columns() -> String {
     format!(
-        "id, path, title, thumbnail, file_size, COALESCE(media_type, 'video'),
-         COALESCE(rating, 0), COALESCE(watch_count, 0), COALESCE(created_at, ''),
-         {LAST_SEEN_EXPR}, duration, category_id, silent_audio_streams, silent_audio_bytes,
-         COALESCE(audio_silence_sampled, 0)"
+        "id, path, title, thumbnail, file_size, media_type,
+         rating, watch_count, created_at,
+         {LAST_SEEN_EXPR}, duration, category_id, sa.streams, sa.bytes, COALESCE(sa.sampled, 0)"
     )
 }
 
@@ -858,8 +860,8 @@ pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> 
 }
 
 /// ファイルが手元にあり容量を使っている行の条件 (リンク・欠損・サイズ不明は対象外)
-pub(crate) const ON_DISK_FILTER: &str = "COALESCE(media_type, 'video') != 'link'
-           AND COALESCE(status, '') != 'missing'
+pub(crate) const ON_DISK_FILTER: &str = "media_type != 'link'
+           AND status != 'missing'
            AND file_size > 0";
 
 #[derive(Serialize, Debug)]
@@ -882,7 +884,7 @@ fn query_candidates(
     limit: i64,
 ) -> Result<CleanupCandidates, String> {
     let spec = candidate_spec(kind)?;
-    let base = format!("FROM videos WHERE {ON_DISK_FILTER} {}", spec.filter);
+    let base = format!("FROM {CLEANUP_FROM} WHERE {ON_DISK_FILTER} {}", spec.filter);
 
     let (total_count, total_bytes): (i64, i64) = conn
         .query_row(&format!("SELECT COUNT(*), COALESCE(SUM({}), 0) {base}", spec.sum_expr), [], |r| {
@@ -927,7 +929,7 @@ fn by_av1_saving(conn: &rusqlite::Connection, filter: &str, limit: i64) -> Resul
     use super::media_probe::{estimate_av1_saving, probe_from_row, PROBE_COLUMNS, PROBE_JOIN};
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {}, {PROBE_COLUMNS} FROM videos {PROBE_JOIN} WHERE {ON_DISK_FILTER} {filter}",
+            "SELECT {}, {PROBE_COLUMNS} FROM {CLEANUP_FROM} {PROBE_JOIN} WHERE {ON_DISK_FILTER} {filter}",
             cleanup_item_columns()
         ))
         .map_err(|e| e.to_string())?;
@@ -1321,19 +1323,19 @@ mod tests {
     #[test]
     fn silent_audio_lists_checked_videos_by_reclaimable_bytes() {
         let conn = setup();
-        let small = add_candidate(
-            &conn,
-            "/m/a.mp4",
-            1000,
-            "audio_silence = 'partial', silent_audio_streams = '2', silent_audio_bytes = 10",
-        );
-        let big = add_candidate(
-            &conn,
-            "/m/b.mp4",
-            500,
-            "audio_silence = 'all', silent_audio_streams = '1,3', silent_audio_bytes = 300",
-        );
-        add_candidate(&conn, "/m/loud.mp4", 900, "audio_silence = 'none'");
+        let silence = |id: i64, silence: &str, streams: Option<&str>, bytes: Option<i64>| {
+            conn.execute(
+                "INSERT INTO media_silent_audio (video_id, silence, streams, bytes) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, silence, streams, bytes],
+            )
+            .unwrap();
+        };
+        let small = add_candidate(&conn, "/m/a.mp4", 1000, "");
+        silence(small, "partial", Some("2"), Some(10));
+        let big = add_candidate(&conn, "/m/b.mp4", 500, "");
+        silence(big, "all", Some("1,3"), Some(300));
+        let loud = add_candidate(&conn, "/m/loud.mp4", 900, "");
+        silence(loud, "none", None, None);
         add_candidate(&conn, "/m/unchecked.mp4", 900, "");
         add_candidate(&conn, "/m/mute.mp4", 900, "has_audio = 0");
 

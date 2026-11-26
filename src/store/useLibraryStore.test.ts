@@ -133,7 +133,7 @@ describe('fetchVideos', () => {
     const video = { id: 1, path: '/a.mp4', title: 'A', duration: 60, thumbnail: null,
       watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
       watch_count: 0, created_at: '2024-01-01', media_type: 'video', source_url: null,
-      status: null, source_type: null };
+      status: 'active' as const, source_type: null };
     mockInvoke.mockResolvedValueOnce({ videos: [video], totalCount: 1, videoTags: [] });
 
     await useLibraryStore.getState().fetchVideos();
@@ -328,7 +328,7 @@ describe('updateProgress', () => {
     const video = { id: 1, path: '/a.mp4', title: 'A', duration: 60, thumbnail: null,
       watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
       watch_count: 0, created_at: '2024-01-01', media_type: 'video' as const, source_url: null,
-      status: null, source_type: null };
+      status: 'active' as const, source_type: null };
     useLibraryStore.setState({ videos: [video] });
     mockInvoke.mockResolvedValueOnce(undefined); // db_update_progress
 
@@ -344,7 +344,7 @@ describe('incrementWatchCount', () => {
     const video = { id: 1, path: '/a.mp4', title: 'A', duration: 60, thumbnail: null,
       watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
       watch_count: 2, created_at: '2024-01-01', media_type: 'video' as const, source_url: null,
-      status: null, source_type: null };
+      status: 'active' as const, source_type: null };
     useLibraryStore.setState({ videos: [video] });
     mockInvoke.mockResolvedValueOnce(undefined);
 
@@ -360,7 +360,7 @@ describe('updateVideo', () => {
     const video = { id: 1, path: '/a.mp4', title: 'Old', duration: 60, thumbnail: null,
       watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
       watch_count: 0, created_at: '2024-01-01', media_type: 'video' as const, source_url: null,
-      status: null, source_type: null };
+      status: 'active' as const, source_type: null };
     useLibraryStore.setState({ videos: [video] });
     mockInvoke.mockResolvedValueOnce(undefined);
 

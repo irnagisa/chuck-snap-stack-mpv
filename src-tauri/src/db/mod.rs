@@ -1,6 +1,7 @@
 pub mod migrations;
 pub mod schema;
 
+use std::path::Path;
 use std::sync::Mutex;
 
 use rusqlite::Connection;
@@ -15,6 +16,16 @@ pub struct DbState {
 }
 
 impl DbState {
+    /// DB を開く。writer でスキーマを用意し (古い版なら書き換え)、reader は読み取り専用にする。
+    pub fn open(path: &Path) -> rusqlite::Result<Self> {
+        let writer = Connection::open(path)?;
+        schema::init_db(&writer)?;
+        let reader = Connection::open(path)?;
+        schema::configure(&reader)?;
+        reader.execute_batch("PRAGMA query_only = ON")?;
+        Ok(Self { writer: Mutex::new(writer), reader: Mutex::new(reader) })
+    }
+
     /// 書き込みコマンド用ロック取得ヘルパー。
     pub fn conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
         self.writer

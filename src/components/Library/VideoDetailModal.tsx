@@ -200,7 +200,7 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
         created_at: new Date().toISOString(),
         media_type: 'video',
         source_url: null,
-        status: null,
+        status: 'active',
         source_type: null,
       };
       openDetailVideo(minimal);

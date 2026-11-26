@@ -11,9 +11,10 @@ export interface Video {
   has_audio: number | null;
   watch_count: number;
   created_at: string;
-  media_type: 'video' | 'audio' | 'image' | 'link' | null;
+  media_type: 'video' | 'audio' | 'image' | 'link';
   source_url: string | null;
-  status: 'inbox' | null;
+  /** inbox: 未整理 / active: 整理済み / missing: ファイルが見つからない */
+  status: 'inbox' | 'active' | 'missing';
   source_type: 'import' | 'download' | 'dragdrop' | 'watcher' | 'link' | null;
 }
 

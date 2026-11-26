@@ -417,23 +417,8 @@ pub async fn analyze_thumbnail_for_tags(
     .await?;
     eprintln!("[ai] 推論完了: {}件のタグ候補", ai_tags.len());
 
-    // Build suggestions
-    let result = suggest::build_suggestions(&ai_tags, &user_tags, 20);
-
-    // Persist to DB
-    {
-        let matched_json = serde_json::to_string(&result.matched_tags).unwrap_or_default();
-        let new_json = serde_json::to_string(&result.new_suggestions).unwrap_or_default();
-        let conn = db.conn()?;
-        conn.execute(
-            "UPDATE videos SET ai_tag_suggestions = ?1, ai_new_suggestions = ?2,
-             ai_analyzed_at = datetime('now') WHERE id = ?3",
-            rusqlite::params![matched_json, new_json, video_id],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    Ok(result)
+    // 提案はその場で返すだけで DB には残さない (開くたびに推論し直す)
+    Ok(suggest::build_suggestions(&ai_tags, &user_tags, 20))
 }
 
 #[cfg(test)]

@@ -69,7 +69,7 @@ pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibrarySt
             "SELECT
                COUNT(*),
                SUM(CASE WHEN media_type = 'image' THEN 1 ELSE 0 END),
-               SUM(CASE WHEN media_type IS NULL OR media_type != 'image' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN media_type != 'image' THEN 1 ELSE 0 END),
                SUM(CASE WHEN watched_at IS NOT NULL THEN 1 ELSE 0 END),
                COALESCE(SUM(duration), 0),
                COALESCE(AVG(NULLIF(rating, 0)), 0),
@@ -142,8 +142,8 @@ pub async fn db_get_library_stats(state: State<'_, DbState>) -> Result<LibrarySt
     let top_watched = {
         let mut stmt = conn
             .prepare(
-                "SELECT title, path, COALESCE(watch_count, 0) as wc FROM videos
-                 WHERE COALESCE(watch_count, 0) > 0 ORDER BY wc DESC LIMIT 5",
+                "SELECT title, path, watch_count as wc FROM videos
+                 WHERE watch_count > 0 ORDER BY wc DESC LIMIT 5",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt

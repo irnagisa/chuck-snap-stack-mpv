@@ -13,15 +13,11 @@ use serde::Serialize;
 use tauri::State;
 use unicode_normalization::UnicodeNormalization;
 
-use super::db_videos::{video_from_row, Video};
+use super::db_videos::{query_videos, video_from_row, Video, VIDEO_COLUMNS, VIDEO_COLUMN_COUNT};
 use crate::db::DbState;
 
 pub const KIND_VARIANTS: &str = "variants";
 pub const KIND_SERIES: &str = "series";
-
-const VIDEO_COLUMNS: &str = "v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
-     v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-     v.created_at, v.media_type, v.source_url, v.status, v.source_type";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -500,7 +496,7 @@ pub fn reorder_group(conn: &Connection, group_id: i64, video_ids: &[i64]) -> Res
 pub fn get_group(conn: &Connection, group_id: i64) -> rusqlite::Result<Option<GroupDetail>> {
     let head = conn
         .query_row(
-            "SELECT id, name, kind, cover_video_id, COALESCE(created_at, '') FROM media_groups WHERE id = ?1",
+            "SELECT id, name, kind, cover_video_id, created_at FROM media_groups WHERE id = ?1",
             [group_id],
             |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<i64>>(3)?, r.get::<_, String>(4)?)),
         )
@@ -508,11 +504,11 @@ pub fn get_group(conn: &Connection, group_id: i64) -> rusqlite::Result<Option<Gr
     let Some((id, name, kind, cover_video_id, created_at)) = head else {
         return Ok(None);
     };
-    let mut stmt = conn.prepare(&format!(
-        "SELECT {VIDEO_COLUMNS} FROM videos v WHERE v.group_id = ?1
-         ORDER BY COALESCE(v.group_position, 0), v.id"
-    ))?;
-    let members = stmt.query_map([id], video_from_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let members = query_videos(
+        conn,
+        "FROM videos v WHERE v.group_id = ?1 ORDER BY COALESCE(v.group_position, 0), v.id",
+        [id],
+    )?;
     Ok(Some(GroupDetail { id, name, kind, cover_video_id, created_at, members }))
 }
 
@@ -520,19 +516,10 @@ fn with_transaction<T>(
     conn: &Connection,
     f: impl FnOnce() -> rusqlite::Result<T>,
 ) -> Result<T, String> {
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    match f() {
-        Ok(v) => {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-            Ok(v)
-        }
-        Err(e) => {
-            if let Err(rb) = conn.execute_batch("ROLLBACK") {
-                log::error!("[db_groups] ROLLBACK 失敗: {rb}");
-            }
-            Err(e.to_string())
-        }
-    }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let v = f().map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(v)
 }
 
 struct NameRow {
@@ -544,9 +531,9 @@ struct NameRow {
 fn load_name_rows(conn: &Connection, dir: Option<&str>) -> rusqlite::Result<Vec<NameRow>> {
     let base = format!(
         "SELECT {VIDEO_COLUMNS}, v.group_id FROM videos v
-         WHERE COALESCE(v.media_type, 'video') != 'link' AND COALESCE(v.status, '') != 'missing'"
+         WHERE v.media_type != 'link' AND v.status != 'missing'"
     );
-    let map = |r: &rusqlite::Row<'_>| Ok(NameRow { video: video_from_row(r)?, group_id: r.get(16)? });
+    let map = |r: &rusqlite::Row<'_>| Ok(NameRow { video: video_from_row(r)?, group_id: r.get(VIDEO_COLUMN_COUNT)? });
     let rows = match dir {
         Some(d) => {
             let pattern = format!("{}/%", super::db_videos::escape_like_dir(d));

@@ -113,14 +113,10 @@ pub async fn db_import_backup(
         return Err("バックアップファイルの形式が正しくありません".to_string());
     }
     let conn = state.conn()?;
-
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-
-    let result: Result<(), String> = (|| {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    {
         conn.execute_batch(
-            "DELETE FROM playlist_items;
-             DELETE FROM video_tags;
-             DELETE FROM playlists;
+            "DELETE FROM playlists;
              DELETE FROM videos;
              DELETE FROM tags;
              DELETE FROM categories;",
@@ -133,7 +129,7 @@ pub async fn db_import_backup(
         let groups = data.media_groups.unwrap_or_default();
         for row in &groups {
             conn.execute(
-                "INSERT OR IGNORE INTO media_groups (id, name, kind, created_at) VALUES (?1,?2,COALESCE(?3,'variants'),?4)",
+                "INSERT OR IGNORE INTO media_groups (id, name, kind, created_at) VALUES (?1,?2,COALESCE(?3,'variants'),COALESCE(?4,CURRENT_TIMESTAMP))",
                 rusqlite::params![
                     row.get("id").and_then(|v| v.as_i64()),
                     row.get("name").and_then(|v| v.as_str()),
@@ -146,7 +142,7 @@ pub async fn db_import_backup(
         // categories
         for row in data.categories.unwrap_or_default() {
             conn.execute(
-                "INSERT OR IGNORE INTO categories (id, name, color, parent_id, icon, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+                "INSERT OR IGNORE INTO categories (id, name, color, parent_id, icon, created_at) VALUES (?1,?2,COALESCE(?3,'#6366f1'),?4,?5,COALESCE(?6,CURRENT_TIMESTAMP))",
                 rusqlite::params![
                     row.get("id").and_then(|v| v.as_i64()),
                     row.get("name").and_then(|v| v.as_str()),
@@ -161,7 +157,7 @@ pub async fn db_import_backup(
         // tags
         for row in data.tags.unwrap_or_default() {
             conn.execute(
-                "INSERT OR IGNORE INTO tags (id, name, color, tag_category_id, created_at) VALUES (?1,?2,?3,?4,?5)",
+                "INSERT OR IGNORE INTO tags (id, name, color, tag_category_id, created_at) VALUES (?1,?2,COALESCE(?3,'#6366f1'),?4,COALESCE(?5,CURRENT_TIMESTAMP))",
                 rusqlite::params![
                     row.get("id").and_then(|v| v.as_i64()),
                     row.get("name").and_then(|v| v.as_str()),
@@ -177,9 +173,11 @@ pub async fn db_import_backup(
             conn.execute(
                 "INSERT OR IGNORE INTO videos
                   (id, path, title, duration, thumbnail, watched_at, progress, rating,
-                   category_id, has_audio, watch_count, created_at, group_id, group_position)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,
-                         (SELECT id FROM media_groups WHERE id = ?13),?14)",
+                   category_id, has_audio, watch_count, created_at, group_id, group_position,
+                   media_type, status, source_url, source_type)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,COALESCE(?12,CURRENT_TIMESTAMP),
+                         (SELECT id FROM media_groups WHERE id = ?13),?14,
+                         COALESCE(?15,'video'),COALESCE(?16,'active'),?17,?18)",
                 rusqlite::params![
                     row.get("id").and_then(|v| v.as_i64()),
                     row.get("path").and_then(|v| v.as_str()),
@@ -195,6 +193,10 @@ pub async fn db_import_backup(
                     row.get("created_at").and_then(|v| v.as_str()),
                     row.get("group_id").and_then(|v| v.as_i64()),
                     row.get("group_position").and_then(|v| v.as_i64()),
+                    row.get("media_type").and_then(|v| v.as_str()),
+                    row.get("status").and_then(|v| v.as_str()),
+                    row.get("source_url").and_then(|v| v.as_str()),
+                    row.get("source_type").and_then(|v| v.as_str()),
                 ],
             ).map_err(|e| e.to_string())?;
         }
@@ -227,7 +229,7 @@ pub async fn db_import_backup(
         // playlists
         for row in data.playlists.unwrap_or_default() {
             conn.execute(
-                "INSERT OR IGNORE INTO playlists (id, name, created_at) VALUES (?1,?2,?3)",
+                "INSERT OR IGNORE INTO playlists (id, name, created_at) VALUES (?1,?2,COALESCE(?3,CURRENT_TIMESTAMP))",
                 rusqlite::params![
                     row.get("id").and_then(|v| v.as_i64()),
                     row.get("name").and_then(|v| v.as_str()),
@@ -251,7 +253,7 @@ pub async fn db_import_backup(
         // smart_playlists
         for row in data.smart_playlists.unwrap_or_default() {
             conn.execute(
-                "INSERT OR IGNORE INTO smart_playlists (id, name, filter_json, created_at) VALUES (?1,?2,?3,?4)",
+                "INSERT OR IGNORE INTO smart_playlists (id, name, filter_json, created_at) VALUES (?1,?2,?3,COALESCE(?4,CURRENT_TIMESTAMP))",
                 rusqlite::params![
                     row.get("id").and_then(|v| v.as_i64()),
                     row.get("name").and_then(|v| v.as_str()),
@@ -261,15 +263,8 @@ pub async fn db_import_backup(
             ).map_err(|e| e.to_string())?;
         }
 
-        Ok(())
-    })();
-
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    } else {
-        let _ = conn.execute_batch("ROLLBACK");
     }
-    result
+    tx.commit().map_err(|e| e.to_string())
 }
 
 fn chrono_or_fallback() -> String {
