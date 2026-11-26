@@ -762,6 +762,8 @@
     "screenshot": "スクリーンショット",
     "showQueue": "キューを表示",
     "miniPlayer": "ミニプレイヤーに切替",
+    "miniPlayerMedium": "中サイズにする (評価・カテゴリ・タグを編集)",
+    "miniPlayerCompact": "小さくする",
     "exit": "終了",
     "seek": "再生位置"
   },

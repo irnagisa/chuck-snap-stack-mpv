@@ -6,6 +6,27 @@ import { useLibraryStore } from './useLibraryStore';
 import { useSettingsStore } from './useSettingsStore';
 import { toast } from './useToastStore';
 
+export type MiniPlayerSize = 'compact' | 'medium';
+
+const MINI_PLAYER_SIZE_KEY = 'miniPlayerSize';
+
+// 前回のミニプレイヤーの大きさを覚えておく (ストレージが使えないときは compact)
+function loadMiniPlayerSize(): MiniPlayerSize {
+  try {
+    return localStorage.getItem(MINI_PLAYER_SIZE_KEY) === 'medium' ? 'medium' : 'compact';
+  } catch {
+    return 'compact';
+  }
+}
+
+function saveMiniPlayerSize(size: MiniPlayerSize) {
+  try {
+    localStorage.setItem(MINI_PLAYER_SIZE_KEY, size);
+  } catch {
+    // 保存できなくても動作には影響しない
+  }
+}
+
 interface PlayerState {
   currentVideo: Video | null;
   playbackTime: number;
@@ -14,6 +35,8 @@ interface PlayerState {
   isLooping: boolean;
   isShuffle: boolean;
   isMiniPlayer: boolean;
+  /** ミニプレイヤーの大きさ。medium は評価・カテゴリ・タグを編集できる */
+  miniPlayerSize: MiniPlayerSize;
   queue: Video[];
   queueIndex: number;
   originalQueue: Video[];
@@ -34,6 +57,7 @@ interface PlayerActions {
   toggleLoop: () => Promise<void>;
   toggleShuffle: () => Promise<void>;
   toggleMiniPlayer: () => void;
+  setMiniPlayerSize: (size: MiniPlayerSize) => void;
   playShuffleAll: () => Promise<void>;
   setSpeed: (speed: number) => Promise<void>;
   setAbLoopA: () => Promise<void>;
@@ -137,6 +161,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     isLooping: false,
     isShuffle: false,
     isMiniPlayer: false,
+    miniPlayerSize: loadMiniPlayerSize(),
     queue: [],
     queueIndex: -1,
     originalQueue: [],
@@ -312,10 +337,24 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       const next = !get().isMiniPlayer;
       set({ isMiniPlayer: next });
       const cmd = next ? 'enter_mini_player' : 'exit_mini_player';
-      invoke(cmd).catch((e: unknown) => {
+      const args = next ? { size: get().miniPlayerSize } : undefined;
+      invoke(cmd, args).catch((e: unknown) => {
         console.error(`[toggleMiniPlayer] ${cmd} 失敗:`, e);
         // invoke 失敗時はステートを元に戻す
         set({ isMiniPlayer: !next });
+      });
+    },
+
+    setMiniPlayerSize: (size: MiniPlayerSize) => {
+      const prev = get().miniPlayerSize;
+      if (prev === size) return;
+      set({ miniPlayerSize: size });
+      saveMiniPlayerSize(size);
+      if (!get().isMiniPlayer) return;
+      invoke('set_mini_player_size', { size }).catch((e: unknown) => {
+        console.error('[setMiniPlayerSize] set_mini_player_size 失敗:', e);
+        set({ miniPlayerSize: prev });
+        saveMiniPlayerSize(prev);
       });
     },
 

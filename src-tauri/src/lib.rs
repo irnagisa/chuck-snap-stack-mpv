@@ -144,6 +144,7 @@ pub fn run() {
             commands::ytdlp::detect_ytdlp_path,
             commands::window::enter_mini_player,
             commands::window::exit_mini_player,
+            commands::window::set_mini_player_size,
             commands::webserver::start_web_server,
             commands::webserver::stop_web_server,
             commands::webserver::get_web_server_port,

@@ -762,6 +762,8 @@
     "screenshot": "截图",
     "showQueue": "显示队列",
     "miniPlayer": "迷你播放器",
+    "miniPlayerMedium": "中等尺寸（编辑评分、分类和标签）",
+    "miniPlayerCompact": "紧凑尺寸",
     "exit": "退出",
     "seek": "播放位置"
   },
