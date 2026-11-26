@@ -261,19 +261,28 @@ fn load_stored(conn: &rusqlite::Connection, video_id: i64) -> Result<Option<Stor
 
 // ── Tauri コマンド ───────────────────────────────────────────────────────────
 
-/// まだ無音かどうかを調べていない動画
+/// まだ調べていない動画を、空く容量が多そうな順 (ファイルの大きい順) に返す。`limit` を省くとすべて
+fn query_unchecked(conn: &rusqlite::Connection, limit: Option<i64>) -> Result<Vec<UncheckedVideo>, String> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT id, path FROM videos WHERE {UNCHECKED_FILTER}
+             ORDER BY file_size IS NULL, file_size DESC, id LIMIT ?1"
+        ))
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([limit.filter(|n| *n >= 0).unwrap_or(-1)], |r| Ok(UncheckedVideo { id: r.get(0)?, path: r.get(1)? }))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// まだ無音かどうかを調べていない動画 (大きい順、`limit` 件まで)
 #[tauri::command]
 pub async fn get_videos_without_silence_check(
     db_state: tauri::State<'_, DbState>,
+    limit: Option<i64>,
 ) -> Result<Vec<UncheckedVideo>, String> {
     let conn = db_state.conn_read()?;
-    let mut stmt = conn
-        .prepare(&format!("SELECT id, path FROM videos WHERE {UNCHECKED_FILTER} ORDER BY id"))
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |r| Ok(UncheckedVideo { id: r.get(0)?, path: r.get(1)? }))
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    query_unchecked(&conn, limit)
 }
 
 /// 1 本の動画の音声トラックが無音かを調べ、結果を保存して返す
@@ -391,6 +400,14 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(unchecked, vec![a]);
+
+        // 大きい順、サイズ不明は最後。limit で件数を絞れる
+        let big = add("/m/big.mp4", "file_size = 900");
+        let small = add("/m/small.mp4", "file_size = 10");
+        let order: Vec<i64> = query_unchecked(&conn, None).unwrap().into_iter().map(|v| v.id).collect();
+        assert_eq!(order, vec![big, small, a]);
+        assert_eq!(query_unchecked(&conn, Some(1)).unwrap().len(), 1);
+        conn.execute("DELETE FROM videos WHERE id IN (?1, ?2)", [big, small]).unwrap();
 
         assert_eq!(load_stored(&conn, a).unwrap(), None);
         let report = SilenceReport { status: "partial".into(), silent_streams: vec![2, 3], silent_bytes: 42, tracks: vec![] };

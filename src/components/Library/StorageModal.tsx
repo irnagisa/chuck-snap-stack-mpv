@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { AudioLines, LoaderCircle, Shrink, Sparkles, Trash2, VolumeX } from "lucide-react";
+import { AudioLines, CircleStop, LoaderCircle, Shrink, Sparkles, Trash2, VolumeX } from "lucide-react";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { toast } from "../../store/useToastStore";
 import { formatFileSize } from "../../utils/time";
@@ -11,6 +11,7 @@ import { StorageCandidateRow } from "./StorageCandidateRow";
 import { StorageDuplicates, suggestedIds } from "./StorageDuplicates";
 import { StorageLeftoversPanel } from "./StorageLeftoversPanel";
 import { StorageTrashPanel } from "./StorageTrashPanel";
+import { checkSilence } from "./silenceCheck";
 import { TranscodeBatchDialog, type BatchKind } from "./TranscodeBatchDialog";
 import {
   bitrateKbps,
@@ -28,6 +29,10 @@ import styles from "./StorageModal.module.css";
 
 /** 一度に表示する整理候補の件数 */
 const CANDIDATE_LIMIT = 200;
+/** 無音の確認を一度に調べる件数 (大きいファイルから) */
+const SILENCE_CHUNK = 100;
+/** 無音の確認中、この件数ごとに一覧を読み直す */
+const SILENCE_REFRESH_EVERY = 20;
 /** 拡張子の内訳で個別に出す件数 (残りは「その他」にまとめる) */
 const EXTENSION_ROWS = 8;
 
@@ -126,17 +131,25 @@ export function StorageModal({ onClose }: Props) {
   const [phashProgress, setPhashProgress] = useState<{ done: number; total: number } | null>(null);
   /** 無音の音声トラックを調べている間の進み具合 */
   const [silenceProgress, setSilenceProgress] = useState<{ done: number; total: number } | null>(null);
+  /** 止めるボタンを押し、いま調べている分の終わりを待っている */
+  const [silenceStopping, setSilenceStopping] = useState(false);
   const dialog = useDialogClose(onClose, { locked: trashing || cleaningThumbs || panelBusy });
 
+  /** 無音の確認中に別の種類へ切り替えたら、その一覧を無音の一覧で上書きしない */
+  const kindRef = useRef(kind);
+  kindRef.current = kind;
   /** 種類を切り替えたとき、前の種類の結果で上書きしないための番号 */
   const loadSeq = useRef(0);
   /** 閉じたら pHash の計算・無音の確認を止める */
   const phashCancelled = useRef(false);
   const silenceCancelled = useRef(false);
+  /** 閉じたあとは一覧の読み直しや通知をしない (止めるボタンとは分ける) */
+  const silenceUnmounted = useRef(false);
   useEffect(
     () => () => {
       phashCancelled.current = true;
       silenceCancelled.current = true;
+      silenceUnmounted.current = true;
     },
     [],
   );
@@ -267,27 +280,37 @@ export function StorageModal({ onClose }: Props) {
 
   // ── 無音の音声トラック: まだ調べていない動画を調べる ────────────────────
 
-  const handleCheckSilence = async () => {
+  /** `limit` 件 (省くとすべて) を大きい順に調べる。調べた分は途中でも一覧に出す */
+  const handleCheckSilence = async (limit?: number) => {
     silenceCancelled.current = false;
+    let lastRefresh = 0;
     try {
-      const pending = await invoke<UncheckedVideo[]>("get_videos_without_silence_check");
+      const pending = await invoke<UncheckedVideo[]>("get_videos_without_silence_check", { limit: limit ?? null });
       setSilenceProgress({ done: 0, total: pending.length });
-      for (let i = 0; i < pending.length; i++) {
-        if (silenceCancelled.current) return;
-        try {
-          await invoke("detect_silent_audio", { videoId: pending[i].id });
-        } catch (e) {
-          // 読めないファイルは飛ばす (次回また試す)
-          console.warn("[StorageModal] detect_silent_audio:", pending[i].path, e);
-        }
-        setSilenceProgress({ done: i + 1, total: pending.length });
+      const result = await checkSilence(
+        pending.map((v) => v.id),
+        {
+          isCancelled: () => silenceCancelled.current,
+          onProgress: (done, total) => {
+            setSilenceProgress({ done, total });
+            if (done - lastRefresh >= SILENCE_REFRESH_EVERY && !silenceUnmounted.current && kindRef.current === "silentAudio") {
+              lastRefresh = done;
+              void loadCandidates("silentAudio");
+            }
+          },
+        },
+      );
+      if (!silenceUnmounted.current) {
+        toast.success(t("storage.silenceDone", { count: result.done, found: result.found }));
+        if (result.failed > 0) toast.error(t("storage.silenceFailed", { count: result.failed }));
       }
     } catch (e) {
       toast.error(t("storage.candidatesError", { error: errorText(e) }));
     } finally {
       setSilenceProgress(null);
+      setSilenceStopping(false);
     }
-    if (!silenceCancelled.current) await loadCandidates("silentAudio");
+    if (!silenceUnmounted.current && kindRef.current === "silentAudio") await loadCandidates("silentAudio");
   };
 
   // ── 整理候補の選択とゴミ箱移動 ──────────────────────────────────────────
@@ -454,7 +477,7 @@ export function StorageModal({ onClose }: Props) {
     );
   };
 
-  /** 無音の一覧の上に出す、まだ調べていない動画の案内 */
+  /** 無音の一覧の上に出す、まだ調べていない動画の案内 (一部だけ・すべて・途中で止める) */
   const renderSilenceCheck = () => {
     const unchecked = candidates?.uncheckedCount ?? 0;
     if (kind !== "silentAudio" || (unchecked === 0 && !silenceProgress)) return null;
@@ -466,10 +489,38 @@ export function StorageModal({ onClose }: Props) {
               ? t("storage.silenceProgress", silenceProgress)
               : t("storage.silenceUnchecked", { count: unchecked })}
           </span>
-          <Button variant="soft" size="sm" disabled={busy} onClick={handleCheckSilence}>
-            {silenceProgress ? <LoaderCircle className={modal.spinner} aria-hidden /> : <AudioLines aria-hidden />}
-            {t("storage.silenceCheck")}
-          </Button>
+          {silenceProgress ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={silenceStopping}
+              onClick={() => {
+                silenceCancelled.current = true;
+                setSilenceStopping(true);
+              }}
+            >
+              {silenceStopping ? <LoaderCircle className={modal.spinner} aria-hidden /> : <CircleStop aria-hidden />}
+              {t(silenceStopping ? "storage.silenceStopping" : "storage.silenceStop")}
+            </Button>
+          ) : (
+            <span className={styles.calloutActions}>
+              {unchecked > SILENCE_CHUNK && (
+                <Button variant="soft" size="sm" disabled={busy} onClick={() => handleCheckSilence(SILENCE_CHUNK)}>
+                  <AudioLines aria-hidden />
+                  {t("storage.silenceCheckSome", { count: SILENCE_CHUNK })}
+                </Button>
+              )}
+              <Button
+                variant={unchecked > SILENCE_CHUNK ? "secondary" : "soft"}
+                size="sm"
+                disabled={busy}
+                onClick={() => handleCheckSilence()}
+              >
+                {unchecked <= SILENCE_CHUNK && <AudioLines aria-hidden />}
+                {t(unchecked > SILENCE_CHUNK ? "storage.silenceCheckAll" : "storage.silenceCheck")}
+              </Button>
+            </span>
+          )}
         </div>
       </div>
     );
