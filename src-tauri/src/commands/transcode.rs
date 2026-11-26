@@ -162,14 +162,14 @@ pub async fn transcode_video(
 
     let output_str = output_path.to_string_lossy().to_string();
     let tmp_output_str = tmp_output_path.to_string_lossy().to_string();
-    let ffmpeg_args = build_ffmpeg_args(
-        &input_path,
-        &tmp_output_str,
-        &mode,
-        &source_info,
-        Some(input_fingerprint.len),
-        encoders,
-    )?;
+    let build_args = |encoders| {
+        build_ffmpeg_args(&input_path, &tmp_output_str, &mode, &source_info, Some(input_fingerprint.len), encoders)
+    };
+    // SVT-AV1 が落ちたときは AVX2 を使わずにやり直す (`Av1Encoder::SvtNoAvx2`)
+    let mut attempts = vec![build_args(encoders)?];
+    if matches!(mode, TranscodeMode::Av1 { .. }) && encoders.av1 == Some(Av1Encoder::Svt) {
+        attempts.push(build_args(Encoders { av1: Some(Av1Encoder::SvtNoAvx2), ..encoders })?);
+    }
 
     {
         let mut p = state.current_output.lock().map_err(|e| e.to_string())?;
@@ -201,135 +201,146 @@ pub async fn transcode_video(
                 }
             }
 
-            if cancel_flag.load(Ordering::SeqCst) {
-                return Err("キャンセルされました".to_string());
-            }
-
-            // 一時ファイルが既に存在する場合は削除
-            let _ = std::fs::remove_file(&tmp_output_str);
-
-            let mut child = Command::new(&ffmpeg_path)
-                .args(&ffmpeg_args)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| format!("FFmpeg 起動失敗: {e}"))?;
-
-            let stdout = match child.stdout.take() {
-                Some(s) => s,
-                None => {
-                    child.kill().ok();
-                    child.wait().ok();
-                    return Err("ffmpeg stdout の取得に失敗しました".to_string());
-                }
-            };
-            let stderr = match child.stderr.take() {
-                Some(s) => s,
-                None => {
-                    child.kill().ok();
-                    child.wait().ok();
-                    return Err("ffmpeg stderr の取得に失敗しました".to_string());
-                }
-            };
-            let stderr_handle = std::thread::spawn(move || {
-                use std::io::Read;
-                let mut s = String::new();
-                BufReader::new(stderr).read_to_string(&mut s).ok();
-                s
-            });
-            let reader = BufReader::new(stdout);
-            if let Ok(mut slot) = current_child.lock() {
-                *slot = Some(child);
-            } else {
-                child.kill().ok();
-                child.wait().ok();
-                return Err("ffmpeg プロセスの登録に失敗しました".to_string());
-            }
-
-            let start = std::time::Instant::now();
-            let mut out_time_us: u64 = 0;
-            let mut speed = "N/A".to_string();
-            let mut frames: u64 = 0;
-            let mut fps: f64 = 0.0;
-            let mut total_size_bytes: u64 = 0;
-
-            for line in reader.lines() {
+            for (attempt, ffmpeg_args) in attempts.iter().enumerate() {
                 if cancel_flag.load(Ordering::SeqCst) {
-                    if let Some(mut child) = take_child(&current_child) {
-                        child.kill().ok();
-                        child.wait().ok();
-                    }
-                    let _ = std::fs::remove_file(&tmp_output_str);
                     return Err("キャンセルされました".to_string());
                 }
 
-                let line = match line {
-                    Ok(l) => l,
-                    Err(e) => {
+                // 一時ファイルが既に存在する場合は削除
+                let _ = std::fs::remove_file(&tmp_output_str);
+
+                let mut child = Command::new(&ffmpeg_path)
+                    .args(ffmpeg_args)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .map_err(|e| format!("FFmpeg 起動失敗: {e}"))?;
+
+                let stdout = match child.stdout.take() {
+                    Some(s) => s,
+                    None => {
+                        child.kill().ok();
+                        child.wait().ok();
+                        return Err("ffmpeg stdout の取得に失敗しました".to_string());
+                    }
+                };
+                let stderr = match child.stderr.take() {
+                    Some(s) => s,
+                    None => {
+                        child.kill().ok();
+                        child.wait().ok();
+                        return Err("ffmpeg stderr の取得に失敗しました".to_string());
+                    }
+                };
+                let stderr_handle = std::thread::spawn(move || {
+                    use std::io::Read;
+                    let mut s = String::new();
+                    BufReader::new(stderr).read_to_string(&mut s).ok();
+                    s
+                });
+                let reader = BufReader::new(stdout);
+                if let Ok(mut slot) = current_child.lock() {
+                    *slot = Some(child);
+                } else {
+                    child.kill().ok();
+                    child.wait().ok();
+                    return Err("ffmpeg プロセスの登録に失敗しました".to_string());
+                }
+
+                let start = std::time::Instant::now();
+                let mut out_time_us: u64 = 0;
+                let mut speed = "N/A".to_string();
+                let mut frames: u64 = 0;
+                let mut fps: f64 = 0.0;
+                let mut total_size_bytes: u64 = 0;
+
+                for line in reader.lines() {
+                    if cancel_flag.load(Ordering::SeqCst) {
                         if let Some(mut child) = take_child(&current_child) {
                             child.kill().ok();
                             child.wait().ok();
                         }
                         let _ = std::fs::remove_file(&tmp_output_str);
-                        return Err(e.to_string());
+                        return Err("キャンセルされました".to_string());
+                    }
+
+                    let line = match line {
+                        Ok(l) => l,
+                        Err(e) => {
+                            if let Some(mut child) = take_child(&current_child) {
+                                child.kill().ok();
+                                child.wait().ok();
+                            }
+                            let _ = std::fs::remove_file(&tmp_output_str);
+                            return Err(e.to_string());
+                        }
+                    };
+
+                    if let Some(val) = line.strip_prefix("out_time_us=") {
+                        out_time_us = val.trim().parse().unwrap_or(0);
+                    } else if let Some(val) = line.strip_prefix("speed=") {
+                        speed = val.trim().to_string();
+                    } else if let Some(val) = line.strip_prefix("frame=") {
+                        frames = val.trim().parse().unwrap_or(0);
+                    } else if let Some(val) = line.strip_prefix("fps=") {
+                        fps = val.trim().parse().unwrap_or(0.0);
+                    } else if let Some(val) = line.strip_prefix("total_size=") {
+                        total_size_bytes = val.trim().parse().unwrap_or(0);
+                    } else if line.starts_with("progress=") {
+                        let percent = if duration_secs > 0.0 && out_time_us > 0 {
+                            ((out_time_us as f64 / 1_000_000.0) / duration_secs * 100.0).min(99.9)
+                        } else {
+                            0.0
+                        };
+                        let _ = app.emit(
+                            "transcode://progress",
+                            TranscodeProgress {
+                                percent,
+                                speed: speed.clone(),
+                                elapsed_secs: start.elapsed().as_secs_f64(),
+                                frames,
+                                fps,
+                                total_size_bytes,
+                            },
+                        );
+                    }
+                }
+
+                // child が取り出し済みならアプリ終了処理 (kill_on_exit) で kill されている
+                let Some(mut child) = take_child(&current_child) else {
+                    return Err("アプリ終了により中断されました".to_string());
+                };
+                let status = child.wait().map_err(|e| e.to_string())?;
+                let stderr_output = match stderr_handle.join() {
+                    Ok(s) => s,
+                    Err(_) => {
+                        log::warn!("[transcode] stderr スレッドがパニックしました (出力を取得できません)");
+                        String::new()
                     }
                 };
-
-                if let Some(val) = line.strip_prefix("out_time_us=") {
-                    out_time_us = val.trim().parse().unwrap_or(0);
-                } else if let Some(val) = line.strip_prefix("speed=") {
-                    speed = val.trim().to_string();
-                } else if let Some(val) = line.strip_prefix("frame=") {
-                    frames = val.trim().parse().unwrap_or(0);
-                } else if let Some(val) = line.strip_prefix("fps=") {
-                    fps = val.trim().parse().unwrap_or(0.0);
-                } else if let Some(val) = line.strip_prefix("total_size=") {
-                    total_size_bytes = val.trim().parse().unwrap_or(0);
-                } else if line.starts_with("progress=") {
-                    let percent = if duration_secs > 0.0 && out_time_us > 0 {
-                        ((out_time_us as f64 / 1_000_000.0) / duration_secs * 100.0).min(99.9)
-                    } else {
-                        0.0
-                    };
-                    let _ = app.emit(
-                        "transcode://progress",
-                        TranscodeProgress {
-                            percent,
-                            speed: speed.clone(),
-                            elapsed_secs: start.elapsed().as_secs_f64(),
-                            frames,
-                            fps,
-                            total_size_bytes,
-                        },
-                    );
+                if status.success() {
+                    return Ok(());
                 }
-            }
-
-            // child が取り出し済みならアプリ終了処理 (kill_on_exit) で kill されている
-            let Some(mut child) = take_child(&current_child) else {
-                return Err("アプリ終了により中断されました".to_string());
-            };
-            let status = child.wait().map_err(|e| e.to_string())?;
-            let stderr_output = match stderr_handle.join() {
-                Ok(s) => s,
-                Err(_) => {
-                    log::warn!("[transcode] stderr スレッドがパニックしました (出力を取得できません)");
-                    String::new()
-                }
-            };
-            if !status.success() {
                 let _ = std::fs::remove_file(&tmp_output_str);
+                let signal = crash_signal(&status);
+                if signal.is_some() && attempt + 1 < attempts.len() {
+                    log::warn!(
+                        "[transcode] ffmpeg がシグナル {signal:?} で落ちたため、AVX2 を使わずにやり直します"
+                    );
+                    continue;
+                }
                 let detail = if stderr_output.trim().is_empty() {
                     String::new()
                 } else {
                     format!("\n{}", stderr_output.trim())
                 };
-                return Err(format!(
-                    "FFmpeg がエラーで終了しました (code: {:?}){detail}",
-                    status.code()
-                ));
+                let reason = match signal {
+                    Some(sig) => format!("シグナル {sig} で強制終了"),
+                    None => format!("code: {:?}", status.code()),
+                };
+                return Err(format!("FFmpeg がエラーで終了しました ({reason}){detail}"));
             }
-            Ok(())
+            Err("FFmpeg を実行できませんでした".to_string())
         }
     })
     .await
@@ -418,6 +429,24 @@ async fn finalize_output(
             let _ = tokio::fs::remove_file(tmp_output).await;
             other
         }
+    }
+}
+
+/// プロセスがクラッシュ (SIGSEGV / SIGBUS / SIGILL) で終わったときのシグナル番号。
+/// kill による終了 (SIGKILL / SIGTERM) はやり直さないため含めない
+fn crash_signal(status: &std::process::ExitStatus) -> Option<i32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        const SIGILL: i32 = 4;
+        const SIGBUS: i32 = if cfg!(target_os = "linux") { 7 } else { 10 };
+        const SIGSEGV: i32 = 11;
+        status.signal().filter(|s| [SIGILL, SIGBUS, SIGSEGV].contains(s))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = status;
+        None
     }
 }
 
@@ -1008,6 +1037,10 @@ const MIN_HEVC_BITRATE: f64 = 300_000.0;
 pub enum Av1Encoder {
     /// SVT-AV1 (`libsvtav1`)。速い
     Svt,
+    /// SVT-AV1 で AVX2 の処理を使わない。SVT-AV1 4.1.0 は縦長の一部の解像度 (1810x2560 など) で
+    /// temporal filtering の AVX2 の処理 (`svt_spatial_full_distortion_kernel_avx2`) が
+    /// SIGSEGV で落ちるため、落ちたときはこれでやり直す (速さ・サイズはほぼ変わらない)
+    SvtNoAvx2,
     /// libaom (`libaom-av1`)。SVT-AV1 よりかなり遅いが、SVT-AV1 を含まない ffmpeg のビルドもある
     Aom,
 }
@@ -1098,9 +1131,12 @@ fn build_ffmpeg_args(
 
     match mode {
         TranscodeMode::Av1 { crf, preset } => match encoders.av1 {
-            Some(Av1Encoder::Svt) => {
+            Some(svt @ (Av1Encoder::Svt | Av1Encoder::SvtNoAvx2)) => {
                 args.extend(strings(&["-c:v", "libsvtav1"]));
                 args.extend(["-crf".into(), crf.to_string(), "-preset".into(), preset.to_string()]);
+                if svt == Av1Encoder::SvtNoAvx2 {
+                    args.extend(strings(&["-svtav1-params", "asm=avx"]));
+                }
             }
             Some(Av1Encoder::Aom) => {
                 // `-b:v 0` を付けないと CRF が画質固定ではなく上限付きの指定になる。
@@ -1958,6 +1994,29 @@ mod tests {
         for m in ["0:V", "0:a?", "0:s?", "0:t?"] {
             assert!(has_pair(&args, "-map", m), "-map {m}");
         }
+    }
+
+    #[test]
+    fn svt_without_avx2_adds_asm_param_only_on_retry() {
+        let source = probe(60.0, vec![stream("video", "h264")]);
+        let mode = TranscodeMode::Av1 { crf: 32, preset: 8 };
+        let normal = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &source, None, SVT).unwrap();
+        assert!(!normal.iter().any(|a| a == "-svtav1-params"));
+        let no_avx2 = Encoders { av1: Some(Av1Encoder::SvtNoAvx2), ..SVT };
+        let retry = build_ffmpeg_args("/in.mp4", "/out.tmp", &mode, &source, None, no_avx2).unwrap();
+        assert!(has_pair(&retry, "-c:v", "libsvtav1"));
+        assert!(has_pair(&retry, "-svtav1-params", "asm=avx"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn crash_signal_ignores_kill() {
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::ExitStatus;
+        assert_eq!(crash_signal(&ExitStatus::from_raw(11)), Some(11)); // SIGSEGV
+        assert_eq!(crash_signal(&ExitStatus::from_raw(9)), None); // SIGKILL
+        assert_eq!(crash_signal(&ExitStatus::from_raw(15)), None); // SIGTERM
+        assert_eq!(crash_signal(&ExitStatus::from_raw(1 << 8)), None); // exit 1
     }
 
     #[test]
