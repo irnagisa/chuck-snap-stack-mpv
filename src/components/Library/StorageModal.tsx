@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { AudioLines, CircleStop, LoaderCircle, Shrink, Sparkles, Trash2, VolumeX } from "lucide-react";
+import { AudioLines, CircleStop, Gauge, LoaderCircle, Shrink, Sparkles, Trash2, VolumeX } from "lucide-react";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { toast } from "../../store/useToastStore";
 import { formatFileSize } from "../../utils/time";
@@ -19,6 +19,7 @@ import { TranscodeBatchDialog, type BatchKind } from "./TranscodeBatchDialog";
 import {
   bitrateKbps,
   freedBytes,
+  roundedSavingPercent,
   type CandidateKind,
   type CleanupCandidates,
   type CleanupItem,
@@ -26,6 +27,7 @@ import {
   type StorageOverview,
   type ThumbnailCleanupResult,
   type UncheckedVideo,
+  type UnprobedVideo,
 } from "./storageTypes";
 import modal from "./LibraryModal.module.css";
 import styles from "./StorageModal.module.css";
@@ -36,6 +38,12 @@ const CANDIDATE_LIMIT = 200;
 const SILENCE_CHUNK = 100;
 /** 無音の確認中、この件数ごとに一覧を読み直す */
 const SILENCE_REFRESH_EVERY = 20;
+/** 映像の情報 (ffprobe) を同時に調べる数。先頭を読むだけなので軽い */
+const PROBE_CONCURRENCY = 4;
+/** 映像の情報を調べている間、この件数ごとに一覧を読み直す */
+const PROBE_REFRESH_EVERY = 50;
+/** 減る割合の見積もりがこれ未満なら「あまり減らない」と出す (変換後に破棄される基準と同じ 15%) */
+const LOW_SAVING_RATIO = 0.15;
 /** 拡張子の内訳で個別に出す件数 (残りは「その他」にまとめる) */
 const EXTENSION_ROWS = 8;
 
@@ -130,6 +138,8 @@ export function StorageModal({ onClose }: Props) {
   const [silenceProgress, setSilenceProgress] = useState<{ done: number; total: number } | null>(null);
   /** 止めるボタンを押し、いま調べている分の終わりを待っている */
   const [silenceStopping, setSilenceStopping] = useState(false);
+  /** 高ビットレートの一覧で、映像の情報を調べている間の進み具合 */
+  const [probeProgress, setProbeProgress] = useState<{ done: number; total: number } | null>(null);
   const dialog = useDialogClose(onClose, { locked: trashing || cleaningThumbs || panelBusy });
 
   /** 無音の確認中に別の種類へ切り替えたら、その一覧を無音の一覧で上書きしない */
@@ -140,12 +150,18 @@ export function StorageModal({ onClose }: Props) {
   /** 閉じたら pHash の計算・無音の確認を止める */
   const phashCancelled = useRef(false);
   const silenceCancelled = useRef(false);
+  const probeCancelled = useRef(false);
+  /** 映像の情報を読めなかった動画 (この画面では試し直さない) */
+  const probeFailed = useRef(new Set<number>());
+  /** 高ビットレートの一覧を開いたときの自動の確認は、画面を開いている間に 1 回だけ */
+  const probeAutoStarted = useRef(false);
   /** 閉じたあとは一覧の読み直しや通知をしない (止めるボタンとは分ける) */
   const silenceUnmounted = useRef(false);
   useEffect(
     () => () => {
       phashCancelled.current = true;
       silenceCancelled.current = true;
+      probeCancelled.current = true;
       silenceUnmounted.current = true;
     },
     [],
@@ -305,6 +321,58 @@ export function StorageModal({ onClose }: Props) {
     }
     if (!silenceUnmounted.current && kindRef.current === "silentAudio") await loadCandidates("silentAudio");
   };
+
+  // ── 高ビットレート: 映像の情報を調べて、減る割合を見積もれるようにする ───
+
+  const handleProbe = useCallback(async () => {
+    probeCancelled.current = false;
+    const end = beginForegroundCheck();
+    try {
+      const pending = (await invoke<UnprobedVideo[]>("get_videos_without_probe", { limit: null })).filter(
+        (v) => !probeFailed.current.has(v.id),
+      );
+      if (pending.length === 0) return;
+      setProbeProgress({ done: 0, total: pending.length });
+      let lastRefresh = 0;
+      await runPool(
+        pending,
+        async (v) => {
+          try {
+            await invoke("probe_video_info", { videoId: v.id });
+          } catch (e) {
+            probeFailed.current.add(v.id);
+            console.debug("[StorageModal] probe_video_info:", v.id, e);
+          }
+        },
+        {
+          concurrency: PROBE_CONCURRENCY,
+          isCancelled: () => probeCancelled.current,
+          onProgress: (done, total) => {
+            if (silenceUnmounted.current) return;
+            setProbeProgress({ done, total });
+            if (done - lastRefresh >= PROBE_REFRESH_EVERY && kindRef.current === "highBitrate") {
+              lastRefresh = done;
+              void loadCandidates("highBitrate");
+            }
+          },
+        },
+      );
+    } catch (e) {
+      if (!silenceUnmounted.current) toast.error(t("storage.candidatesError", { error: errorText(e) }));
+    } finally {
+      end();
+      if (!silenceUnmounted.current) setProbeProgress(null);
+    }
+    if (!silenceUnmounted.current && kindRef.current === "highBitrate") await loadCandidates("highBitrate");
+  }, [loadCandidates, t]);
+
+  // 高ビットレートの一覧を開いたら、まだ調べていない分を自動で調べる (ffprobe は先頭を読むだけで軽い)
+  const unprobedCount = kind === "highBitrate" ? (candidates?.uncheckedCount ?? 0) : 0;
+  useEffect(() => {
+    if (unprobedCount === 0 || probeAutoStarted.current) return;
+    probeAutoStarted.current = true;
+    void handleProbe();
+  }, [unprobedCount, handleProbe]);
 
   // ── 整理候補の選択とゴミ箱移動 ──────────────────────────────────────────
 
@@ -519,6 +587,53 @@ export function StorageModal({ onClose }: Props) {
     );
   };
 
+  /** 高ビットレートの一覧の上に出す、映像の情報を調べている進み具合 (または調べていない動画の案内) */
+  const renderProbeCheck = () => {
+    if (kind !== "highBitrate" || (unprobedCount === 0 && !probeProgress)) return null;
+    return (
+      <div className={modal.callout}>
+        <div className={styles.calloutBody}>
+          <span>
+            {probeProgress
+              ? t("storage.probeProgress", probeProgress)
+              : t("storage.probeUnchecked", { count: unprobedCount })}
+          </span>
+          {probeProgress ? (
+            <Button variant="secondary" size="sm" onClick={() => {
+                probeCancelled.current = true;
+              }}>
+              <CircleStop aria-hidden />
+              {t("storage.silenceStop")}
+            </Button>
+          ) : (
+            <Button variant="soft" size="sm" disabled={busy} onClick={() => void handleProbe()}>
+              <Gauge aria-hidden />
+              {t("storage.probeCheck")}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const savingMeta = (item: CleanupItem) => {
+    const kbps = bitrateKbps(item);
+    const ratio = item.savingRatio;
+    return (
+      <>
+        {kbps != null && <span>· {t("storage.bitrate", { mbps: (kbps / 1000).toFixed(1) })}</span>}
+        {ratio != null && (
+          <span className={ratio >= LOW_SAVING_RATIO ? styles.savingHigh : undefined}>
+            ·{" "}
+            {ratio >= LOW_SAVING_RATIO
+              ? t("storage.savingEstimate", { percent: roundedSavingPercent(ratio) })
+              : t("storage.savingLow")}
+          </span>
+        )}
+      </>
+    );
+  };
+
   const silentMeta = (item: CleanupItem) => {
     const count = item.silentStreams?.length ?? 0;
     if (count === 0) return null;
@@ -536,6 +651,7 @@ export function StorageModal({ onClose }: Props) {
       return (
         <>
           {renderSilenceCheck()}
+          {renderProbeCheck()}
           <div className={modal.status}>{t("storage.candidatesEmpty")}</div>
         </>
       );
@@ -543,6 +659,7 @@ export function StorageModal({ onClose }: Props) {
     return (
       <>
       {renderSilenceCheck()}
+      {renderProbeCheck()}
       <div className={modal.panel}>
         <label className={modal.panelHead}>
           <Checkbox checked={headChecked} onCheckedChange={toggleAll} disabled={busy} />
@@ -553,23 +670,16 @@ export function StorageModal({ onClose }: Props) {
             </span>
           )}
         </label>
-        {items.map((item) => {
-          const kbps = kind === "highBitrate" ? bitrateKbps(item) : null;
-          return (
-            <StorageCandidateRow
-              key={item.id}
-              item={item}
-              checked={selected.has(item.id)}
-              onToggle={toggle}
-              disabled={busy}
-              extraMeta={
-                kind === "silentAudio"
-                  ? silentMeta(item)
-                  : kbps != null && <span>· {t("storage.bitrate", { mbps: (kbps / 1000).toFixed(1) })}</span>
-              }
-            />
-          );
-        })}
+        {items.map((item) => (
+          <StorageCandidateRow
+            key={item.id}
+            item={item}
+            checked={selected.has(item.id)}
+            onToggle={toggle}
+            disabled={busy}
+            extraMeta={kind === "silentAudio" ? silentMeta(item) : kind === "highBitrate" ? savingMeta(item) : null}
+          />
+        ))}
       </div>
       </>
     );
@@ -704,6 +814,7 @@ export function StorageModal({ onClose }: Props) {
               })}
               {summary && <> {summary}</>}
             </p>
+            {kind === "highBitrate" && <p className={modal.note}>{t("storage.savingDisclaimer")}</p>}
             {renderCandidates()}
           </section>
         </div>

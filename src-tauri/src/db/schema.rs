@@ -70,6 +70,20 @@ pub fn init_db(conn: &Connection) -> Result<()> {
           created_at     TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- ffprobe で調べた映像の情報 (commands/media_probe.rs)。整理画面の変換の効果の見積もりに使う。
+        -- 計算し直せるキャッシュなので videos とは分けている。probe_key は調べたときの
+        -- 「サイズ:更新日時(ns)」で、サイズが videos.file_size と食い違えば調べ直す
+        CREATE TABLE IF NOT EXISTS media_probe (
+          video_id      INTEGER PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+          probe_key     TEXT NOT NULL,
+          video_codec   TEXT,
+          width         INTEGER,
+          height        INTEGER,
+          fps           REAL,
+          video_bitrate INTEGER,
+          probed_at     TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS playlists (
           id         INTEGER PRIMARY KEY AUTOINCREMENT,
           name       TEXT NOT NULL,

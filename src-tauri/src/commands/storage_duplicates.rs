@@ -430,6 +430,7 @@ mod tests {
                 silent_streams: None,
                 silent_bytes: None,
                 silent_sampled: None,
+                saving_ratio: None,
             },
             phash,
             cached: None,

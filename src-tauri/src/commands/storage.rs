@@ -675,6 +675,34 @@ const LAST_SEEN_EXPR: &str = "NULLIF(MAX(COALESCE(datetime(last_viewed_at), ''),
 /// ビットレート (bps)。`duration > 0` の行でだけ使う
 const BITRATE_EXPR: &str = "(file_size * 8.0 / duration)";
 
+/// 高ビットレートの一覧に出す動画の条件 (`videos` の列だけを使う)。
+/// このアプリで再エンコードした出力 (`*.av1.mkv` / `*.hevc.mkv`) は対象外
+fn high_bitrate_filter() -> String {
+    format!(
+        "AND COALESCE(media_type, 'video') = 'video' AND duration > 0
+         AND {BITRATE_EXPR} >= {HIGH_BITRATE_BPS}
+         AND path NOT LIKE '%.av1.mkv' AND path NOT LIKE '%.hevc.mkv'"
+    )
+}
+
+/// 高ビットレートの一覧に出る動画のうち、映像の情報をまだ調べていない (または調べた後に変わった) もの
+pub(crate) fn high_bitrate_unprobed_filter() -> String {
+    format!(
+        "{ON_DISK_FILTER} {}
+         AND NOT EXISTS (SELECT 1 FROM media_probe mp
+                         WHERE mp.video_id = videos.id AND mp.probe_key LIKE (videos.file_size || ':%'))",
+        high_bitrate_filter()
+    )
+}
+
+/// 整理候補の並べ方
+enum CandidateOrder {
+    /// SQL の ORDER BY
+    Sql(String),
+    /// AV1 に変換したときに減る割合の見積もりが大きい順 (見積もれないものは後ろにビットレートの高い順)
+    Av1Saving,
+}
+
 /// 整理候補の種類ごとの条件
 struct CandidateSpec {
     filter: String,
@@ -682,11 +710,11 @@ struct CandidateSpec {
     threshold_days: Option<i64>,
     /// 高ビットレートの基準 (kbps)
     min_bitrate_kbps: Option<i64>,
-    order_by: String,
+    order_by: CandidateOrder,
     /// 合計に足す容量 (既定はファイルサイズ。無音のトラックは外すと空く分)
     sum_expr: &'static str,
     /// まだ調べていない動画の条件 (件数を返す)
-    unchecked_filter: Option<&'static str>,
+    unchecked_filter: Option<String>,
 }
 
 impl CandidateSpec {
@@ -695,7 +723,7 @@ impl CandidateSpec {
             filter,
             threshold_days,
             min_bitrate_kbps: None,
-            order_by: "file_size DESC, id".into(),
+            order_by: CandidateOrder::Sql("file_size DESC, id".into()),
             sum_expr: "file_size",
             unchecked_filter: None,
         }
@@ -705,27 +733,22 @@ impl CandidateSpec {
 fn candidate_spec(kind: &str) -> Result<CandidateSpec, String> {
     Ok(match kind {
         "large" => CandidateSpec::by_size(String::new(), None),
-        // このアプリで再エンコードした出力 (`*.av1.mkv` / `*.hevc.mkv`) は対象外
         "highBitrate" => CandidateSpec {
-            filter: format!(
-                "AND COALESCE(media_type, 'video') = 'video' AND duration > 0
-                 AND {BITRATE_EXPR} >= {HIGH_BITRATE_BPS}
-                 AND path NOT LIKE '%.av1.mkv' AND path NOT LIKE '%.hevc.mkv'"
-            ),
+            filter: high_bitrate_filter(),
             threshold_days: None,
             min_bitrate_kbps: Some(HIGH_BITRATE_BPS / 1000),
-            order_by: format!("{BITRATE_EXPR} DESC, id"),
+            order_by: CandidateOrder::Av1Saving,
             sum_expr: "file_size",
-            unchecked_filter: None,
+            unchecked_filter: Some(high_bitrate_unprobed_filter()),
         },
         // 音声トラックがあるのに無音の動画 (調べたものだけ)。外すと空く容量の大きい順
         "silentAudio" => CandidateSpec {
             filter: "AND COALESCE(media_type, 'video') = 'video' AND audio_silence IN ('all', 'partial')".into(),
             threshold_days: None,
             min_bitrate_kbps: None,
-            order_by: "COALESCE(silent_audio_bytes, 0) DESC, file_size DESC, id".into(),
+            order_by: CandidateOrder::Sql("COALESCE(silent_audio_bytes, 0) DESC, file_size DESC, id".into()),
             sum_expr: "COALESCE(silent_audio_bytes, 0)",
-            unchecked_filter: Some(super::silent_audio::UNCHECKED_FILTER),
+            unchecked_filter: Some(super::silent_audio::UNCHECKED_FILTER.into()),
         },
         "unwatched" => CandidateSpec::by_size(
             format!(
@@ -784,6 +807,10 @@ pub struct CleanupItem {
     /// 無音のトラックは一部を読んだだけの見込み (外す前に全体を読んで確かめる)。無音のトラックがなければ None
     #[serde(skip_serializing_if = "Option::is_none")]
     pub silent_sampled: Option<bool>,
+    /// AV1 に変換したとき、ファイル全体のうち減る割合の見積もり (0〜1)。高ビットレートの一覧でだけ入れる。
+    /// 映像の情報をまだ調べていない・見積もれないものは None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saving_ratio: Option<f64>,
 }
 
 /// `cleanup_item_columns` の列の数 (後ろに列を足して読むときの番号)
@@ -826,6 +853,7 @@ pub(crate) fn item_from_row(r: &rusqlite::Row) -> rusqlite::Result<CleanupItem> 
         silent_streams,
         silent_bytes,
         silent_sampled,
+        saving_ratio: None,
     })
 }
 
@@ -842,7 +870,7 @@ pub struct CleanupCandidates {
     pub total_bytes: i64,
     pub threshold_days: Option<i64>,
     pub min_bitrate_kbps: Option<i64>,
-    /// まだ調べていない動画の数 (無音の音声トラックのときだけ)
+    /// まだ調べていない動画の数 (無音の音声トラック: 音量、高ビットレート: 映像の情報)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unchecked_count: Option<i64>,
     pub items: Vec<CleanupItem>,
@@ -867,18 +895,21 @@ fn query_candidates(
         .transpose()
         .map_err(|e| e.to_string())?;
 
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {} {base} ORDER BY {} LIMIT ?1",
-            cleanup_item_columns(),
-            spec.order_by
-        ))
-        .map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map([limit.clamp(1, 1000)], item_from_row)
-        .map_err(|e| e.to_string())?
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| e.to_string())?;
+    let limit = limit.clamp(1, 1000);
+    let items = match &spec.order_by {
+        CandidateOrder::Sql(order_by) => {
+            let mut stmt = conn
+                .prepare(&format!("SELECT {} {base} ORDER BY {order_by} LIMIT ?1", cleanup_item_columns()))
+                .map_err(|e| e.to_string())?;
+            let items = stmt
+                .query_map([limit], item_from_row)
+                .map_err(|e| e.to_string())?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| e.to_string())?;
+            items
+        }
+        CandidateOrder::Av1Saving => by_av1_saving(conn, &spec.filter, limit)?,
+    };
 
     Ok(CleanupCandidates {
         total_count,
@@ -890,7 +921,41 @@ fn query_candidates(
     })
 }
 
-/// 整理候補を容量の大きい順 (highBitrate はビットレートの高い順) に返す。
+/// 条件に合う動画すべてについて AV1 に変換したときに減る割合を見積もり、大きい順に `limit` 件返す。
+/// 見積もりは SQL では書きにくいので全件を読んでここで並べる (対象は高ビットレートの動画だけなので多くない)
+fn by_av1_saving(conn: &rusqlite::Connection, filter: &str, limit: i64) -> Result<Vec<CleanupItem>, String> {
+    use super::media_probe::{estimate_av1_saving, probe_from_row, PROBE_COLUMNS, PROBE_JOIN};
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {}, {PROBE_COLUMNS} FROM videos {PROBE_JOIN} WHERE {ON_DISK_FILTER} {filter}",
+            cleanup_item_columns()
+        ))
+        .map_err(|e| e.to_string())?;
+    let mut items = stmt
+        .query_map([], |r| {
+            let mut item = item_from_row(r)?;
+            let probe = probe_from_row(r, CLEANUP_ITEM_COLUMN_COUNT)?;
+            item.saving_ratio = probe.and_then(|p| estimate_av1_saving(&p, item.file_size, item.duration.unwrap_or(0.0)));
+            Ok(item)
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())?;
+    let bitrate = |i: &CleanupItem| i.file_size as f64 / i.duration.unwrap_or(1.0);
+    items.sort_by(|a, b| {
+        // 見積もれたものが先。同じくらいならビットレートの高いほう
+        b.saving_ratio
+            .is_some()
+            .cmp(&a.saving_ratio.is_some())
+            .then(b.saving_ratio.unwrap_or(0.0).total_cmp(&a.saving_ratio.unwrap_or(0.0)))
+            .then(bitrate(b).total_cmp(&bitrate(a)))
+            .then(a.id.cmp(&b.id))
+    });
+    items.truncate(limit as usize);
+    Ok(items)
+}
+
+/// 整理候補を容量の大きい順 (highBitrate は AV1 にしたときに減る割合の大きい順) に返す。
 /// kind: "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed" | "silentAudio"
 #[tauri::command]
 pub async fn get_cleanup_candidates(
@@ -1219,6 +1284,38 @@ mod tests {
         assert_eq!(ids(&c), vec![high, mid]);
         assert_eq!(c.min_bitrate_kbps, Some(HIGH_BITRATE_BPS / 1000));
         assert_eq!(c.items[1].duration, Some(60.0));
+    }
+
+    #[test]
+    fn high_bitrate_orders_by_estimated_saving_ratio_then_unprobed_by_bitrate() {
+        let conn = setup();
+        let probe = |id: i64, size: i64, codec: &str, w: u32, h: u32, mbps: i64| {
+            conn.execute(
+                "INSERT INTO media_probe (video_id, probe_key, video_codec, width, height, fps, video_bitrate)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 30.0, ?6)",
+                rusqlite::params![id, format!("{size}:1"), codec, w, h, mbps * 1_000_000],
+            )
+            .unwrap();
+        };
+        // 4K の HEVC 20 Mbps: ビットレートは一番高いが、既に効率がよくあまり減らない
+        let hevc = add_candidate(&conn, "/m/hevc.mp4", 150_000_000, "duration = 60");
+        probe(hevc, 150_000_000, "hevc", 3840, 2160, 20);
+        // 1080p の H.264 10 Mbps: 大きく減る
+        let h264 = add_candidate(&conn, "/m/h264.mp4", 75_000_000, "duration = 60");
+        probe(h264, 75_000_000, "h264", 1920, 1080, 10);
+        // まだ調べていない (見積もれたものの後ろ)
+        let unprobed = add_candidate(&conn, "/m/new.mp4", 180_000_000, "duration = 60");
+        // 調べた後にファイルが差し替わった (サイズが違う) ものも調べていない扱い
+        let stale = add_candidate(&conn, "/m/stale.mp4", 90_000_000, "duration = 60");
+        probe(stale, 80_000_000, "h264", 1280, 720, 10);
+
+        let c = query_candidates(&conn, "highBitrate", 100).unwrap();
+        assert_eq!(ids(&c), vec![h264, hevc, unprobed, stale]);
+        assert!(c.items[0].saving_ratio.unwrap() > c.items[1].saving_ratio.unwrap());
+        assert_eq!(c.items[2].saving_ratio, None);
+        assert_eq!(c.unchecked_count, Some(2));
+        // 件数を絞っても並びは同じ
+        assert_eq!(ids(&query_candidates(&conn, "highBitrate", 1).unwrap()), vec![h264]);
     }
 
     #[test]

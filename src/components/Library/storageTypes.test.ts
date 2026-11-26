@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { freedBytes, type CleanupItem } from "./storageTypes";
+import { freedBytes, roundedSavingPercent, type CleanupItem } from "./storageTypes";
 
 function item(id: number, fileSize: number, extra: Partial<CleanupItem> = {}): CleanupItem {
   return {
@@ -46,5 +46,14 @@ describe("freedBytes", () => {
 
   it("グループ外のファイルと共有している分は数えない", () => {
     expect(freedBytes([item(1, 1000, { privateBytes: 200 })], () => true)).toBe(200);
+  });
+});
+
+describe("roundedSavingPercent", () => {
+  it("rounds the estimate to 5% steps", () => {
+    expect(roundedSavingPercent(0.691)).toBe(70);
+    expect(roundedSavingPercent(0.674)).toBe(65);
+    expect(roundedSavingPercent(0)).toBe(0);
+    expect(roundedSavingPercent(0.9)).toBe(90);
   });
 });
