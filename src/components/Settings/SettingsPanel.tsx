@@ -71,10 +71,10 @@ const KEY_ACTION_ORDER: KeyAction[] = [
 
 export function SettingsPanel({ onClose }: Props) {
   const { t } = useTranslation();
-  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, hoverPreviewEnabled, language, categoryMode, aiEnabled, aiModelType, saveSettings, saveKeybindings, setCategoryMode, setAiModelType } = useSettingsStore();
+  const { mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, hoverPreviewEnabled, language, categoryMode, aiEnabled, aiModelType, backgroundChecks, saveSettings, saveKeybindings, setCategoryMode, setAiModelType } = useSettingsStore();
   const { watchDirs, scanAndImport, removeWatchDir, isScanning, isThumbnailGenerating } = useLibraryStore();
 
-  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, hoverPreviewEnabled, language, categoryMode, aiEnabled, aiModelType });
+  const [local, setLocal] = useState<AppSettings>({ mpvPath, ffmpegPath, ffprobePath, ytdlpPath, downloadDir, screenshotDir, keybindings, theme, autoPlayNext, hoverPreviewEnabled, language, categoryMode, aiEnabled, aiModelType, backgroundChecks });
   const [isSaving, setIsSaving] = useState(false);
   const [removingPath, setRemovingPath] = useState<string | null>(null);
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null);
@@ -605,6 +605,13 @@ export function SettingsPanel({ onClose }: Props) {
               <FolderPlus aria-hidden />
               {isScanning || isThumbnailGenerating ? t('app.scanning') : t('settings.addFolder')}
             </Button>
+            <SettingRow title={t('settings.backgroundChecks')} description={t('settings.backgroundChecksDesc')}>
+              <Switch
+                checked={local.backgroundChecks}
+                onCheckedChange={(v) => setLocal((prev) => ({ ...prev, backgroundChecks: v }))}
+                aria-label={t('settings.backgroundChecks')}
+              />
+            </SettingRow>
           </Section>
 
           {/* ウェブサーバー */}

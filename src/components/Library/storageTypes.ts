@@ -113,6 +113,8 @@ export interface CleanupItem {
   silentStreams?: number[];
   /** 無音のトラックが使っている容量の見込み (外すと空く) */
   silentBytes?: number;
+  /** 無音のトラックは一部を読んだだけの簡易判定 (外す前に全体を読んで確かめる) */
+  silentSampled?: boolean;
 }
 
 export interface CleanupCandidates {
@@ -134,6 +136,8 @@ export interface StoredSilence {
   status: AudioSilence;
   silentStreams: number[];
   silentBytes: number;
+  /** 無音のトラックは一部を読んだだけの簡易判定 (無音のトラックがなければ false) */
+  sampled: boolean;
 }
 
 /** detect_silent_audio の戻り値 */

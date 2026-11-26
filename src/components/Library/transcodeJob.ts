@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useTagStore } from '../../store/useTagStore';
-import { useTranscodeStore, type TranscodeMode } from '../../store/useTranscodeStore';
+import { useTranscodeStore, type TranscodeJob, type TranscodeMode } from '../../store/useTranscodeStore';
 import { toast } from '../../store/useToastStore';
 import type { Tag } from '../../types';
 
@@ -129,7 +129,7 @@ export function isEfficientCodec(codec: string | null): boolean {
 export function enqueueTranscode(
   source: TranscodeSource,
   mode: TranscodeMode,
-  opts: { trashOriginal: boolean },
+  opts: { trashOriginal: boolean; prepare?: TranscodeJob['prepare'] },
 ): boolean {
   const t = i18n.t.bind(i18n);
   const displayName = source.title ?? source.path.split('/').pop() ?? source.path;
@@ -141,6 +141,7 @@ export function enqueueTranscode(
     videoName: displayName,
     durationSecs: source.duration ?? 0,
     mode,
+    prepare: opts.prepare,
     onSuccess: async (finalPath) => {
       const library = useLibraryStore.getState();
       const tagStore = useTagStore.getState();

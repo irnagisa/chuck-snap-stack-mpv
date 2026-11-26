@@ -12,6 +12,9 @@ import { StorageDuplicates, suggestedIds } from "./StorageDuplicates";
 import { StorageLeftoversPanel } from "./StorageLeftoversPanel";
 import { StorageTrashPanel } from "./StorageTrashPanel";
 import { checkSilence } from "./silenceCheck";
+import { PHASH_CONCURRENCY, computePhash, type VideoForPhash } from "./phashCompute";
+import { beginForegroundCheck } from "../../lib/foregroundChecks";
+import { runPool } from "../../utils/runPool";
 import { TranscodeBatchDialog, type BatchKind } from "./TranscodeBatchDialog";
 import {
   bitrateKbps,
@@ -68,12 +71,6 @@ const MEDIA_LABEL: Record<string, string> = {
   audio: "storage.mediaAudio",
   image: "storage.mediaImage",
 };
-
-interface VideoForPhash {
-  id: number;
-  path: string;
-  thumbnail: string | null;
-}
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -253,26 +250,22 @@ export function StorageModal({ onClose }: Props) {
 
   const handleComputePhash = async () => {
     phashCancelled.current = false;
+    const end = beginForegroundCheck();
     try {
       const pending = await invoke<VideoForPhash[]>("db_get_videos_without_phash");
       setPhashProgress({ done: 0, total: pending.length });
-      for (let i = 0; i < pending.length; i++) {
-        if (phashCancelled.current) return;
-        const v = pending[i];
-        try {
-          await invoke<string>("db_compute_video_phash", {
-            videoId: v.id,
-            videoPath: v.path,
-            thumbnailPath: v.thumbnail ?? null,
-          });
-        } catch {
-          // 読めないファイルは飛ばす (次回また試す)
-        }
-        setPhashProgress({ done: i + 1, total: pending.length });
-      }
+      // 読めないファイルは飛ばす (次回また試す)
+      await runPool(pending, async (v) => void (await computePhash(v)), {
+        concurrency: PHASH_CONCURRENCY,
+        isCancelled: () => phashCancelled.current,
+        onProgress: (done, total) => {
+          if (!phashCancelled.current) setPhashProgress({ done, total });
+        },
+      });
     } catch (e) {
       toast.error(t("storage.candidatesError", { error: errorText(e) }));
     } finally {
+      end();
       setPhashProgress(null);
     }
     if (!phashCancelled.current) await loadCandidates("duplicates");
@@ -532,6 +525,7 @@ export function StorageModal({ onClose }: Props) {
     return (
       <span>
         · {t("storage.silentTracks", { count })}
+        {item.silentSampled && <> ({t("storage.silentSampled")})</>}
         {(item.silentBytes ?? 0) > 0 && <> · {t("storage.silentFreed", { size: formatFileSize(item.silentBytes ?? 0) })}</>}
       </span>
     );

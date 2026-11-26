@@ -204,3 +204,33 @@ describe('cancel', () => {
     expect(useTranscodeStore.getState().batch.total).toBe(2);
   });
 });
+
+describe('prepare', () => {
+  it('uses the mode returned right before running', async () => {
+    const prepare = vi.fn(() => Promise.resolve({ kind: 'dropStreams' as const, streams: [2] }));
+    useTranscodeStore.getState().enqueue(makeOpts('/v/a.mp4', { mode: { kind: 'dropStreams', streams: [1, 2] }, prepare }));
+    await flush();
+    await flush();
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith('transcode_video', {
+      inputPath: '/v/a.mp4',
+      durationSecs: 60,
+      mode: { kind: 'dropStreams', streams: [2] },
+    });
+  });
+
+  it('skips the job when prepare returns null and moves on', async () => {
+    const s = useTranscodeStore.getState();
+    s.enqueue(makeOpts('/v/a.mp4', { prepare: () => Promise.resolve(null) }));
+    s.enqueue(makeOpts('/v/b.mp4'));
+    await flush();
+    await flush();
+
+    expect(pending.map((p) => p.path)).toEqual(['/v/b.mp4']);
+    expect(useTranscodeStore.getState().batch.total).toBe(1);
+    pending[0].resolve('/v/b.av1.mkv');
+    await flush();
+    expect(useTranscodeStore.getState().batch).toMatchObject({ total: 1, succeeded: 1 });
+  });
+});

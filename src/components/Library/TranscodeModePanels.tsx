@@ -249,11 +249,14 @@ function SilenceStatus({
   if (silence === undefined) return null;
   return (
     <>
-      {silence === null ? (
-        <div>
+      {silence === null || silence.sampled ? (
+        <div className={styles.stackTight}>
+          {silence?.sampled && (
+            <p className={styles.hintAccent}>{t("transcode.silenceSampled", { count: silence.silentStreams.length })}</p>
+          )}
           <Button variant="soft" size="sm" disabled={checking} onClick={onCheck}>
             {checking ? <LoaderCircle className={styles.spinner} aria-hidden /> : <AudioLines aria-hidden />}
-            {checking ? t("transcode.silenceChecking") : t("transcode.silenceCheck")}
+            {checking ? t("transcode.silenceChecking") : t(silence ? "transcode.silenceVerify" : "transcode.silenceCheck")}
           </Button>
         </div>
       ) : (
@@ -307,7 +310,9 @@ export function RemuxPanel({
                   {!s.remuxable && <span className={styles.labelHint}>{t("transcode.streamDropped")}</span>}
                 </span>
                 {s.codecType === "audio" && silent.has(s.index) && (
-                  <span className={styles.badge} data-tone="warning">{t("transcode.silentBadge")}</span>
+                  <span className={styles.badge} data-tone="warning">
+                    {t(silence?.sampled ? "transcode.silentBadgeSampled" : "transcode.silentBadge")}
+                  </span>
                 )}
               </label>
             );

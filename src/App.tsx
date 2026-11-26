@@ -8,6 +8,7 @@ import { useShallow } from "zustand/shallow";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useWatcher } from "./hooks/useWatcher";
+import { useBackgroundChecks } from "./hooks/useBackgroundChecks";
 import { useDragDrop } from "./hooks/useDragDrop";
 import { useTheme } from "./hooks/useTheme";
 import { useModalStore } from "./store/useModalStore";
@@ -113,6 +114,7 @@ function App() {
   useTheme();
   useKeyboardShortcuts({ onEscape: () => { setViewingImage(null); closeAll(); } });
   useWatcher();
+  useBackgroundChecks();
   const { isDragging } = useDragDrop();
 
   const [mainView, setMainView] = useState<MainView>(() => {

@@ -61,6 +61,8 @@ export interface AppSettings {
   categoryMode: CategoryMode;
   aiEnabled: boolean;
   aiModelType: AiModelType;
+  /** 何もしていないとき、整理画面の確認 (pHash・無音の簡易判定) を裏で少しずつ進める */
+  backgroundChecks: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -78,6 +80,7 @@ const DEFAULTS: AppSettings = {
   categoryMode: 'virtual',
   aiEnabled: false,
   aiModelType: 'wd-tagger',
+  backgroundChecks: true,
 };
 
 interface SettingsStore extends AppSettings {
@@ -146,6 +149,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       categoryMode: (map["category_mode"] as CategoryMode | undefined) ?? 'virtual',
       aiEnabled: map["ai_enabled"] === "true",
       aiModelType: (map["ai_model_type"] as AiModelType | undefined) ?? 'wd-tagger',
+      backgroundChecks: map["background_checks"] !== "false",
     };
 
     set({ ...settings, isLoaded: true });
@@ -166,6 +170,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       language: settings.language,
       aiEnabled: settings.aiEnabled,
     });
+    await invoke("db_set_setting", { key: "background_checks", value: String(settings.backgroundChecks) });
     await i18n.changeLanguage(settings.language);
     // categoryMode・aiModelType は独立したコマンドで管理するため上書きしない
     set((state) => ({ ...settings, categoryMode: state.categoryMode, aiModelType: state.aiModelType }));

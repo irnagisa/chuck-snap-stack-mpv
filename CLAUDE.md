@@ -75,7 +75,7 @@ chuck-snap-stack/
 │   │   │   ├── db_settings.rs  # 設定 DB
 │   │   │   ├── db_stats.rs     # ライブラリ統計
 │   │   │   ├── storage.rs      # 容量の内訳・整理候補・サムネイルの掃除・ゴミ箱と退避フォルダ
-│   │   │   ├── storage_duplicates.rs # 整理画面の重複検出 (中身の一致 + pHash)。APFS のクローンは空く容量から除く
+│   │   │   ├── storage_duplicates.rs # 整理画面の重複検出 (中身の一致 + pHash)。抜き出しのハッシュは DB に取っておく。APFS のクローンは空く容量から除く
 │   │   │   ├── storage_leftovers.rs # 途中で止まったダウンロード・変換・AI モデル取得の残りファイル
 │   │   │   ├── fs_clone.rs     # APFS のクローン情報 (共有していない容量・clone id、macOS の getattrlist)
 │   │   │   ├── db_export.rs    # バックアップ・エクスポート
@@ -87,7 +87,7 @@ chuck-snap-stack/
 │   │   │   ├── window.rs       # ミニプレイヤーウィンドウ
 │   │   │   ├── webserver.rs    # 組み込み HTTP サーバー (サムネイル配信)
 │   │   │   ├── phash.rs        # 知覚的ハッシュ・重複検出
-│   │   │   ├── silent_audio.rs # 無音の音声トラックの検出 (volumedetect。数か所を先に読み、無音の候補だけ全体を読む)
+│   │   │   ├── silent_audio.rs # 無音の音声トラックの検出 (volumedetect。既定は数十か所を読む簡易判定、thorough で全体を読む)
 │   │   │   ├── ai.rs           # AI タグ提案 (ONNX)
 │   │   │   ├── link.rs         # URL メタデータ取得・リンクアセット DB
 │   │   │   ├── system.rs       # システム情報 (ディスク情報等)
@@ -139,6 +139,9 @@ CREATE TABLE videos (
   audio_silence       TEXT,                  -- 無音の音声トラック: 'none' | 'partial' | 'all' (NULL = 未確認)
   silent_audio_streams TEXT,                 -- 無音のトラックの番号 (ffprobe の index、カンマ区切り)
   silent_audio_bytes  INTEGER,               -- 無音のトラックの容量の見込み (外すと空く)
+  audio_silence_sampled INTEGER,             -- 1 = 無音は数か所を読んだだけの簡易判定 (外す前に全体を読んで確かめる)
+  content_digest      TEXT,                  -- 重複の比較用の抜き出しのハッシュ (hex)
+  content_digest_key  TEXT,                  -- content_digest を計算したときの「サイズ:更新日時(ns)」。変わったら計算し直す
   group_id            INTEGER REFERENCES media_groups(id) ON DELETE SET NULL,
   group_position      INTEGER                -- グループ内の並び順
 );
@@ -371,6 +374,7 @@ unlisten();
 - HEVC 変換 (`hevc_videotoolbox`) は Intel Mac で画質指定 `-q:v` が使えないためビットレート指定にしている。8 ビット入力は `-pix_fmt nv12` を明示しないと失敗する。libopus は `5.1(side)` 等の配置を受け付けないので `aformat` で並べ替える
 - サムネイルは WebP 形式で生成 (ffmpeg 使用、`webp_thumb::ffmpeg_to_webp` を通す)。WebP の書き出しには libwebp 入りの ffmpeg が要るが、Homebrew の `ffmpeg` など libwebp なしの配布もあるため、書けない ffmpeg では PNG で取り出して `webp` クレートで非可逆 WebP にする。`start_web_server` で組み込み HTTP サーバー (axum) を起動してフロントエンドへ配信する
 - pHash (知覚的ハッシュ) で重複メディアを検出。`db_compute_video_phash` → `db_find_similar_videos` の流れ
+- 整理画面の確認 (pHash・無音の簡易判定) は `useBackgroundChecks` が何もしていないときに裏で進める (設定 `background_checks`、既定 on)。急がない ffmpeg は `utils::background_command` で起動し、macOS では `taskpolicy -c utility` で優先度を下げる
 - AI タグ提案は tract-onnx で ONNX モデルを実行 (WD ViT Tagger v3)。モデルは `download_ai_model` でダウンロード
 - rusqlite を直接使用 (tauri-plugin-sql は不使用)。SQL インジェクション対策でプリペアドステートメントを使う
 - ダウンロード URL は SSRF 対策でバリデーション済み (プライベート IP・localhost・mDNS ブロック)

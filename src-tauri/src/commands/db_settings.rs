@@ -13,7 +13,7 @@ pub async fn db_load_settings(state: State<'_, DbState>) -> Result<HashMap<Strin
             "SELECT key, value FROM settings WHERE key IN (
               'mpv_path','ffmpeg_path','ffprobe_path','ytdlp_path',
               'download_dir','screenshot_dir','keybindings','theme','auto_play_next','hover_preview_enabled','language',
-              'category_mode','ai_enabled','ai_model_type'
+              'category_mode','ai_enabled','ai_model_type','background_checks'
             )",
         )
         .map_err(|e| e.to_string())?;

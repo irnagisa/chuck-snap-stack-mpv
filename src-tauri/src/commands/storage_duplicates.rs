@@ -7,14 +7,19 @@
 //! 各グループで残すもの (`keep_id`) を 1 つ選び、残り全部を消したときに空く容量を返す。
 //! APFS のクローン (中身のブロックを共有するコピー) は消しても空きがほとんど増えないため、
 //! `fs_clone` で読んだ共有していない容量で見込みを補正する。
+//!
+//! 抜き出しのハッシュは `videos.content_digest` に取っておき、サイズと更新日時が変わっていなければ
+//! 次からはファイルを読まずに使う (外付けや NAS では読み比べがいちばん時間がかかる)。
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use tauri::State;
+use tauri::{AppHandle, Manager};
 
 use super::fs_clone::{clone_info, CloneInfo};
 use super::phash::hamming_distance;
@@ -37,6 +42,15 @@ const GROUP_LIMIT: usize = 200;
 struct Row {
     item: CleanupItem,
     phash: Option<u64>,
+    /// DB に取っておいた抜き出しのハッシュ
+    cached: Option<CachedDigest>,
+}
+
+/// 抜き出しのハッシュと、計算したときのファイルの「サイズ:更新日時 (ナノ秒)」
+#[derive(Debug, Clone, PartialEq)]
+struct CachedDigest {
+    key: String,
+    digest: [u8; 32],
 }
 
 #[derive(Serialize, Debug)]
@@ -102,6 +116,58 @@ fn sample_digest(path: &Path, expected_size: u64) -> Option<[u8; 32]> {
         hasher.update(&buf);
     }
     Some(hasher.finalize().into())
+}
+
+fn digest_key(meta: &std::fs::Metadata) -> Option<String> {
+    let mtime = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos();
+    Some(format!("{}:{mtime}", meta.len()))
+}
+
+/// 取っておいたハッシュが今のファイル (サイズ・更新日時) と合えばそれを使い、合わなければ読み直す。
+/// 2 つ目は新しく計算した分 (DB に保存する)
+fn digest_with_cache(
+    path: &Path,
+    expected_size: u64,
+    cached: Option<&CachedDigest>,
+) -> (Option<[u8; 32]>, Option<CachedDigest>) {
+    let Ok(meta) = std::fs::metadata(path) else { return (None, None) };
+    if meta.len() != expected_size {
+        return (None, None);
+    }
+    let key = digest_key(&meta);
+    if let (Some(key), Some(c)) = (&key, cached) {
+        if *key == c.key {
+            return (Some(c.digest), None);
+        }
+    }
+    let digest = sample_digest(path, expected_size);
+    (digest, digest.zip(key).map(|(digest, key)| CachedDigest { key, digest }))
+}
+
+fn digest_to_hex(d: &[u8; 32]) -> String {
+    d.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn digest_from_hex(s: &str) -> Option<[u8; 32]> {
+    if s.len() != 64 || !s.is_ascii() {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, b) in out.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(out)
+}
+
+fn save_digests(conn: &mut rusqlite::Connection, fresh: &[(i64, CachedDigest)]) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    {
+        let mut stmt = tx.prepare("UPDATE videos SET content_digest = ?1, content_digest_key = ?2 WHERE id = ?3")?;
+        for (id, c) in fresh {
+            stmt.execute(rusqlite::params![digest_to_hex(&c.digest), c.key, id])?;
+        }
+    }
+    tx.commit()
 }
 
 /// 長さが近いか。両方とも長さがない (画像) なら近いとみなし、片方だけなら別物とする
@@ -262,7 +328,10 @@ fn build_groups(
 
 fn load_rows(conn: &rusqlite::Connection) -> Result<(Vec<Row>, i64), String> {
     let mut stmt = conn
-        .prepare(&format!("SELECT {}, phash FROM videos WHERE {ON_DISK_FILTER}", cleanup_item_columns()))
+        .prepare(&format!(
+            "SELECT {}, phash, content_digest, content_digest_key FROM videos WHERE {ON_DISK_FILTER}",
+            cleanup_item_columns()
+        ))
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |r| {
@@ -271,7 +340,14 @@ fn load_rows(conn: &rusqlite::Connection) -> Result<(Vec<Row>, i64), String> {
                 .and_then(|p| p.parse::<u64>().ok())
                 // 単色のフレームなどは何でも一致してしまうので使わない
                 .filter(|&h| h != 0 && h != u64::MAX);
-            Ok(Row { item: item_from_row(r)?, phash })
+            let digest = r.get::<_, Option<String>>(CLEANUP_ITEM_COLUMN_COUNT + 1)?;
+            let key = r.get::<_, Option<String>>(CLEANUP_ITEM_COLUMN_COUNT + 2)?;
+            let cached = digest
+                .as_deref()
+                .and_then(digest_from_hex)
+                .zip(key)
+                .map(|(digest, key)| CachedDigest { key, digest });
+            Ok(Row { item: item_from_row(r)?, phash, cached })
         })
         .map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>()
@@ -288,27 +364,46 @@ fn load_rows(conn: &rusqlite::Connection) -> Result<(Vec<Row>, i64), String> {
 
 /// 重複のグループを、消したときに空く容量の大きい順に返す
 #[tauri::command]
-pub async fn get_duplicate_groups(state: State<'_, DbState>) -> Result<DuplicateGroups, String> {
-    if let Err(e) = super::db_videos::fill_missing_file_sizes(&state) {
-        log::warn!("[storage] file_size の取得に失敗しました: {e}");
-    }
-    let (rows, phash_missing_count) = {
-        let conn = state.conn_read()?;
-        load_rows(&conn)?
-    };
+pub async fn get_duplicate_groups(app: AppHandle) -> Result<DuplicateGroups, String> {
+    // ファイルの情報を読む・読み比べるのはどれも待ちが長いので、まとめて別スレッドで行う
     tokio::task::spawn_blocking(move || {
+        let state = app.state::<DbState>();
+        if let Err(e) = super::db_videos::fill_missing_file_sizes(&state) {
+            log::warn!("[storage] file_size の取得に失敗しました: {e}");
+        }
+        let (mut rows, phash_missing_count) = {
+            let conn = state.conn_read()?;
+            load_rows(&conn)?
+        };
+        let cache: HashMap<i64, CachedDigest> =
+            rows.iter_mut().filter_map(|r| r.cached.take().map(|c| (r.item.id, c))).collect();
+        let fresh: RefCell<Vec<(i64, CachedDigest)>> = RefCell::new(Vec::new());
         let mut groups = build_groups(
             rows,
-            |it| sample_digest(Path::new(&it.path), u64::try_from(it.file_size).ok()?),
+            |it| {
+                let (digest, new) =
+                    digest_with_cache(Path::new(&it.path), u64::try_from(it.file_size).ok()?, cache.get(&it.id));
+                if let Some(new) = new {
+                    fresh.borrow_mut().push((it.id, new));
+                }
+                digest
+            },
             |it| clone_info(Path::new(&it.path)),
         );
+        let fresh = fresh.into_inner();
+        if !fresh.is_empty() {
+            // 保存できなくても結果は返す (次回また読む)
+            if let Err(e) = state.conn().and_then(|mut c| save_digests(&mut c, &fresh).map_err(|e| e.to_string())) {
+                log::warn!("[storage] 重複の比較結果を保存できませんでした: {e}");
+            }
+        }
         let total_groups = groups.len();
         let total_reclaimable_bytes = groups.iter().map(|g| g.reclaimable_bytes).sum();
         groups.truncate(GROUP_LIMIT);
-        DuplicateGroups { total_groups, total_reclaimable_bytes, phash_missing_count, groups }
+        Ok(DuplicateGroups { total_groups, total_reclaimable_bytes, phash_missing_count, groups })
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -334,8 +429,10 @@ mod tests {
                 clone_group: None,
                 silent_streams: None,
                 silent_bytes: None,
+                silent_sampled: None,
             },
             phash,
+            cached: None,
         }
     }
 
@@ -475,5 +572,55 @@ mod tests {
         assert_eq!(sample_digest(&a, n), sample_digest(&b, n));
         assert_ne!(sample_digest(&a, n), sample_digest(&c, n));
         assert_eq!(sample_digest(&a, n + 1), None, "DB のサイズが古ければ比べない");
+    }
+
+    #[test]
+    fn digest_cache_is_used_until_the_file_changes() {
+        let dir = std::env::temp_dir().join(format!("css-dup-cache-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.bin");
+        std::fs::write(&path, vec![1u8; 4096]).unwrap();
+
+        let (first, fresh) = digest_with_cache(&path, 4096, None);
+        let fresh = fresh.expect("初回は計算して保存する");
+        assert_eq!(first, Some(fresh.digest));
+
+        // 同じサイズ・更新日時なら読まずに取っておいた値を使う (値が違うことで読んでいないと分かる)
+        let stale = CachedDigest { key: fresh.key.clone(), digest: [9; 32] };
+        assert_eq!(digest_with_cache(&path, 4096, Some(&stale)), (Some([9; 32]), None));
+
+        // 中身を書き換えて更新日時が変われば読み直す
+        std::fs::write(&path, vec![2u8; 4096]).unwrap();
+        let f = std::fs::File::options().write(true).open(&path).unwrap();
+        f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5)).unwrap();
+        let (again, new) = digest_with_cache(&path, 4096, Some(&stale));
+        assert_ne!(again, Some([9; 32]));
+        assert!(new.is_some());
+        assert_ne!(again, first);
+
+        // DB のサイズが古ければ比べない
+        assert_eq!(digest_with_cache(&path, 1, None), (None, None));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn digest_hex_round_trips_and_rejects_junk() {
+        let d: [u8; 32] = std::array::from_fn(|i| (i * 7) as u8);
+        assert_eq!(digest_from_hex(&digest_to_hex(&d)), Some(d));
+        assert_eq!(digest_from_hex("zz"), None);
+        assert_eq!(digest_from_hex(&"g".repeat(64)), None);
+    }
+
+    #[test]
+    fn digests_are_saved_and_loaded_back() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::schema::init_db(&conn).unwrap();
+        conn.execute("INSERT INTO videos (path, media_type, status, file_size) VALUES ('/m/a.mp4', 'video', 'active', 10)", [])
+            .unwrap();
+        let id = conn.last_insert_rowid();
+        let c = CachedDigest { key: "10:123".into(), digest: [3; 32] };
+        save_digests(&mut conn, &[(id, c.clone())]).unwrap();
+        let (rows, _) = load_rows(&conn).unwrap();
+        assert_eq!(rows[0].cached, Some(c));
     }
 }

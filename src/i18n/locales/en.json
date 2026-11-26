@@ -207,7 +207,9 @@
     "aiModelDownloading": "Downloading",
     "aiModelUninstallConfirmTitle": "Uninstall AI model?",
     "aiModelUninstallConfirmDesc": "The model files will be deleted. You will need to reinstall to use AI tag suggestions again.",
-    "aiModelUninstallConfirm": "Uninstall"
+    "aiModelUninstallConfirm": "Uninstall",
+    "backgroundChecks": "Run cleanup checks in the background",
+    "backgroundChecksDesc": "While the app is idle, gradually compute pHashes for duplicate detection and quick silent-track checks. Pauses during playback and conversion"
   },
   "keybindings": {
     "pause": "Play/Pause",
@@ -680,7 +682,12 @@
     "silenceChecking": "Measuring volume…",
     "silenceNone": "No silent audio tracks.",
     "silenceFound": "{{count}} silent audio track(s) found and unchecked.",
-    "silenceError": "Could not measure volume: {{error}}"
+    "silenceError": "Could not measure volume: {{error}}",
+    "silenceSampled": "A quick check of a few spots found {{count}} track(s) that seem silent. Read the whole file to confirm before removing them.",
+    "silenceVerify": "Check the whole file",
+    "silentBadgeSampled": "Silent?",
+    "dropSilentVerify": "{{count}} item(s) were only quick-checked. The whole file is read right before conversion, and tracks with sound are kept.",
+    "dropSilentNotSilent": "Sound was found in \"{{name}}\", so no tracks were removed"
   },
   "export": {
     "title": "Export / Import",
@@ -951,7 +958,8 @@
     "silentFreed": "about {{size}} if removed",
     "silentSummary": "{{count}} files · about {{size}} freed by removing them",
     "silentSelectedSummary": "{{count}} selected · about {{size}} if removed",
-    "dropSilent": "Remove silent tracks"
+    "dropSilent": "Remove silent tracks",
+    "silentSampled": "quick check"
   },
   "groups": {
     "section": "Group",

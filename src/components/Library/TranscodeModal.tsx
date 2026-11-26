@@ -98,9 +98,9 @@ export function TranscodeModal({ video, onClose }: Props) {
     return () => { cancelled = true; };
   }, [video.id]);
 
-  // 無音と分かっているトラックは、最初から残すトラックに含めない
+  // 無音と分かっているトラックは、最初から残すトラックに含めない (簡易判定のときは確かめるまで外さない)
   useEffect(() => {
-    if (!estimate || !silence || silenceApplied.current || silence.silentStreams.length === 0) return;
+    if (!estimate || !silence || silenceApplied.current || silence.sampled || silence.silentStreams.length === 0) return;
     silenceApplied.current = true;
     setKept((prev) => new Set([...prev].filter((i) => !silence.silentStreams.includes(i))));
   }, [estimate, silence]);
@@ -109,7 +109,8 @@ export function TranscodeModal({ video, onClose }: Props) {
     setCheckingSilence(true);
     setSilenceError(null);
     try {
-      setSilence(await invoke<SilenceReport>('detect_silent_audio', { videoId: video.id }));
+      // この画面では 1 本だけなので、ファイル全体を読んで確かめる
+      setSilence(await invoke<SilenceReport>('detect_silent_audio', { videoId: video.id, thorough: true }));
     } catch (e) {
       setSilenceError(e instanceof Error ? e.message : String(e));
     } finally {

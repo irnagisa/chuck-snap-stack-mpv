@@ -140,6 +140,12 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE videos ADD COLUMN audio_silence TEXT",
         "ALTER TABLE videos ADD COLUMN silent_audio_streams TEXT",
         "ALTER TABLE videos ADD COLUMN silent_audio_bytes INTEGER",
+        // 1 = 無音のトラックは一部を読んだだけの簡易判定 (外す前に全体を読んで確かめる)
+        "ALTER TABLE videos ADD COLUMN audio_silence_sampled INTEGER",
+        // 重複の中身の比較に使う抜き出しのハッシュ (commands/storage_duplicates.rs)。
+        // content_digest_key は計算したときの「サイズ:更新日時」で、変わっていたら計算し直す
+        "ALTER TABLE videos ADD COLUMN content_digest TEXT",
+        "ALTER TABLE videos ADD COLUMN content_digest_key TEXT",
         // グループ (commands/db_groups.rs)。group_position はグループ内の並び順
         "ALTER TABLE videos ADD COLUMN group_id INTEGER REFERENCES media_groups(id) ON DELETE SET NULL",
         "ALTER TABLE videos ADD COLUMN group_position INTEGER",
