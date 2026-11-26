@@ -97,8 +97,8 @@ chuck-snap-stack/
 │   │   │   └── mod.rs
 │   │   ├── db/                 # SQLite スキーマ・クエリ
 │   │   │   ├── mod.rs
-│   │   │   ├── schema.rs       # テーブル定義・インデックス
-│   │   │   └── migrations.rs   # スキーママイグレーション
+│   │   │   ├── schema.rs       # 今の版のテーブル・インデックス (user_version で版を持つ)
+│   │   │   └── migrations.rs   # 古い版の DB を今のスキーマに書き換える
 │   │   ├── ai/                 # AI タグ推論エンジン
 │   │   │   ├── mod.rs
 │   │   │   ├── wd_tagger.rs    # WD ViT Tagger v3
@@ -113,38 +113,49 @@ chuck-snap-stack/
 ### SQLite スキーマ
 
 ```sql
--- メディアファイル情報 (動画・音声・画像)
+-- メディアファイル情報 (動画・音声・画像・リンク)。ファイルそのものとユーザーが付けた情報だけを持つ
 CREATE TABLE videos (
-  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-  path                TEXT NOT NULL UNIQUE,
-  title               TEXT,
-  duration            REAL,
-  thumbnail           TEXT,
-  watched_at          TEXT,
-  progress            REAL DEFAULT 0,        -- 再生位置 (秒)
-  rating              INTEGER DEFAULT 0,
-  created_at          TEXT DEFAULT CURRENT_TIMESTAMP,
-  category_id         INTEGER REFERENCES categories(id),
-  has_audio           INTEGER,
-  watch_count         INTEGER DEFAULT 0,
-  media_type          TEXT DEFAULT 'video',  -- 'video' | 'audio' | 'image'
-  source_url          TEXT,
-  status              TEXT,                  -- 'active' | 'inbox' | 'missing'
-  source_type         TEXT,                  -- 'local' | 'download'
-  ai_tag_suggestions  TEXT,                  -- JSON (AI 提案タグ)
-  ai_new_suggestions  TEXT,                  -- JSON (未マッチの新規提案)
-  ai_analyzed_at      TEXT,
-  phash               TEXT,                  -- 知覚的ハッシュ (重複検出用)
-  last_viewed_at      TEXT,                  -- 最終視聴日時
-  file_size           INTEGER,               -- ファイルサイズ (bytes, ソート用キャッシュ)
-  audio_silence       TEXT,                  -- 無音の音声トラック: 'none' | 'partial' | 'all' (NULL = 未確認)
-  silent_audio_streams TEXT,                 -- 無音のトラックの番号 (ffprobe の index、カンマ区切り)
-  silent_audio_bytes  INTEGER,               -- 無音のトラックの容量の見込み (外すと空く)
-  audio_silence_sampled INTEGER,             -- 1 = 無音は数か所を読んだだけの簡易判定 (外す前に全体を読んで確かめる)
-  content_digest      TEXT,                  -- 重複の比較用の抜き出しのハッシュ (hex)
-  content_digest_key  TEXT,                  -- content_digest を計算したときの「サイズ:更新日時(ns)」。変わったら計算し直す
-  group_id            INTEGER REFERENCES media_groups(id) ON DELETE SET NULL,
-  group_position      INTEGER                -- グループ内の並び順
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  path           TEXT NOT NULL UNIQUE,
+  title          TEXT,
+  duration       REAL,
+  thumbnail      TEXT,
+  watched_at     TEXT,
+  progress       REAL NOT NULL DEFAULT 0,          -- 再生位置 (秒)
+  rating         INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  category_id    INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+  has_audio      INTEGER,
+  watch_count    INTEGER NOT NULL DEFAULT 0,
+  media_type     TEXT NOT NULL DEFAULT 'video',    -- 'video' | 'audio' | 'image' | 'link' (CHECK)
+  source_url     TEXT,
+  status         TEXT NOT NULL DEFAULT 'inbox',    -- 'inbox' (未整理) | 'active' (整理済み) | 'missing' (CHECK)
+  source_type    TEXT,                             -- 'import' | 'download' | 'dragdrop' | 'watcher' | 'link'
+  last_viewed_at TEXT,                             -- 最終視聴日時
+  file_size      INTEGER,                          -- ファイルサイズ (bytes, ソート用キャッシュ)
+  group_id       INTEGER REFERENCES media_groups(id) ON DELETE SET NULL,
+  group_position INTEGER                           -- グループ内の並び順
+);
+
+-- ↓ 計算し直せる解析結果のキャッシュ (video_id が主キー・ON DELETE CASCADE。行が無い = まだ調べていない)
+
+-- 知覚的ハッシュ (重複検出用。u64 の 10 進文字列)
+CREATE TABLE media_phash (video_id INTEGER PRIMARY KEY, phash TEXT NOT NULL);
+
+-- 無音の音声トラック
+CREATE TABLE media_silent_audio (
+  video_id INTEGER PRIMARY KEY,
+  silence  TEXT NOT NULL,           -- 'none' | 'partial' | 'all'
+  streams  TEXT,                    -- 無音のトラックの番号 (ffprobe の index、カンマ区切り)
+  bytes    INTEGER,                 -- 無音のトラックの容量の見込み (外すと空く)
+  sampled  INTEGER NOT NULL DEFAULT 0  -- 1 = 数か所を読んだだけの簡易判定 (外す前に全体を読んで確かめる)
+);
+
+-- 重複の比較用の抜き出しのハッシュ
+CREATE TABLE media_content_digest (
+  video_id   INTEGER PRIMARY KEY,
+  digest_key TEXT NOT NULL,         -- 計算したときの「サイズ:更新日時(ns)」。変わったら計算し直す
+  digest     TEXT NOT NULL          -- hex
 );
 
 -- グループ (シリーズ・同じ内容の別パターン)。ライブラリでは代表の 1 件にまとめて表示できる
@@ -156,7 +167,7 @@ CREATE TABLE media_groups (
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- ffprobe で調べた映像の情報 (計算し直せるキャッシュなので videos と分ける)。整理画面の高ビットレートで減る割合の見積もりに使う
+-- ffprobe で調べた映像の情報。整理画面の高ビットレートで減る割合の見積もりに使う
 CREATE TABLE media_probe (
   video_id      INTEGER PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
   probe_key     TEXT NOT NULL,   -- 調べたときの「サイズ:更新日時(ns)」。サイズが videos.file_size と違えば調べ直す
@@ -386,8 +397,11 @@ unlisten();
 - AV1 変換は SVT-AV1 (`libsvtav1`) を優先し、無い ffmpeg (evermeet.cx の Intel Mac 向けビルドなど) では libaom (`libaom-av1`) で代わりにする。使えるエンコーダーは `ffmpeg -encoders` で調べる
 - HEVC 変換 (`hevc_videotoolbox`) は Intel Mac で画質指定 `-q:v` が使えないためビットレート指定にしている。8 ビット入力は `-pix_fmt nv12` を明示しないと失敗する。libopus は `5.1(side)` 等の配置を受け付けないので `aformat` で並べ替える
 - サムネイルは WebP 形式で生成 (ffmpeg 使用、`webp_thumb::ffmpeg_to_webp` を通す)。WebP の書き出しには libwebp 入りの ffmpeg が要るが、Homebrew の `ffmpeg` など libwebp なしの配布もあるため、書けない ffmpeg では PNG で取り出して `webp` クレートで非可逆 WebP にする。`start_web_server` で組み込み HTTP サーバー (axum) を起動してフロントエンドへ配信する
-- pHash (知覚的ハッシュ) で重複メディアを検出。`db_compute_video_phash` → `db_find_similar_videos` の流れ
-- 計算し直せる解析結果のキャッシュを新しく持つときは、`videos` に列を足さず別テーブル (`media_probe` のように video_id を主キー・ON DELETE CASCADE) にする
+- pHash (知覚的ハッシュ) で重複メディアを検出。`db_compute_video_phash` (`media_phash` に保存) → `db_find_similar_videos` の流れ
+- 計算し直せる解析結果のキャッシュを新しく持つときは、`videos` に列を足さず別テーブル (`media_probe` / `media_phash` のように video_id を主キー・ON DELETE CASCADE) にする
+- スキーマは `db/schema.rs` の `TABLES` / `INDEXES` が今の版のすべて。版は `PRAGMA user_version` (`SCHEMA_VERSION`) で持ち、変えるときは版を上げて `db/migrations.rs` の `migrate` に前の版からの書き換えを足す
+- 動画を消すときは `db_videos::delete_videos` (タグ付け・プレイリスト・キャッシュは CASCADE で消える。手で消さない)。複数の文を書くときは `conn.unchecked_transaction()` でトランザクションにする (`BEGIN` を手で書かない)
+- `Video` を読むときは `db_videos::VIDEO_COLUMNS` / `query_videos` を使う
 - 整理画面の高ビットレートは、AV1 にしたときに減る割合の見積もり (`media_probe::estimate_av1_saving`、解像度・fps・コーデック・ビットレートからの目安) の大きい順に並べる
 - 整理画面の確認 (映像の情報・pHash・無音の簡易判定) は `useBackgroundChecks` が何もしていないときに裏で進める (設定 `background_checks`、既定 on)。急がない ffmpeg は `utils::background_command` で起動し、macOS では `taskpolicy -c utility` で優先度を下げる
 - AI タグ提案は tract-onnx で ONNX モデルを実行 (WD ViT Tagger v3)。モデルは `download_ai_model` でダウンロード

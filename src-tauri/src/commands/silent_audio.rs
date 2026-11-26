@@ -8,11 +8,11 @@
 //!   ファイル全体は読まないので速いが、ごく一部にだけ音があるトラックは見落としうる
 //! - 精密 (`Depth::Full`): ファイル全体を読んで確かめる
 //!
-//! 結果は `videos` の次の列に保存する (NULL は未確認):
-//! - `audio_silence`: `none` (無音のトラックなし) / `partial` (一部が無音) / `all` (すべて無音)
-//! - `silent_audio_streams`: 無音のトラックの番号 (ffprobe の index、カンマ区切り)
-//! - `silent_audio_bytes`: 無音のトラックが使っている容量の見込み (外すと空く)
-//! - `audio_silence_sampled`: 1 なら無音のトラックは簡易判定 (外す前に精密に確かめる)
+//! 結果は `media_silent_audio` に保存する (行が無い = 未確認):
+//! - `silence`: `none` (無音のトラックなし) / `partial` (一部が無音) / `all` (すべて無音)
+//! - `streams`: 無音のトラックの番号 (ffprobe の index、カンマ区切り)
+//! - `bytes`: 無音のトラックが使っている容量の見込み (外すと空く)
+//! - `sampled`: 1 なら無音のトラックは簡易判定 (外す前に精密に確かめる)
 
 use serde::Serialize;
 
@@ -44,10 +44,10 @@ pub enum Depth {
 }
 
 /// まだ調べていない動画の条件 (音声トラックがないと分かっているものは調べない)
-pub(crate) const UNCHECKED_FILTER: &str = "COALESCE(media_type, 'video') = 'video'
-           AND COALESCE(status, '') != 'missing'
+pub(crate) const UNCHECKED_FILTER: &str = "media_type = 'video'
+           AND status != 'missing'
            AND COALESCE(has_audio, 1) != 0
-           AND audio_silence IS NULL";
+           AND NOT EXISTS (SELECT 1 FROM media_silent_audio sa WHERE sa.video_id = videos.id)";
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -288,10 +288,12 @@ async fn detect(ffmpeg_path: &str, ffprobe_path: &str, path: &str, depth: Depth)
 }
 
 fn save_report(conn: &rusqlite::Connection, video_id: i64, report: &SilenceReport) -> Result<(), String> {
+    // 調べている間に消えた動画の分は入れない
     conn.execute(
-        "UPDATE videos SET audio_silence = ?1, silent_audio_streams = ?2, silent_audio_bytes = ?3,
-                           audio_silence_sampled = ?4
-         WHERE id = ?5",
+        "INSERT INTO media_silent_audio (video_id, silence, streams, bytes, sampled)
+         SELECT id, ?1, ?2, ?3, ?4 FROM videos WHERE id = ?5
+         ON CONFLICT(video_id) DO UPDATE SET silence = excluded.silence, streams = excluded.streams,
+                                             bytes = excluded.bytes, sampled = excluded.sampled",
         rusqlite::params![
             report.status,
             format_stream_list(&report.silent_streams),
@@ -305,25 +307,21 @@ fn save_report(conn: &rusqlite::Connection, video_id: i64, report: &SilenceRepor
 }
 
 fn load_stored(conn: &rusqlite::Connection, video_id: i64) -> Result<Option<StoredSilence>, String> {
-    let stored = conn.query_row(
-        "SELECT audio_silence, silent_audio_streams, silent_audio_bytes, audio_silence_sampled
-         FROM videos WHERE id = ?1",
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT silence, streams, bytes, sampled FROM media_silent_audio WHERE video_id = ?1",
         [video_id],
         |r| {
-            let Some(status) = r.get::<_, Option<String>>(0)? else { return Ok(None) };
-            Ok(Some(StoredSilence {
-                status,
+            Ok(StoredSilence {
+                status: r.get(0)?,
                 silent_streams: parse_stream_list(r.get::<_, Option<String>>(1)?.as_deref()),
                 silent_bytes: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
-                sampled: r.get::<_, Option<i64>>(3)?.unwrap_or(0) != 0,
-            }))
+                sampled: r.get::<_, i64>(3)? != 0,
+            })
         },
-    );
-    match stored {
-        Ok(s) => Ok(s),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
+    )
+    .optional()
+    .map_err(|e| e.to_string())
 }
 
 // ── Tauri コマンド ───────────────────────────────────────────────────────────

@@ -24,9 +24,11 @@ pub struct Video {
     pub has_audio: Option<i64>,
     pub watch_count: i64,
     pub created_at: String,
-    pub media_type: Option<String>,
+    /// 'video' | 'audio' | 'image' | 'link'
+    pub media_type: String,
     pub source_url: Option<String>,
-    pub status: Option<String>,
+    /// 'inbox' | 'active' | 'missing'
+    pub status: String,
     pub source_type: Option<String>,
 }
 
@@ -156,6 +158,14 @@ pub struct VideoIdPath {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+/// `Video` を読む SELECT の列 (`videos` の別名は `v`。`video_from_row` と順番を合わせる)
+pub(crate) const VIDEO_COLUMNS: &str = "v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
+     v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
+     v.created_at, v.media_type, v.source_url, v.status, v.source_type";
+
+/// `VIDEO_COLUMNS` の列の数 (後ろに列を足して読むときの番号)
+pub(crate) const VIDEO_COLUMN_COUNT: usize = 16;
+
 pub fn video_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Video> {
     Ok(Video {
         id: r.get(0)?,
@@ -164,17 +174,28 @@ pub fn video_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Video> {
         duration: r.get(3)?,
         thumbnail: r.get(4)?,
         watched_at: r.get(5)?,
-        progress: r.get::<_, Option<f64>>(6)?.unwrap_or(0.0),
-        rating: r.get::<_, Option<i64>>(7)?.unwrap_or(0),
+        progress: r.get(6)?,
+        rating: r.get(7)?,
         category_id: r.get(8)?,
         has_audio: r.get(9)?,
-        watch_count: r.get::<_, Option<i64>>(10)?.unwrap_or(0),
+        watch_count: r.get(10)?,
         created_at: r.get(11)?,
         media_type: r.get(12)?,
         source_url: r.get(13)?,
         status: r.get(14)?,
         source_type: r.get(15)?,
     })
+}
+
+/// `SELECT {VIDEO_COLUMNS} {rest}` の結果を返す。`rest` は FROM 以降 (`videos` の別名は `v`)
+pub(crate) fn query_videos<P: rusqlite::Params>(
+    conn: &rusqlite::Connection,
+    rest: &str,
+    params: P,
+) -> rusqlite::Result<Vec<Video>> {
+    let mut stmt = conn.prepare(&format!("SELECT {VIDEO_COLUMNS} {rest}"))?;
+    let rows = stmt.query_map(params, video_from_row)?;
+    rows.collect()
 }
 
 fn get_category_descendants(
@@ -252,7 +273,7 @@ fn build_where_clause(
     }
 
     if filter.filter_min_rating == -1 {
-        conditions.push("(v.rating = 0 OR v.rating IS NULL)".to_string());
+        conditions.push("v.rating = 0".to_string());
     } else if filter.filter_min_rating > 0 {
         let op = match filter.filter_rating_mode.as_str() {
             "lte" => "<=",
@@ -265,7 +286,10 @@ fn build_where_clause(
 
     match filter.filter_has_audio {
         // 音声トラックはあるが無音 (一部のトラックだけ無音も含む。調べたものだけ)
-        Some(FILTER_SILENT_AUDIO) => conditions.push("v.audio_silence IN ('all', 'partial')".to_string()),
+        Some(FILTER_SILENT_AUDIO) => conditions.push(
+            "EXISTS (SELECT 1 FROM media_silent_audio sa WHERE sa.video_id = v.id AND sa.silence IN ('all', 'partial'))"
+                .to_string(),
+        ),
         Some(has_audio) => {
             conditions.push("v.has_audio = ?".to_string());
             params.push(Value::Integer(has_audio));
@@ -371,8 +395,8 @@ pub(crate) fn fill_missing_file_sizes(state: &DbState) -> Result<(), String> {
             .prepare(
                 "SELECT id, path FROM videos
                  WHERE file_size IS NULL
-                   AND COALESCE(media_type, 'video') != 'link'
-                   AND COALESCE(status, '') != 'missing'",
+                   AND media_type != 'link'
+                   AND status != 'missing'",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -398,22 +422,16 @@ pub(crate) fn fill_missing_file_sizes(state: &DbState) -> Result<(), String> {
     }
 
     let conn = state.conn()?;
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        let mut stmt = conn
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    {
+        let mut stmt = tx
             .prepare("UPDATE videos SET file_size = ?1 WHERE id = ?2 AND file_size IS NULL")
             .map_err(|e| e.to_string())?;
         for (id, size) in &sizes {
             stmt.execute(rusqlite::params![size, id]).map_err(|e| e.to_string())?;
         }
-        Ok(())
-    })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    } else if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-        log::error!("[fill_missing_file_sizes] ROLLBACK 失敗: {rb_err}");
     }
-    result
+    tx.commit().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -444,24 +462,16 @@ pub async fn db_fetch_videos(
     let sort_col = sort_column(&filter.filter_sort_by);
     let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
 
-    let sql = format!(
-        "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
-                v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                v.created_at, v.media_type, v.source_url, v.status, v.source_type
-         FROM {source}
-         ORDER BY {sort_col} {dir}
-         LIMIT ? OFFSET ?"
-    );
-
     let mut all_params: Vec<rusqlite::types::Value> = params;
     all_params.push(rusqlite::types::Value::Integer(filter.page_size));
     all_params.push(rusqlite::types::Value::Integer(offset));
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(rusqlite::params_from_iter(all_params.iter()), video_from_row)
-        .map_err(|e| e.to_string())?;
-    let videos = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
+    let videos = query_videos(
+        &conn,
+        &format!("FROM {source} ORDER BY {sort_col} {dir} LIMIT ? OFFSET ?"),
+        rusqlite::params_from_iter(all_params.iter()),
+    )
+    .map_err(|e| e.to_string())?;
 
     let video_tags = if videos.is_empty() {
         vec![]
@@ -516,19 +526,12 @@ pub async fn db_fetch_all_for_shuffle(
     let sort_col = sort_column(&filter.filter_sort_by);
     let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
 
-    let sql = format!(
-        "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
-                v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                v.created_at, v.media_type, v.source_url, v.status, v.source_type
-         FROM {source}
-         ORDER BY {sort_col} {dir}"
-    );
-
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(rusqlite::params_from_iter(params.iter()), video_from_row)
-        .map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    query_videos(
+        &conn,
+        &format!("FROM {source} ORDER BY {sort_col} {dir}"),
+        rusqlite::params_from_iter(params.iter()),
+    )
+    .map_err(|e| e.to_string())
 }
 
 // ── simple video mutations ────────────────────────────────────────────────────
@@ -540,7 +543,7 @@ pub async fn db_increment_watch_count(
 ) -> Result<(), String> {
     let conn = state.conn()?;
     conn.execute(
-        "UPDATE videos SET watch_count = COALESCE(watch_count, 0) + 1 WHERE id = ?1",
+        "UPDATE videos SET watch_count = watch_count + 1 WHERE id = ?1",
         [video_id],
     )
     .map_err(|e| e.to_string())?;
@@ -626,13 +629,24 @@ pub(crate) fn auto_graduate_if_complete(
     conn: &rusqlite::Connection,
     video_id: i64,
 ) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE videos SET status = NULL WHERE id = ?1 AND status = 'inbox'
-         AND category_id IS NOT NULL
-         AND rating IS NOT NULL AND rating > 0
-         AND EXISTS (SELECT 1 FROM video_tags WHERE video_id = ?1)",
-        [video_id],
-    )?;
+    auto_graduate_if_complete_many(conn, &[video_id])
+}
+
+/// `auto_graduate_if_complete` の複数件版
+pub(crate) fn auto_graduate_if_complete_many(conn: &rusqlite::Connection, ids: &[i64]) -> rusqlite::Result<()> {
+    const BATCH: usize = 900;
+    for chunk in ids.chunks(BATCH) {
+        let ph = vec!["?"; chunk.len()].join(", ");
+        conn.execute(
+            &format!(
+                "UPDATE videos SET status = 'active'
+                 WHERE id IN ({ph}) AND status = 'inbox'
+                   AND category_id IS NOT NULL AND rating > 0
+                   AND EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = videos.id)"
+            ),
+            rusqlite::params_from_iter(chunk),
+        )?;
+    }
     Ok(())
 }
 
@@ -650,35 +664,13 @@ pub struct InboxStats {
 #[tauri::command]
 pub async fn db_get_inbox_videos(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
     let conn = state.conn_read()?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
-                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                    v.created_at, v.media_type, v.source_url, v.status, v.source_type
-             FROM videos v
-             WHERE v.status = 'inbox'
-             ORDER BY v.created_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], video_from_row).map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+    query_videos(&conn, "FROM videos v WHERE v.status = 'inbox' ORDER BY v.created_at DESC", []).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn db_get_recent_videos(state: State<'_, DbState>, limit: i64) -> Result<Vec<Video>, String> {
     let conn = state.conn_read()?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
-                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                    v.created_at, v.media_type, v.source_url, v.status, v.source_type
-             FROM videos v
-             ORDER BY v.created_at DESC
-             LIMIT ?1",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([limit], video_from_row).map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+    query_videos(&conn, "FROM videos v ORDER BY v.created_at DESC LIMIT ?1", [limit]).map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -692,18 +684,17 @@ pub struct LastViewedItem {
 pub async fn db_get_last_viewed_video(state: State<'_, DbState>) -> Result<Option<LastViewedItem>, String> {
     let conn = state.conn_read()?;
     conn.query_row(
-        "SELECT id, path, title, duration, thumbnail, watched_at, progress, rating,
-                category_id, has_audio, watch_count, created_at, media_type, source_url,
-                status, source_type, last_viewed_at
-         FROM videos
-         WHERE last_viewed_at IS NOT NULL
-         ORDER BY last_viewed_at DESC
-         LIMIT 1",
+        &format!(
+            "SELECT {VIDEO_COLUMNS}, v.last_viewed_at FROM videos v
+             WHERE v.last_viewed_at IS NOT NULL
+             ORDER BY v.last_viewed_at DESC
+             LIMIT 1"
+        ),
         [],
         |r| {
             Ok(LastViewedItem {
                 video: video_from_row(r)?,
-                last_viewed_at: r.get(16)?,
+                last_viewed_at: r.get(VIDEO_COLUMN_COUNT)?,
             })
         },
     )
@@ -737,7 +728,7 @@ pub async fn db_get_inbox_stats(state: State<'_, DbState>) -> Result<InboxStats,
                COUNT(*),
                SUM(CASE WHEN category_id IS NULL THEN 1 ELSE 0 END),
                SUM(CASE WHEN id NOT IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END),
-               SUM(CASE WHEN rating IS NULL OR rating = 0 THEN 1 ELSE 0 END),
+               SUM(CASE WHEN rating = 0 THEN 1 ELSE 0 END),
                SUM(CASE WHEN (
                      CASE WHEN category_id IS NULL THEN 0 ELSE 1 END +
                      CASE WHEN id IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END +
@@ -767,7 +758,7 @@ pub async fn db_graduate_from_inbox(
         let params: Vec<rusqlite::types::Value> =
             chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
         conn.execute(
-            &format!("UPDATE videos SET status = NULL WHERE id IN ({ph})"),
+            &format!("UPDATE videos SET status = 'active' WHERE id IN ({ph})"),
             rusqlite::params_from_iter(params.iter()),
         )
         .map_err(|e| e.to_string())?;
@@ -780,19 +771,7 @@ pub async fn db_sample_inbox_videos(
     count: i64,
 ) -> Result<Vec<Video>, String> {
     let conn = state.conn_read()?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
-                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                    v.created_at, v.media_type, v.source_url, v.status, v.source_type
-             FROM videos v
-             WHERE v.status = 'inbox'
-             ORDER BY RANDOM()
-             LIMIT ?1",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([count], video_from_row).map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+    query_videos(&conn, "FROM videos v WHERE v.status = 'inbox' ORDER BY RANDOM() LIMIT ?1", [count]).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -810,18 +789,41 @@ pub async fn db_update_video_thumbnail(
     Ok(())
 }
 
+/// 動画の行を消す。タグ付け・プレイリスト・解析結果のキャッシュは外部キーの CASCADE で一緒に消え、
+/// グループの代表からは外れる (SET NULL)。まとめて消すときは呼び出し側でトランザクションにする
+pub(crate) fn delete_videos(conn: &rusqlite::Connection, ids: &[i64]) -> rusqlite::Result<()> {
+    const BATCH: usize = 400;
+    for chunk in ids.chunks(BATCH) {
+        let ph = vec!["?"; chunk.len()].join(", ");
+        conn.execute(&format!("DELETE FROM videos WHERE id IN ({ph})"), rusqlite::params_from_iter(chunk))?;
+    }
+    Ok(())
+}
+
+/// 動画の行を消し、どこからも使われなくなったサムネイルのファイルも消す
+fn delete_videos_with_thumbnails(
+    app: &tauri::AppHandle,
+    conn: &rusqlite::Connection,
+    ids: &[i64],
+) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let thumbs = storage::thumbnails_for_ids(conn, ids)?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    delete_videos(&tx, ids).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    storage::remove_unreferenced_thumbnails(conn, &storage::thumbnail_roots(app), &thumbs);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn db_delete_video(
     app: tauri::AppHandle,
     state: State<'_, DbState>,
     video_id: i64,
 ) -> Result<(), String> {
-    let conn = state.conn()?;
-    let thumbs = storage::thumbnails_for_ids(&conn, &[video_id])?;
-    conn.execute("DELETE FROM videos WHERE id = ?1", [video_id])
-        .map_err(|e| e.to_string())?;
-    storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
-    Ok(())
+    delete_videos_with_thumbnails(&app, &*state.conn()?, &[video_id])
 }
 
 #[tauri::command]
@@ -830,27 +832,7 @@ pub async fn db_remove_video(
     state: State<'_, DbState>,
     video_id: i64,
 ) -> Result<(), String> {
-    let conn = state.conn()?;
-    let thumbs = storage::thumbnails_for_ids(&conn, &[video_id])?;
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [video_id])
-            .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [video_id])
-            .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM videos WHERE id = ?1", [video_id])
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-        storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
-    } else {
-        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-            log::error!("[db_remove_video] ROLLBACK 失敗: {rb_err}");
-        }
-    }
-    result
+    delete_videos_with_thumbnails(&app, &*state.conn()?, &[video_id])
 }
 
 #[tauri::command]
@@ -859,46 +841,7 @@ pub async fn db_remove_multiple(
     state: State<'_, DbState>,
     video_ids: Vec<i64>,
 ) -> Result<(), String> {
-    if video_ids.is_empty() {
-        return Ok(());
-    }
-    let conn = state.conn()?;
-    let thumbs = storage::thumbnails_for_ids(&conn, &video_ids)?;
-    // Batch DELETE in chunks of 400
-    let batch_size = 400;
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        for chunk in video_ids.chunks(batch_size) {
-            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let params: Vec<rusqlite::types::Value> =
-                chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
-            conn.execute(
-                &format!("DELETE FROM playlist_items WHERE video_id IN ({ph})"),
-                rusqlite::params_from_iter(params.iter()),
-            )
-            .map_err(|e| e.to_string())?;
-            conn.execute(
-                &format!("DELETE FROM video_tags WHERE video_id IN ({ph})"),
-                rusqlite::params_from_iter(params.iter()),
-            )
-            .map_err(|e| e.to_string())?;
-            conn.execute(
-                &format!("DELETE FROM videos WHERE id IN ({ph})"),
-                rusqlite::params_from_iter(params.iter()),
-            )
-            .map_err(|e| e.to_string())?;
-        }
-        Ok(())
-    })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-        storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
-    } else {
-        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-            log::error!("[db_remove_multiple] ROLLBACK 失敗: {rb_err}");
-        }
-    }
-    result
+    delete_videos_with_thumbnails(&app, &*state.conn()?, &video_ids)
 }
 
 #[tauri::command]
@@ -922,7 +865,7 @@ pub async fn db_add_video_from_path(
     // source_url が指定されていれば UPDATE で確実に保存する
     if let Some(ref url) = source_url {
         conn.execute(
-            "UPDATE videos SET source_url = ?1, status = COALESCE(status, 'inbox'), source_type = COALESCE(source_type, ?3) WHERE path = ?2",
+            "UPDATE videos SET source_url = ?1, source_type = COALESCE(source_type, ?3) WHERE path = ?2",
             rusqlite::params![url, path, st],
         )
         .map_err(|e| e.to_string())?;
@@ -946,29 +889,38 @@ pub async fn db_remove_video_by_path(
         .query_row("SELECT id FROM videos WHERE path = ?1", [&path], |r| r.get(0))
         .optional()
         .map_err(|e| e.to_string())?;
-    if let Some(video_id) = id {
-        let thumbs = storage::thumbnails_for_ids(&conn, &[video_id])?;
-        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-        let result: Result<(), String> = (|| {
-            conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [video_id])
-                .map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [video_id])
-                .map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM videos WHERE id = ?1", [video_id])
-                .map_err(|e| e.to_string())?;
-            Ok(())
-        })();
-        if result.is_ok() {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-            storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
-        } else {
-            if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-                log::error!("[db_remove_video_by_path] ROLLBACK 失敗: {rb_err}");
-            }
-        }
-        return result;
+    match id {
+        Some(video_id) => delete_videos_with_thumbnails(&app, &conn, &[video_id]),
+        None => Ok(()),
     }
+}
+
+/// `path` にある `exclude_id` 以外の行を消す。ファイルウォッチャーが移動先を先に見つけて
+/// 別の行を入れていることがあるので、パスを書き換える前に呼ぶ
+pub(crate) fn remove_conflicting_videos(
+    conn: &rusqlite::Connection,
+    path: &str,
+    exclude_id: i64,
+) -> Result<(), String> {
+    conn.execute("DELETE FROM videos WHERE path = ?1 AND id != ?2", rusqlite::params![path, exclude_id])
+        .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// 動画のパスを変える。行が無ければ false
+fn move_video_path(conn: &rusqlite::Connection, video_id: i64, new_path: &str) -> Result<bool, String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    remove_conflicting_videos(&tx, new_path, video_id)?;
+    // サイズは測り直す。thumbnail='' (以前の失敗の印) は戻して作り直す対象にする
+    let updated = tx.execute(
+        "UPDATE videos SET path = ?1, file_size = NULL,
+                thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END
+         WHERE id = ?2",
+        rusqlite::params![new_path, video_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(updated > 0)
 }
 
 #[tauri::command]
@@ -984,25 +936,10 @@ pub async fn db_update_video_path(
         .query_row("SELECT id FROM videos WHERE path = ?1", [&old_path], |r| r.get(0))
         .optional()
         .map_err(|e| e.to_string())?;
-    let Some(video_id) = video_id else {
-        return Ok(());
-    };
-    // remove_conflicting_videos + UPDATE を単一トランザクションで実行して不整合を防ぐ
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        remove_conflicting_videos(&conn, &new_path, video_id)?;
-        conn.execute("UPDATE videos SET path = ?1, file_size = NULL WHERE id = ?2", rusqlite::params![new_path, video_id])
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    } else {
-        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-            log::error!("[db_update_video_path] ROLLBACK 失敗: {rb_err}");
-        }
+    if let Some(video_id) = video_id {
+        move_video_path(&conn, video_id, &new_path)?;
     }
-    result
+    Ok(())
 }
 
 #[tauri::command]
@@ -1012,27 +949,8 @@ pub async fn db_rename_video_file(
     new_path: String,
 ) -> Result<(), String> {
     let new_path = normalize_path_str(&new_path);
-    let conn = state.conn()?;
-    // remove_conflicting_videos + UPDATE を単一トランザクションで実行して不整合を防ぐ
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        remove_conflicting_videos(&conn, &new_path, video_id)?;
-        // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
-        conn.execute(
-            "UPDATE videos SET path = ?1, file_size = NULL, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
-            rusqlite::params![new_path, video_id],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    } else {
-        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-            log::error!("[db_rename_video_file] ROLLBACK 失敗: {rb_err}");
-        }
-    }
-    result
+    move_video_path(&*state.conn()?, video_id, &new_path)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1042,57 +960,9 @@ pub async fn db_move_video_file_db(
     new_path: String,
 ) -> Result<(), String> {
     let new_path = normalize_path_str(&new_path);
-    let conn = state.conn()?;
-    // ファイルウォッチャーが移動先を先に検知し video-file-created として
-    // 別レコードを INSERT している場合があるため、UPDATE 前に競合レコードを除去する
-    // (db_batch_watcher_update のリネーム処理と同様のパターン)
-    remove_conflicting_videos(&conn, &new_path, video_id)?;
-    // パス変更時: thumbnail='' (以前の失敗マーク) をリセットして再生成対象にする
-    let rows_affected = conn
-        .execute(
-            "UPDATE videos SET path = ?1, file_size = NULL, thumbnail = CASE WHEN thumbnail = '' THEN NULL ELSE thumbnail END WHERE id = ?2",
-            rusqlite::params![new_path, video_id],
-        )
-        .map_err(|e| e.to_string())?;
-    if rows_affected == 0 {
+    if !move_video_path(&*state.conn()?, video_id, &new_path)? {
         log::warn!("[db_move_video_file_db] video_id={video_id} がデータベースに存在しません");
         return Err(format!("動画 (id={video_id}) がデータベースに存在しません"));
-    }
-    Ok(())
-}
-
-pub(crate) fn remove_conflicting_videos(
-    conn: &rusqlite::Connection,
-    path: &str,
-    exclude_id: i64,
-) -> Result<(), String> {
-    let mut stmt = conn
-        .prepare("SELECT id FROM videos WHERE path = ?1 AND id != ?2")
-        .map_err(|e| e.to_string())?;
-    let ids: Vec<i64> = stmt
-        .query_map(rusqlite::params![path, exclude_id], |r| r.get(0))
-        .map_err(|e| e.to_string())?
-        .collect::<rusqlite::Result<_>>()
-        .map_err(|e| e.to_string())?;
-    if !ids.is_empty() {
-        let ph = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let params: Vec<rusqlite::types::Value> =
-            ids.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
-        conn.execute(
-            &format!("DELETE FROM playlist_items WHERE video_id IN ({ph})"),
-            rusqlite::params_from_iter(params.iter()),
-        )
-        .map_err(|e| e.to_string())?;
-        conn.execute(
-            &format!("DELETE FROM video_tags WHERE video_id IN ({ph})"),
-            rusqlite::params_from_iter(params.iter()),
-        )
-        .map_err(|e| e.to_string())?;
-        conn.execute(
-            &format!("DELETE FROM videos WHERE id IN ({ph})"),
-            rusqlite::params_from_iter(params.iter()),
-        )
-        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1149,44 +1019,7 @@ pub async fn db_remove_watch_dir(
         .map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<_>>()
         .map_err(|e| e.to_string())?;
-    // Batch delete
-    let batch_size = 400;
-    if !videos.is_empty() {
-        let thumbs = storage::thumbnails_for_ids(&conn, &videos)?;
-        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-        let result: Result<(), String> = (|| {
-            for chunk in videos.chunks(batch_size) {
-                let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let params: Vec<rusqlite::types::Value> =
-                    chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
-                conn.execute(
-                    &format!("DELETE FROM playlist_items WHERE video_id IN ({ph})"),
-                    rusqlite::params_from_iter(params.iter()),
-                )
-                .map_err(|e| e.to_string())?;
-                conn.execute(
-                    &format!("DELETE FROM video_tags WHERE video_id IN ({ph})"),
-                    rusqlite::params_from_iter(params.iter()),
-                )
-                .map_err(|e| e.to_string())?;
-                conn.execute(
-                    &format!("DELETE FROM videos WHERE id IN ({ph})"),
-                    rusqlite::params_from_iter(params.iter()),
-                )
-                .map_err(|e| e.to_string())?;
-            }
-            Ok(())
-        })();
-        if result.is_ok() {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-            storage::remove_unreferenced_thumbnails(&conn, &storage::thumbnail_roots(&app), &thumbs);
-        } else {
-            if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-                log::error!("[db_remove_watch_dir] ROLLBACK 失敗: {rb_err}");
-            }
-            return result;
-        }
-    }
+    delete_videos_with_thumbnails(&app, &conn, &videos)?;
     conn.execute("DELETE FROM watch_dirs WHERE path = ?1", [&path])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -1377,24 +1210,18 @@ pub async fn db_find_video_page(
 #[tauri::command]
 pub async fn db_get_random_video(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
     let conn = state.conn_read()?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, path, title, duration, thumbnail, watched_at, progress, rating,
-                category_id, has_audio, watch_count, created_at, media_type, source_url, status, source_type
-         FROM videos
-         WHERE (media_type IS NULL OR media_type != 'image') AND (status IS NULL OR status = 'inbox')
-         ORDER BY RANDOM() LIMIT 5",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], video_from_row)
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    query_videos(
+        &conn,
+        "FROM videos v WHERE v.media_type != 'image' AND v.status != 'missing' ORDER BY RANDOM() LIMIT 5",
+        [],
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::{Connection, OptionalExtension};
+    use rusqlite::Connection;
+    use super::{delete_videos, move_video_path};
     use crate::db::schema::init_db;
 
     fn setup() -> Connection {
@@ -1427,163 +1254,82 @@ mod tests {
             .unwrap()
     }
 
-    // ── db_delete_video ────────────────────────────────────────────────────────
+    // ── delete_videos / move_video_path ──────────────────────────────────────
 
     #[test]
-    fn delete_video_removes_row() {
-        let conn = setup();
-        let vid = insert_video(&conn, "/tmp/a.mp4");
-        assert_eq!(count_rows(&conn, "videos"), 1);
-        conn.execute("DELETE FROM videos WHERE id = ?1", [vid]).unwrap();
-        assert_eq!(count_rows(&conn, "videos"), 0);
-    }
-
-    #[test]
-    fn delete_video_cascades_video_tags() {
-        let conn = setup();
-        let vid = insert_video(&conn, "/tmp/b.mp4");
-        let tag = insert_tag(&conn, "action");
-        conn.execute(
-            "INSERT INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
-            [vid, tag],
-        )
-        .unwrap();
-        assert_eq!(count_rows(&conn, "video_tags"), 1);
-        conn.execute("DELETE FROM videos WHERE id = ?1", [vid]).unwrap();
-        // ON DELETE CASCADE should remove video_tags automatically
-        assert_eq!(count_rows(&conn, "video_tags"), 0);
-    }
-
-    // ── db_remove_video (transactional) ──────────────────────────────────────
-
-    #[test]
-    fn remove_video_clears_playlist_items_and_tags() {
-        let conn = setup();
-        let vid = insert_video(&conn, "/tmp/c.mp4");
-        let tag = insert_tag(&conn, "drama");
-        let pl = insert_playlist(&conn, "My List");
-
-        conn.execute(
-            "INSERT INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
-            [vid, tag],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, 1)",
-            [pl, vid],
-        )
-        .unwrap();
-
-        // Simulate db_remove_video logic
-        conn.execute_batch("BEGIN").unwrap();
-        conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [vid]).unwrap();
-        conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [vid]).unwrap();
-        conn.execute("DELETE FROM videos WHERE id = ?1", [vid]).unwrap();
-        conn.execute_batch("COMMIT").unwrap();
-
-        assert_eq!(count_rows(&conn, "videos"), 0);
-        assert_eq!(count_rows(&conn, "video_tags"), 0);
-        assert_eq!(count_rows(&conn, "playlist_items"), 0);
-    }
-
-    #[test]
-    fn remove_video_nonexistent_is_noop() {
-        let conn = setup();
-        // Deleting a non-existent id should affect 0 rows without error
-        let affected = conn
-            .execute("DELETE FROM videos WHERE id = ?1", [9999_i64])
-            .unwrap();
-        assert_eq!(affected, 0);
-    }
-
-    // ── db_remove_multiple ────────────────────────────────────────────────────
-
-    #[test]
-    fn remove_multiple_deletes_all_specified_videos() {
+    fn delete_videos_cascades_to_tags_playlists_and_caches() {
         let conn = setup();
         let v1 = insert_video(&conn, "/tmp/m1.mp4");
         let v2 = insert_video(&conn, "/tmp/m2.mp4");
         let v3 = insert_video(&conn, "/tmp/m3.mp4");
-
         let tag = insert_tag(&conn, "comedy");
-        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [v1, tag]).unwrap();
-        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [v2, tag]).unwrap();
+        let pl = insert_playlist(&conn, "My List");
+        for v in [v1, v2, v3] {
+            conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [v, tag]).unwrap();
+            conn.execute("INSERT INTO playlist_items VALUES (?1, ?2, 0)", [pl, v]).unwrap();
+            conn.execute("INSERT INTO media_phash VALUES (?1, '1')", [v]).unwrap();
+        }
 
-        // Remove v1 and v2 only
-        conn.execute_batch("BEGIN").unwrap();
-        conn.execute(
-            "DELETE FROM playlist_items WHERE video_id IN (?,?)",
-            rusqlite::params![v1, v2],
-        ).unwrap();
-        conn.execute(
-            "DELETE FROM video_tags WHERE video_id IN (?,?)",
-            rusqlite::params![v1, v2],
-        ).unwrap();
-        conn.execute(
-            "DELETE FROM videos WHERE id IN (?,?)",
-            rusqlite::params![v1, v2],
-        ).unwrap();
-        conn.execute_batch("COMMIT").unwrap();
+        delete_videos(&conn, &[v1, v2, 9999]).unwrap();
 
-        assert_eq!(count_rows(&conn, "videos"), 1);
-        let remaining: i64 = conn
-            .query_row("SELECT id FROM videos", [], |r| r.get(0))
-            .unwrap();
+        let remaining: i64 = conn.query_row("SELECT id FROM videos", [], |r| r.get(0)).unwrap();
         assert_eq!(remaining, v3);
-        assert_eq!(count_rows(&conn, "video_tags"), 0);
-    }
-
-    #[test]
-    fn remove_multiple_empty_list_is_noop() {
-        let conn = setup();
-        insert_video(&conn, "/tmp/keep.mp4");
-        // Empty list → no deletes
+        assert_eq!(count_rows(&conn, "video_tags"), 1);
+        assert_eq!(count_rows(&conn, "playlist_items"), 1);
+        assert_eq!(count_rows(&conn, "media_phash"), 1);
+        delete_videos(&conn, &[]).unwrap();
         assert_eq!(count_rows(&conn, "videos"), 1);
     }
 
-    // ── db_remove_video_by_path ────────────────────────────────────────────────
-
     #[test]
-    fn remove_video_by_path_deletes_correct_row() {
+    fn auto_graduate_needs_category_rating_and_tag() {
         let conn = setup();
-        insert_video(&conn, "/tmp/target.mp4");
-        insert_video(&conn, "/tmp/keep.mp4");
+        conn.execute("INSERT INTO categories (id, name) VALUES (1, 'c')", []).unwrap();
+        let tag = insert_tag(&conn, "t");
+        let complete = insert_video(&conn, "/tmp/ok.mp4");
+        let no_tag = insert_video(&conn, "/tmp/no_tag.mp4");
+        let no_rating = insert_video(&conn, "/tmp/no_rating.mp4");
+        for v in [complete, no_tag, no_rating] {
+            conn.execute("UPDATE videos SET status = 'inbox', category_id = 1, rating = 3 WHERE id = ?1", [v])
+                .unwrap();
+        }
+        conn.execute("UPDATE videos SET rating = 0 WHERE id = ?1", [no_rating]).unwrap();
+        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [complete, tag]).unwrap();
+        conn.execute("INSERT INTO video_tags VALUES (?1, ?2)", [no_rating, tag]).unwrap();
 
-        let id: i64 = conn
-            .query_row(
-                "SELECT id FROM videos WHERE path = '/tmp/target.mp4'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
+        super::auto_graduate_if_complete_many(&conn, &[complete, no_tag, no_rating]).unwrap();
 
-        conn.execute_batch("BEGIN").unwrap();
-        conn.execute("DELETE FROM playlist_items WHERE video_id = ?1", [id]).unwrap();
-        conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [id]).unwrap();
-        conn.execute("DELETE FROM videos WHERE id = ?1", [id]).unwrap();
-        conn.execute_batch("COMMIT").unwrap();
-
-        assert_eq!(count_rows(&conn, "videos"), 1);
-        let remaining_path: String = conn
-            .query_row("SELECT path FROM videos", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(remaining_path, "/tmp/keep.mp4");
+        let status = |id: i64| -> String {
+            conn.query_row("SELECT status FROM videos WHERE id = ?1", [id], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(status(complete), "active");
+        assert_eq!(status(no_tag), "inbox");
+        assert_eq!(status(no_rating), "inbox");
     }
 
     #[test]
-    fn remove_video_by_nonexistent_path_is_noop() {
+    fn delete_videos_handles_more_than_one_batch() {
         let conn = setup();
-        insert_video(&conn, "/tmp/exists.mp4");
-        let found: Option<i64> = conn
-            .query_row(
-                "SELECT id FROM videos WHERE path = '/tmp/no_such.mp4'",
-                [],
-                |r| r.get(0),
-            )
-            .optional()
+        let ids: Vec<i64> = (0..450).map(|i| insert_video(&conn, &format!("/tmp/{i}.mp4"))).collect();
+        delete_videos(&conn, &ids).unwrap();
+        assert_eq!(count_rows(&conn, "videos"), 0);
+    }
+
+    #[test]
+    fn move_video_path_replaces_row_already_at_destination() {
+        let conn = setup();
+        let moved = insert_video(&conn, "/tmp/old.mp4");
+        insert_video(&conn, "/tmp/new.mp4"); // ウォッチャーが先に入れた行
+        conn.execute("UPDATE videos SET thumbnail = '', file_size = 10 WHERE id = ?1", [moved]).unwrap();
+
+        assert!(move_video_path(&conn, moved, "/tmp/new.mp4").unwrap());
+
+        let (id, thumb, size): (i64, Option<String>, Option<i64>) = conn
+            .query_row("SELECT id, thumbnail, file_size FROM videos", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .unwrap();
-        assert!(found.is_none());
         assert_eq!(count_rows(&conn, "videos"), 1);
+        assert_eq!((id, thumb, size), (moved, None, None));
+        assert!(!move_video_path(&conn, 9999, "/tmp/x.mp4").unwrap());
     }
 
     // ── cascade behavior ────────────────────────────────────────────────────────
@@ -1775,12 +1521,16 @@ mod tests {
             ("/v/unchecked.mp4", Some(1), None),
             ("/v/mute.mp4", Some(0), None),
         ] {
-            insert_video(&conn, p);
-            conn.execute(
-                "UPDATE videos SET has_audio = ?1, audio_silence = ?2 WHERE path = ?3",
-                rusqlite::params![has_audio, silence, p],
-            )
-            .unwrap();
+            let id = insert_video(&conn, p);
+            conn.execute("UPDATE videos SET has_audio = ?1 WHERE id = ?2", rusqlite::params![has_audio, id])
+                .unwrap();
+            if let Some(silence) = silence {
+                conn.execute(
+                    "INSERT INTO media_silent_audio (video_id, silence) VALUES (?1, ?2)",
+                    rusqlite::params![id, silence],
+                )
+                .unwrap();
+            }
         }
         let with = |v: i64| filtered_paths_with(&conn, serde_json::json!({ "filterHasAudio": v }));
         assert_eq!(with(2), ["/v/all.mp4", "/v/part.mp4"]);

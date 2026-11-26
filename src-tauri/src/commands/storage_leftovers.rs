@@ -193,7 +193,7 @@ fn build_plan(app: &AppHandle) -> Result<ScanPlan, String> {
             plan.deep.push(PathBuf::from(d));
         }
         let mut stmt = conn
-            .prepare("SELECT path FROM videos WHERE COALESCE(media_type, 'video') != 'link'")
+            .prepare("SELECT path FROM videos WHERE media_type != 'link'")
             .map_err(|e| e.to_string())?;
         for row in stmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())? {
             let path = PathBuf::from(row.map_err(|e| e.to_string())?);

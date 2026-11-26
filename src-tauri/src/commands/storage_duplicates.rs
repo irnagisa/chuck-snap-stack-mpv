@@ -8,7 +8,7 @@
 //! APFS のクローン (中身のブロックを共有するコピー) は消しても空きがほとんど増えないため、
 //! `fs_clone` で読んだ共有していない容量で見込みを補正する。
 //!
-//! 抜き出しのハッシュは `videos.content_digest` に取っておき、サイズと更新日時が変わっていなければ
+//! 抜き出しのハッシュは `media_content_digest` に取っておき、サイズと更新日時が変わっていなければ
 //! 次からはファイルを読まずに使う (外付けや NAS では読み比べがいちばん時間がかかる)。
 
 use std::cell::RefCell;
@@ -23,7 +23,9 @@ use tauri::{AppHandle, Manager};
 
 use super::fs_clone::{clone_info, CloneInfo};
 use super::phash::hamming_distance;
-use super::storage::{cleanup_item_columns, item_from_row, CleanupItem, CLEANUP_ITEM_COLUMN_COUNT, ON_DISK_FILTER};
+use super::storage::{
+    cleanup_item_columns, item_from_row, CleanupItem, CLEANUP_FROM, CLEANUP_ITEM_COLUMN_COUNT, ON_DISK_FILTER,
+};
 use crate::db::DbState;
 
 /// 「見た目が似ている」とみなす pHash のハミング距離の上限。
@@ -162,9 +164,14 @@ fn digest_from_hex(s: &str) -> Option<[u8; 32]> {
 fn save_digests(conn: &mut rusqlite::Connection, fresh: &[(i64, CachedDigest)]) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     {
-        let mut stmt = tx.prepare("UPDATE videos SET content_digest = ?1, content_digest_key = ?2 WHERE id = ?3")?;
+        // 読んでいる間に消えた動画の分は入れない
+        let mut stmt = tx.prepare(
+            "INSERT INTO media_content_digest (video_id, digest_key, digest)
+             SELECT id, ?2, ?3 FROM videos WHERE id = ?1
+             ON CONFLICT(video_id) DO UPDATE SET digest_key = excluded.digest_key, digest = excluded.digest",
+        )?;
         for (id, c) in fresh {
-            stmt.execute(rusqlite::params![digest_to_hex(&c.digest), c.key, id])?;
+            stmt.execute(rusqlite::params![id, c.key, digest_to_hex(&c.digest)])?;
         }
     }
     tx.commit()
@@ -329,7 +336,10 @@ fn build_groups(
 fn load_rows(conn: &rusqlite::Connection) -> Result<(Vec<Row>, i64), String> {
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {}, phash, content_digest, content_digest_key FROM videos WHERE {ON_DISK_FILTER}",
+            "SELECT {}, p.phash, d.digest, d.digest_key FROM {CLEANUP_FROM}
+             LEFT JOIN media_phash p ON p.video_id = videos.id
+             LEFT JOIN media_content_digest d ON d.video_id = videos.id
+             WHERE {ON_DISK_FILTER}",
             cleanup_item_columns()
         ))
         .map_err(|e| e.to_string())?;
@@ -354,7 +364,10 @@ fn load_rows(conn: &rusqlite::Connection) -> Result<(Vec<Row>, i64), String> {
         .map_err(|e| e.to_string())?;
     let phash_missing: i64 = conn
         .query_row(
-            &format!("SELECT COUNT(*) FROM videos WHERE {ON_DISK_FILTER} AND phash IS NULL AND media_type IN ('video', 'image')"),
+            &format!(
+                "SELECT COUNT(*) FROM videos WHERE {ON_DISK_FILTER} AND media_type IN ('video', 'image')
+                   AND NOT EXISTS (SELECT 1 FROM media_phash p WHERE p.video_id = videos.id)"
+            ),
             [],
             |r| r.get(0),
         )

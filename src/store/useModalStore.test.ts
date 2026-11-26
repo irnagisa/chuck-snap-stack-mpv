@@ -24,7 +24,7 @@ function makeVideo(id: number): Video {
     created_at: '2024-01-01',
     media_type: 'video',
     source_url: null,
-    status: null,
+    status: 'active',
     source_type: null,
   };
 }

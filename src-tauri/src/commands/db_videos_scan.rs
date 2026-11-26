@@ -6,7 +6,7 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::commands::db_tags::build_category_hierarchy;
 use crate::commands::db_videos::{
-    escape_like_dir, media_type_for_path, remove_conflicting_videos,
+    delete_videos, escape_like_dir, media_type_for_path, remove_conflicting_videos,
     ScanImportResult, RescanResult, VideoIdPath, WatcherCreate, WatcherRename,
 };
 use crate::commands::library::scan_dir_core;
@@ -29,39 +29,9 @@ fn get_relative_dir_path(file_path: &str, root_dir: &str) -> Option<String> {
 }
 
 fn delete_video_ids_tx(conn: &rusqlite::Connection, ids: &[i64]) -> Result<(), String> {
-    const BATCH: usize = 400;
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        for chunk in ids.chunks(BATCH) {
-            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let params: Vec<rusqlite::types::Value> =
-                chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
-            conn.execute(
-                &format!("DELETE FROM playlist_items WHERE video_id IN ({ph})"),
-                rusqlite::params_from_iter(params.iter()),
-            )
-            .map_err(|e| e.to_string())?;
-            conn.execute(
-                &format!("DELETE FROM video_tags WHERE video_id IN ({ph})"),
-                rusqlite::params_from_iter(params.iter()),
-            )
-            .map_err(|e| e.to_string())?;
-            conn.execute(
-                &format!("DELETE FROM videos WHERE id IN ({ph})"),
-                rusqlite::params_from_iter(params.iter()),
-            )
-            .map_err(|e| e.to_string())?;
-        }
-        Ok(())
-    })();
-    if result.is_ok() {
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-    } else {
-        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-            log::error!("[DB] delete_video_ids_tx ROLLBACK 失敗: {rb_err}");
-        }
-    }
-    result
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    delete_videos(&tx, ids).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 fn assign_categories_for_ids(
@@ -146,30 +116,21 @@ fn assign_categories_for_ids(
 
     const UPDATE_BATCH: usize = 498;
     let mut assigned = 0i64;
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        for (cat_id, ids) in &category_groups {
-            for chunk in ids.chunks(UPDATE_BATCH) {
-                let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let sql =
-                    format!("UPDATE videos SET category_id = ? WHERE id IN ({ph})");
-                let mut params: Vec<rusqlite::types::Value> =
-                    vec![rusqlite::types::Value::Integer(*cat_id)];
-                params.extend(chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)));
-                conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
-                    .map_err(|e| e.to_string())?;
-                assigned += chunk.len() as i64;
-            }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for (cat_id, ids) in &category_groups {
+        for chunk in ids.chunks(UPDATE_BATCH) {
+            let ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql =
+                format!("UPDATE videos SET category_id = ? WHERE id IN ({ph})");
+            let mut params: Vec<rusqlite::types::Value> =
+                vec![rusqlite::types::Value::Integer(*cat_id)];
+            params.extend(chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)));
+            conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+                .map_err(|e| e.to_string())?;
+            assigned += chunk.len() as i64;
         }
-        Ok(())
-    })();
-    if let Err(e) = result {
-        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-            log::error!("[DB] assign_categories_for_ids ROLLBACK 失敗: {rb_err}");
-        }
-        return Err(e);
     }
-    conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(assigned)
 }
 
@@ -251,44 +212,35 @@ pub async fn db_scan_and_import(
     // Batch INSERT
     const INSERT_BATCH_4: usize = 249;
     let mut new_count: i64 = 0;
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result: Result<(), String> = (|| {
-        for chunk in scan.files.chunks(INSERT_BATCH_4) {
-            let ph = chunk.iter().map(|_| "(?, ?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
-            let sql = format!(
-                "INSERT INTO videos (path, title, category_id, media_type, status, source_type) VALUES {ph} \
-                 ON CONFLICT(path) DO UPDATE SET status = COALESCE(status, 'inbox')"
-            );
-            let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 4);
-            for file in chunk {
-                let rel_path = if use_dir_as_category {
-                    get_relative_dir_path(&file.path, &path)
-                } else {
-                    None
-                };
-                let cat_id = rel_path.as_deref().and_then(|r| category_id_map.get(r)).copied();
-                params.push(rusqlite::types::Value::Text(file.path.clone()));
-                params.push(rusqlite::types::Value::Text(file.title.clone()));
-                match cat_id {
-                    Some(id) => params.push(rusqlite::types::Value::Integer(id)),
-                    None => params.push(rusqlite::types::Value::Null),
-                }
-                params.push(rusqlite::types::Value::Text(file.media_type.clone()));
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for chunk in scan.files.chunks(INSERT_BATCH_4) {
+        let ph = chunk.iter().map(|_| "(?, ?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "INSERT INTO videos (path, title, category_id, media_type, status, source_type) VALUES {ph} \
+             ON CONFLICT(path) DO NOTHING"
+        );
+        let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 4);
+        for file in chunk {
+            let rel_path = if use_dir_as_category {
+                get_relative_dir_path(&file.path, &path)
+            } else {
+                None
+            };
+            let cat_id = rel_path.as_deref().and_then(|r| category_id_map.get(r)).copied();
+            params.push(rusqlite::types::Value::Text(file.path.clone()));
+            params.push(rusqlite::types::Value::Text(file.title.clone()));
+            match cat_id {
+                Some(id) => params.push(rusqlite::types::Value::Integer(id)),
+                None => params.push(rusqlite::types::Value::Null),
             }
-            let affected = conn
-                .execute(&sql, rusqlite::params_from_iter(params.iter()))
-                .map_err(|e| e.to_string())?;
-            new_count += affected as i64;
+            params.push(rusqlite::types::Value::Text(file.media_type.clone()));
         }
-        Ok(())
-    })();
-    if let Err(e) = result {
-        if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-            log::error!("[db_scan_and_import] ROLLBACK 失敗: {rb_err}");
-        }
-        return Err(e);
+        let affected = conn
+            .execute(&sql, rusqlite::params_from_iter(params.iter()))
+            .map_err(|e| e.to_string())?;
+        new_count += affected as i64;
     }
-    conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
 
     if new_count > 0 {
         if let Err(e) = app.notification()
@@ -384,33 +336,24 @@ pub async fn db_rescan_all_dirs(
 
         const INSERT_BATCH_3: usize = 333;
         let mut dir_new_count: i64 = 0;
-        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-        let insert_result: Result<(), String> = (|| {
-            for chunk in scan.files.chunks(INSERT_BATCH_3) {
-                let ph = chunk.iter().map(|_| "(?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
-                let sql = format!(
-                    "INSERT OR IGNORE INTO videos (path, title, media_type, status, source_type) VALUES {ph}"
-                );
-                let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 3);
-                for file in chunk {
-                    params.push(rusqlite::types::Value::Text(file.path.clone()));
-                    params.push(rusqlite::types::Value::Text(file.title.clone()));
-                    params.push(rusqlite::types::Value::Text(file.media_type.clone()));
-                }
-                let affected = conn
-                    .execute(&sql, rusqlite::params_from_iter(params.iter()))
-                    .map_err(|e| e.to_string())?;
-                dir_new_count += affected as i64;
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        for chunk in scan.files.chunks(INSERT_BATCH_3) {
+            let ph = chunk.iter().map(|_| "(?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "INSERT OR IGNORE INTO videos (path, title, media_type, status, source_type) VALUES {ph}"
+            );
+            let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 3);
+            for file in chunk {
+                params.push(rusqlite::types::Value::Text(file.path.clone()));
+                params.push(rusqlite::types::Value::Text(file.title.clone()));
+                params.push(rusqlite::types::Value::Text(file.media_type.clone()));
             }
-            Ok(())
-        })();
-        if let Err(e) = insert_result {
-            if let Err(rb_err) = conn.execute_batch("ROLLBACK") {
-                log::error!("[DB] db_rescan_all_dirs INSERT ROLLBACK 失敗: {rb_err}");
-            }
-            return Err(e);
+            let affected = conn
+                .execute(&sql, rusqlite::params_from_iter(params.iter()))
+                .map_err(|e| e.to_string())?;
+            dir_new_count += affected as i64;
         }
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
         total_new_count += dir_new_count;
 
         // Assign categories for new files if use_dir_as_category

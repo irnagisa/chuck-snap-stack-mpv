@@ -311,72 +311,22 @@ mod tests {
     // ── DB schema ────────────────────────────────────────────────────────────
 
     #[test]
-    fn phash_column_exists_and_defaults_to_null() {
+    fn phash_is_none_until_saved() {
         let conn = setup_db();
-        conn.execute(
-            "INSERT INTO videos (path, media_type, status) VALUES ('/tmp/test.mp4', 'video', 'inbox')",
-            [],
-        )
-        .unwrap();
-        let phash: Option<String> = conn
-            .query_row(
-                "SELECT phash FROM videos WHERE path = '/tmp/test.mp4'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(phash.is_none(), "phash should default to NULL");
+        conn.execute("INSERT INTO videos (path) VALUES ('/tmp/test.mp4')", []).unwrap();
+        let id = conn.last_insert_rowid();
+        assert_eq!(stored_phash(&conn, id).unwrap(), None);
+        save_phash(&conn, id, "1").unwrap();
+        save_phash(&conn, id, "12345678901234567890").unwrap();
+        assert_eq!(stored_phash(&conn, id).unwrap().as_deref(), Some("12345678901234567890"));
     }
 
     #[test]
-    fn phash_can_be_set_and_retrieved() {
+    fn save_phash_ignores_deleted_video() {
         let conn = setup_db();
-        conn.execute(
-            "INSERT INTO videos (path, media_type, status) VALUES ('/tmp/test.mp4', 'video', 'inbox')",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "UPDATE videos SET phash = '12345678901234567890' WHERE path = '/tmp/test.mp4'",
-            [],
-        )
-        .unwrap();
-        let phash: String = conn
-            .query_row(
-                "SELECT phash FROM videos WHERE path = '/tmp/test.mp4'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(phash, "12345678901234567890");
-    }
-
-    #[test]
-    fn videos_without_phash_query_filters_correctly() {
-        let conn = setup_db();
-        conn.execute_batch(
-            "INSERT INTO videos (path, media_type, status, phash)
-               VALUES ('/tmp/a.mp4', 'video', 'inbox', NULL);
-             INSERT INTO videos (path, media_type, status, phash)
-               VALUES ('/tmp/b.mp4', 'video', 'inbox', '999');
-             INSERT INTO videos (path, media_type, status, phash)
-               VALUES ('/tmp/c.jpg', 'image', 'inbox', NULL);",
-        )
-        .unwrap();
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT path FROM videos WHERE phash IS NULL AND media_type = 'video'",
-            )
-            .unwrap();
-        let paths: Vec<String> = stmt
-            .query_map([], |r| r.get(0))
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect();
-
-        // Only /tmp/a.mp4 is a video with NULL phash
-        assert_eq!(paths, vec!["/tmp/a.mp4"]);
+        save_phash(&conn, 999, "1").unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM media_phash", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
     }
 
     #[test]
@@ -543,6 +493,24 @@ pub struct SimilarVideo {
     pub phash: String,
 }
 
+/// 保存してある pHash (まだ計算していなければ None)
+fn stored_phash(conn: &rusqlite::Connection, video_id: i64) -> rusqlite::Result<Option<String>> {
+    use rusqlite::OptionalExtension;
+    conn.query_row("SELECT phash FROM media_phash WHERE video_id = ?1", [video_id], |r| r.get(0))
+        .optional()
+}
+
+/// pHash を保存する。計算の間に動画が消えていたら何もしない
+fn save_phash(conn: &rusqlite::Connection, video_id: i64, phash: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO media_phash (video_id, phash)
+         SELECT id, ?2 FROM videos WHERE id = ?1
+         ON CONFLICT(video_id) DO UPDATE SET phash = excluded.phash",
+        rusqlite::params![video_id, phash],
+    )?;
+    Ok(())
+}
+
 /// Returns files (video or image) that have no pHash stored yet.
 #[tauri::command]
 pub async fn db_get_videos_without_phash(
@@ -551,8 +519,9 @@ pub async fn db_get_videos_without_phash(
     let conn = db_state.conn_read()?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, path, thumbnail FROM videos \
-             WHERE phash IS NULL AND media_type IN ('video', 'image')",
+            "SELECT id, path, thumbnail FROM videos v \
+             WHERE media_type IN ('video', 'image') \
+               AND NOT EXISTS (SELECT 1 FROM media_phash p WHERE p.video_id = v.id)",
         )
         .map_err(|e| e.to_string())?;
 
@@ -632,11 +601,7 @@ pub async fn db_compute_video_phash(
 
     {
         let conn = db_state.conn()?;
-        conn.execute(
-            "UPDATE videos SET phash = ?1 WHERE id = ?2",
-            rusqlite::params![&hash_str, video_id],
-        )
-        .map_err(|e| e.to_string())?;
+        save_phash(&conn, video_id, &hash_str).map_err(|e| e.to_string())?;
     }
 
     Ok(hash_str)
@@ -654,8 +619,9 @@ pub async fn db_find_similar_videos(
         let conn = db_state.conn_read()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, path, title, thumbnail, duration, phash \
-                 FROM videos WHERE phash IS NOT NULL AND media_type = 'video'",
+                "SELECT v.id, v.path, v.title, v.thumbnail, v.duration, p.phash \
+                 FROM videos v JOIN media_phash p ON p.video_id = v.id \
+                 WHERE v.media_type = 'video'",
             )
             .map_err(|e| e.to_string())?;
 
@@ -721,14 +687,7 @@ pub async fn db_get_video_stored_phash(
     video_id: i64,
 ) -> Result<Option<String>, String> {
     let conn = db_state.conn_read()?;
-    let phash: Option<String> = conn
-        .query_row(
-            "SELECT phash FROM videos WHERE id = ?1",
-            rusqlite::params![video_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    Ok(phash.filter(|p| !p.is_empty()))
+    stored_phash(&conn, video_id).map_err(|e| e.to_string())
 }
 
 /// Find videos visually similar to a specific video (by its id).
@@ -743,25 +702,17 @@ pub async fn db_find_similar_to_video(
     let conn = db_state.conn_read()?;
 
     // Fetch the pHash of the target video.
-    let target_phash: Option<String> = conn
-        .query_row(
-            "SELECT phash FROM videos WHERE id = ?1",
-            rusqlite::params![video_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    let target_phash = match target_phash {
-        Some(p) if !p.is_empty() => p,
-        _ => return Ok(vec![]),
+    let Some(target_phash) = stored_phash(&conn, video_id).map_err(|e| e.to_string())? else {
+        return Ok(vec![]);
     };
     let target_hash: u64 = target_phash.parse().unwrap_or(0);
 
     // Fetch all other videos that have a pHash.
     let mut stmt = conn
         .prepare(
-            "SELECT id, path, title, thumbnail, duration, phash \
-             FROM videos WHERE phash IS NOT NULL AND id != ?1",
+            "SELECT v.id, v.path, v.title, v.thumbnail, v.duration, p.phash \
+             FROM videos v JOIN media_phash p ON p.video_id = v.id \
+             WHERE v.id != ?1",
         )
         .map_err(|e| e.to_string())?;
 

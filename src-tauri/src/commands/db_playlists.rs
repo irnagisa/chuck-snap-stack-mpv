@@ -19,7 +19,7 @@ pub struct SmartPlaylist {
 }
 
 // Re-export Video for playlist video queries
-use crate::commands::db_videos::Video;
+use crate::commands::db_videos::{query_videos, Video};
 
 // ── playlists ─────────────────────────────────────────────────────────────────
 
@@ -65,21 +65,15 @@ pub async fn db_fetch_playlist_videos(
     playlist_id: i64,
 ) -> Result<Vec<Video>, String> {
     let conn = state.conn_read()?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
-                    v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
-                    v.created_at, v.media_type, v.source_url
-             FROM videos v
-             JOIN playlist_items pi ON v.id = pi.video_id
-             WHERE pi.playlist_id = ?1
-             ORDER BY pi.position ASC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([playlist_id], video_from_row)
-        .map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())
+    query_videos(
+        &conn,
+        "FROM videos v
+         JOIN playlist_items pi ON v.id = pi.video_id
+         WHERE pi.playlist_id = ?1
+         ORDER BY pi.position ASC",
+        [playlist_id],
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -187,29 +181,6 @@ pub async fn db_delete_smart_playlist(
     conn.execute("DELETE FROM smart_playlists WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-fn video_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Video> {
-    Ok(Video {
-        id: r.get(0)?,
-        path: r.get(1)?,
-        title: r.get(2)?,
-        duration: r.get(3)?,
-        thumbnail: r.get(4)?,
-        watched_at: r.get(5)?,
-        progress: r.get(6)?,
-        rating: r.get(7)?,
-        category_id: r.get(8)?,
-        has_audio: r.get(9)?,
-        watch_count: r.get(10)?,
-        created_at: r.get(11)?,
-        media_type: r.get(12)?,
-        source_url: r.get(13)?,
-        status: None,
-        source_type: None,
-    })
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use tauri::State;
 
 use crate::db::DbState;
 use super::utils::{normalize_path_str, resolve_unique_path};
-use super::db_videos::auto_graduate_if_complete;
+use super::db_videos::{auto_graduate_if_complete, auto_graduate_if_complete_many};
 
 /// (移動前のパス, 移動後のパス) の一覧
 type PathUpdates = Vec<(String, String)>;
@@ -820,6 +820,7 @@ pub async fn db_add_tag_to_multiple(
         return Ok(());
     }
     let conn = state.conn()?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     // Batch insert: 2 params per row, max 499 rows to stay under SQLite 999 limit
     let batch_size = 499;
     for chunk in video_ids.chunks(batch_size) {
@@ -830,21 +831,12 @@ pub async fn db_add_tag_to_multiple(
             params.push(rusqlite::types::Value::Integer(vid));
             params.push(rusqlite::types::Value::Integer(tag_id));
         }
-        conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
-            .map_err(|e| e.to_string())?;
-
-        // タグが追加されたのでカテゴリ・評価が揃っていれば自動卒業
-        let id_ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let graduate_sql = format!(
-            "UPDATE videos SET status = NULL WHERE id IN ({id_ph}) AND status = 'inbox'
-             AND category_id IS NOT NULL AND rating IS NOT NULL AND rating > 0"
-        );
-        let id_params: Vec<rusqlite::types::Value> =
-            chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
-        conn.execute(&graduate_sql, rusqlite::params_from_iter(id_params.iter()))
+        tx.execute(&sql, rusqlite::params_from_iter(params.iter()))
             .map_err(|e| e.to_string())?;
     }
-    Ok(())
+    // タグが追加されたのでカテゴリ・評価が揃っていれば自動卒業
+    auto_graduate_if_complete_many(&tx, &video_ids).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -857,6 +849,7 @@ pub async fn db_set_category_multiple(
         return Ok(());
     }
     let conn = state.conn()?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     if let Some(category_id) = category_id {
         // 1 param for category_id + up to 498 ids per batch
         let batch_size = 498;
@@ -868,21 +861,11 @@ pub async fn db_set_category_multiple(
             for &vid in chunk {
                 params.push(rusqlite::types::Value::Integer(vid));
             }
-            conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
-                .map_err(|e| e.to_string())?;
-
-            // カテゴリが設定されたので評価・タグが揃っていれば自動卒業
-            let id_ph = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let graduate_sql = format!(
-                "UPDATE videos SET status = NULL WHERE id IN ({id_ph}) AND status = 'inbox'
-                 AND rating IS NOT NULL AND rating > 0
-                 AND id IN (SELECT DISTINCT video_id FROM video_tags)"
-            );
-            let id_params: Vec<rusqlite::types::Value> =
-                chunk.iter().map(|&id| rusqlite::types::Value::Integer(id)).collect();
-            conn.execute(&graduate_sql, rusqlite::params_from_iter(id_params.iter()))
+            tx.execute(&sql, rusqlite::params_from_iter(params.iter()))
                 .map_err(|e| e.to_string())?;
         }
+        // カテゴリが設定されたので評価・タグが揃っていれば自動卒業
+        auto_graduate_if_complete_many(&tx, &video_ids).map_err(|e| e.to_string())?;
     } else {
         // カテゴリ解除 → status を 'inbox' に戻す。params は id のみ (batch_size 999)
         let batch_size = 999;
@@ -895,11 +878,11 @@ pub async fn db_set_category_multiple(
                 .iter()
                 .map(|&id| rusqlite::types::Value::Integer(id))
                 .collect();
-            conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+            tx.execute(&sql, rusqlite::params_from_iter(params.iter()))
                 .map_err(|e| e.to_string())?;
         }
     }
-    Ok(())
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Build category hierarchy from a relative dir path like "Movies/Action".
