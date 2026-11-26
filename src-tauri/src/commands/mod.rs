@@ -11,6 +11,7 @@ pub mod db_videos_scan;
 pub mod download;
 pub mod fs_clone;
 pub mod library;
+pub mod media_probe;
 pub mod mpv;
 pub mod settings;
 pub mod transcode;

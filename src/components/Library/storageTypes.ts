@@ -115,6 +115,11 @@ export interface CleanupItem {
   silentBytes?: number;
   /** 無音のトラックは一部を読んだだけの簡易判定 (外す前に全体を読んで確かめる) */
   silentSampled?: boolean;
+  /**
+   * AV1 に変換したとき、ファイル全体のうち減る割合の見積もり (0〜1)。高ビットレートの一覧でだけ入る。
+   * 解像度・fps・コーデック・ビットレートからの目安 (映像の中身までは分からない)
+   */
+  savingRatio?: number;
 }
 
 export interface CleanupCandidates {
@@ -122,7 +127,7 @@ export interface CleanupCandidates {
   totalBytes: number;
   thresholdDays: number | null;
   minBitrateKbps: number | null;
-  /** まだ無音かどうかを調べていない動画の数 (silentAudio のときだけ) */
+  /** まだ調べていない動画の数 (silentAudio: 音量、highBitrate: 映像の情報) */
   uncheckedCount?: number;
   items: CleanupItem[];
 }
@@ -148,6 +153,16 @@ export interface SilenceReport extends StoredSilence {
 export interface UncheckedVideo {
   id: number;
   path: string;
+}
+
+/** get_videos_without_probe の戻り値 (src-tauri/src/commands/media_probe.rs) */
+export interface UnprobedVideo {
+  id: number;
+}
+
+/** 変換で減る割合の見積もりを表示用に丸める (5% 刻み) */
+export function roundedSavingPercent(ratio: number): number {
+  return Math.round(ratio * 20) * 5;
 }
 
 export interface DuplicateGroup {

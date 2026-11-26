@@ -150,6 +150,11 @@
     margin-inline-start: auto;
     color: var(--color-fg-subtle);
   }
+  /* 変換で大きく減る見込み (高ビットレートの一覧) */
+  .savingHigh {
+    color: var(--color-success-fg);
+    font-weight: 600;
+  }
   .meta {
     display: flex;
     align-items: center;

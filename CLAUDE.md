@@ -64,7 +64,7 @@ chuck-snap-stack/
 │   └── App.tsx
 ├── src-tauri/                  # Rust/Tauri バックエンド
 │   ├── src/
-│   │   ├── commands/           # Tauri コマンド (147 個)
+│   │   ├── commands/           # Tauri コマンド (149 個)
 │   │   │   ├── library.rs      # メディアファイル操作・メタデータ抽出
 │   │   │   ├── mpv.rs          # mpv プロセス管理・IPC
 │   │   │   ├── db_videos.rs    # メディア DB CRUD・Inbox 管理
@@ -87,6 +87,7 @@ chuck-snap-stack/
 │   │   │   ├── window.rs       # ミニプレイヤーウィンドウ
 │   │   │   ├── webserver.rs    # 組み込み HTTP サーバー (サムネイル配信)
 │   │   │   ├── phash.rs        # 知覚的ハッシュ・重複検出
+│   │   │   ├── media_probe.rs  # 映像の情報 (コーデック・解像度・fps) を ffprobe で調べて media_probe に保存。AV1 にしたときに減る割合の見積もり
 │   │   │   ├── silent_audio.rs # 無音の音声トラックの検出 (volumedetect。既定は数十か所を読む簡易判定、thorough で全体を読む)
 │   │   │   ├── ai.rs           # AI タグ提案 (ONNX)
 │   │   │   ├── link.rs         # URL メタデータ取得・リンクアセット DB
@@ -153,6 +154,18 @@ CREATE TABLE media_groups (
   kind           TEXT NOT NULL DEFAULT 'variants', -- 'variants' | 'series'
   cover_video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL, -- 代表 (NULL = 並び順で最初)
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ffprobe で調べた映像の情報 (計算し直せるキャッシュなので videos と分ける)。整理画面の高ビットレートで減る割合の見積もりに使う
+CREATE TABLE media_probe (
+  video_id      INTEGER PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+  probe_key     TEXT NOT NULL,   -- 調べたときの「サイズ:更新日時(ns)」。サイズが videos.file_size と違えば調べ直す
+  video_codec   TEXT,
+  width         INTEGER,
+  height        INTEGER,
+  fps           REAL,
+  video_bitrate INTEGER,         -- 映像だけ (bps)
+  probed_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- カテゴリ (階層構造対応)
@@ -288,7 +301,7 @@ pub async fn command_name(
 .invoke_handler(tauri::generate_handler![
     commands::mpv::play,
     commands::library::scan_directory,
-    // ...他 145 個のコマンド
+    // ...他 147 個のコマンド
 ])
 ```
 
@@ -374,7 +387,9 @@ unlisten();
 - HEVC 変換 (`hevc_videotoolbox`) は Intel Mac で画質指定 `-q:v` が使えないためビットレート指定にしている。8 ビット入力は `-pix_fmt nv12` を明示しないと失敗する。libopus は `5.1(side)` 等の配置を受け付けないので `aformat` で並べ替える
 - サムネイルは WebP 形式で生成 (ffmpeg 使用、`webp_thumb::ffmpeg_to_webp` を通す)。WebP の書き出しには libwebp 入りの ffmpeg が要るが、Homebrew の `ffmpeg` など libwebp なしの配布もあるため、書けない ffmpeg では PNG で取り出して `webp` クレートで非可逆 WebP にする。`start_web_server` で組み込み HTTP サーバー (axum) を起動してフロントエンドへ配信する
 - pHash (知覚的ハッシュ) で重複メディアを検出。`db_compute_video_phash` → `db_find_similar_videos` の流れ
-- 整理画面の確認 (pHash・無音の簡易判定) は `useBackgroundChecks` が何もしていないときに裏で進める (設定 `background_checks`、既定 on)。急がない ffmpeg は `utils::background_command` で起動し、macOS では `taskpolicy -c utility` で優先度を下げる
+- 計算し直せる解析結果のキャッシュを新しく持つときは、`videos` に列を足さず別テーブル (`media_probe` のように video_id を主キー・ON DELETE CASCADE) にする
+- 整理画面の高ビットレートは、AV1 にしたときに減る割合の見積もり (`media_probe::estimate_av1_saving`、解像度・fps・コーデック・ビットレートからの目安) の大きい順に並べる
+- 整理画面の確認 (映像の情報・pHash・無音の簡易判定) は `useBackgroundChecks` が何もしていないときに裏で進める (設定 `background_checks`、既定 on)。急がない ffmpeg は `utils::background_command` で起動し、macOS では `taskpolicy -c utility` で優先度を下げる
 - AI タグ提案は tract-onnx で ONNX モデルを実行 (WD ViT Tagger v3)。モデルは `download_ai_model` でダウンロード
 - rusqlite を直接使用 (tauri-plugin-sql は不使用)。SQL インジェクション対策でプリペアドステートメントを使う
 - ダウンロード URL は SSRF 対策でバリデーション済み (プライベート IP・localhost・mDNS ブロック)

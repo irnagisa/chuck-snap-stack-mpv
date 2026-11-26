@@ -688,7 +688,7 @@ impl ProbeInfo {
 }
 
 /// ffprobe でコンテナの再生時間とストリーム構成を取得する。
-async fn probe_media(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String> {
+pub(crate) async fn probe_media(ffprobe_path: &str, path: &str) -> Result<ProbeInfo, String> {
     let out = tokio::process::Command::new(ffprobe_path)
         .args([
             "-v", "error",
@@ -1169,7 +1169,7 @@ const MIN_SAVING_RATIO: f64 = 0.15;
 
 /// H.264 と比べた圧縮効率 (同じ画質に必要なビットレートの比)。
 /// HEVC・VP9 は H.264 の約 6 割で済むため、同じビットレートでも中身は濃い。
-fn codec_efficiency(codec_name: &str) -> f64 {
+pub(crate) fn codec_efficiency(codec_name: &str) -> f64 {
     match codec_name {
         "hevc" | "vp9" => 0.6,
         _ => 1.0,
@@ -1249,6 +1249,28 @@ fn video_bitrate(info: &ProbeInfo, file_size: Option<u64>) -> Option<f64> {
         .sum();
     let video = total - audio;
     (video > 0.0).then_some(video)
+}
+
+/// 本来の映像ストリームの要点 (整理画面の見積もり用。commands/media_probe.rs で保存する)
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct VideoSummary {
+    pub(crate) codec: Option<String>,
+    pub(crate) width: Option<u32>,
+    pub(crate) height: Option<u32>,
+    pub(crate) fps: Option<f64>,
+    /// 映像だけのビットレート (bps)。記録がなければ全体から音声分を引いた見積もり
+    pub(crate) bitrate: Option<f64>,
+}
+
+pub(crate) fn video_summary(info: &ProbeInfo, file_size: Option<u64>) -> VideoSummary {
+    let video = info.main_video();
+    VideoSummary {
+        codec: video.map(|v| v.codec_name.clone()).filter(|c| !c.is_empty()),
+        width: video.and_then(|v| v.width),
+        height: video.and_then(|v| v.height),
+        fps: video.and_then(|v| v.fps),
+        bitrate: video_bitrate(info, file_size),
+    }
 }
 
 fn audio_saving_bytes(info: &ProbeInfo, plans: &[AudioPlan]) -> u64 {
@@ -1744,6 +1766,19 @@ mod tests {
         // コンテナにも無ければファイルサイズ ÷ 再生時間 (100 MB / 100 秒 = 8 Mbps)
         p.bit_rate = None;
         assert_eq!(video_bitrate(&p, Some(100_000_000)), Some(8_000_000.0 - 320_000.0));
+    }
+
+    #[test]
+    fn video_summary_takes_main_video_and_skips_cover_art() {
+        let mut cover = video("mjpeg", 600, 600, 1.0, None);
+        cover.attached_pic = true;
+        let p = probe(10.0, vec![cover, video("hevc", 3840, 2160, 60.0, Some(40_000_000)), stream("audio", "aac")]);
+        let s = video_summary(&p, None);
+        assert_eq!(s.codec.as_deref(), Some("hevc"));
+        assert_eq!((s.width, s.height, s.fps), (Some(3840), Some(2160), Some(60.0)));
+        assert_eq!(s.bitrate, Some(40_000_000.0));
+        // 映像がなければ何も分からない
+        assert_eq!(video_summary(&probe(10.0, vec![stream("audio", "aac")]), None), VideoSummary::default());
     }
 
     #[test]

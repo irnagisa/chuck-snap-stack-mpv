@@ -259,6 +259,8 @@ pub fn run() {
             commands::silent_audio::get_videos_without_silence_check,
             commands::silent_audio::detect_silent_audio,
             commands::silent_audio::get_audio_silence,
+            commands::media_probe::get_videos_without_probe,
+            commands::media_probe::probe_video_info,
             // ai
             commands::ai::check_ai_model_status,
             commands::ai::download_ai_model,
