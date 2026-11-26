@@ -9,7 +9,7 @@ Tauri v2 製のメディア管理・ビューワーデスクトップアプリ�
 | デスクトップフレームワーク | Tauri v2 |
 | フロントエンド | React 19 + TypeScript + Vite |
 | UI プリミティブ | Radix UI (`radix-ui` 統合パッケージ) |
-| スタイリング | Native CSS (CSS Modules + カスケードレイヤー + デザイントークン)。既存画面は Tailwind CSS v4 から段階移行中 |
+| スタイリング | Native CSS (CSS Modules + カスケードレイヤー + デザイントークン) |
 | アイコン | Lucide React |
 | アニメーション | Motion (`motion/react`) |
 | 状態管理 | Zustand |
@@ -222,18 +222,18 @@ CREATE TABLE settings (
 ## UI 構成 (Radix UI + Native CSS + Lucide + Motion)
 
 - デザインは「カジュアル」テーマ: 暖色寄りのニュートラル + ぶどう色 (violet) のアクセント、大きめの角丸、丸ゴシック (SF Rounded / ヒラギノ丸ゴ)、色付き背景の上に角丸パネルを並べるレイアウト
-- `src/styles/tailwind-bridge.css` — 既存 Tailwind 画面にも新テーマを当てるブリッジ (gray → ニュートラル、blue → アクセント)。角丸 (`--radius-*`) とフォントは tokens.css が Tailwind にもそのまま効く。Tailwind 撤去時に削除
+- `src/styles/reset.css` — 最小リセット (Tailwind v4 の preflight が元)。全要素 margin / padding 0・`border: 0 solid`、見出しは大きさを継承、リストは記号なし、画像は block、ボタン・入力欄はフォントと色を継承。モジュールはこの初期値を前提に書く
 - `src/styles/tokens.css` — デザイントークン (`--color-*`, `--space-*`, `--radius-*` 等)。色は `light-dark()` で定義し、`color-scheme` で明暗が決まる
 - ダークモード: 設定 `theme` (light / dark / auto、既定 auto = OS 追従)。`src/lib/theme.ts` が `<html class="light|dark">` を付け、`useTheme` が設定変更・OS の外観変更に追従する。起動時は `main.tsx` の `initTheme()` がキャッシュ (localStorage) から即適用してちらつきを防ぐ。ネイティブのタイトルバーも `setTheme` で合わせる (capability `core:window:allow-set-theme`)。切替は View Transitions でクロスフェード
 - `src/components/ui/` — 共通プリミティブ。Radix ベース: Button, Dialog, ConfirmDialog, DropdownMenu, ContextMenu, Select, Tooltip, Popover, Tabs, SegmentedControl (ToggleGroup), Switch, Checkbox, RadioGroup, Slider, ScrollArea。Radix に無いもの: Input (ネイティブ input をトークンで装飾)。`import { Button } from "../ui"`
 - ボタン・入力・選択は生の `<button>` / `<input>` / `<select>` を書かず ui の部品を使う (一覧の行・色見本・星評価・タグチップなど、ボタンの見た目でないクリック要素は例外)
 - `src/components/Layout/` — アプリシェル・3 ペインレイアウト (ThreePaneLayout, PaneResizer, Pagination 等)
 - コンポーネントのスタイルは隣接する `*.module.css` に `@layer ui { … }` で書き、値はトークンを使う。状態は `data-*` 属性 (Radix の `data-state` 等) でスタイルする
-- レイヤー順序は `theme, base, tokens, components, ui, utilities` (`src/index.css`)。`index.css` は `main.tsx` で最初に import すること (順序が崩れると Tailwind preflight が ui を上書きする)
+- レイヤー順序は `base, tokens, ui` (`src/index.css`)。`index.css` は `main.tsx` で最初に import すること (レイヤー順序を最初に確定させるため)
 - アニメーションは `src/components/ui/motion.ts` のプリセットを使う。`prefers-reduced-motion` は `<MotionConfig reducedMotion="user">` で一括対応
   - hover / focus の色変化は CSS transition、出現・消滅・移動・サイズ変化は Motion
   - 条件付き表示は `AnimatePresence`。高さの開閉は `<Collapse>`、ストアの値が消えても退場中に中身を保つには `useFrozenWhileExiting` (`src/components/ui/presence.tsx`)
-- 新規・改修するコンポーネントは新構成で書く。既存の Tailwind コンポーネントは触る機会に移行し、全移行後に Tailwind を削除する
+- ユーティリティクラスは無い。`className` にはモジュールのクラスだけを渡し、色は `tokens.css` のセマンティックトークン (`--color-*`) を使う。常に暗い面 (再生バーなど) は `color-scheme: dark` を付けると配下のトークンもダーク配色になる
 
 ## 開発コマンド
 

@@ -12,13 +12,9 @@ export function InboxSummaryCard({ onOrganize }: Props) {
 
   return (
     <section className={homeStyles.section}>
-      <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">ライブラリ</h2>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-2xl font-bold tabular-nums">
-            未整理ファイル {inboxCount}件
-          </p>
-        </div>
+      <h2 className={homeStyles.heading}>ライブラリ</h2>
+      <div className={homeStyles.inboxRow}>
+        <p className={homeStyles.inboxCount}>未整理ファイル {inboxCount}件</p>
         <Button variant="primary" size="md" disabled={inboxCount === 0} onClick={onOrganize}>
           <Sparkles aria-hidden />
           整理を開始

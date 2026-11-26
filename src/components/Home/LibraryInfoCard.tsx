@@ -6,9 +6,9 @@ import homeStyles from "./Home.module.css";
 
 function StatTile({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex flex-col items-center justify-center py-3">
-      <span className="text-xl font-bold tabular-nums">{value.toLocaleString()}</span>
-      <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+    <div className={homeStyles.statTile}>
+      <span className={homeStyles.statValue}>{value.toLocaleString()}</span>
+      <span className={homeStyles.statLabel}>{label}</span>
     </div>
   );
 }
@@ -22,19 +22,17 @@ function formatBytes(bytes: number): string {
 
 function DiskBar({ disk }: { disk: DiskInfo }) {
   const usedPct = disk.totalBytes > 0 ? (disk.usedBytes / disk.totalBytes) * 100 : 0;
-  const barColor = usedPct >= 90 ? "bg-red-500" : usedPct >= 75 ? "bg-yellow-500" : "bg-blue-500";
+  const level = usedPct >= 90 ? "danger" : usedPct >= 75 ? "warning" : undefined;
   return (
-    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+    <div className={homeStyles.meter}>
+      <div className={homeStyles.meterHead}>
         <span>ストレージ</span>
         <span>{formatBytes(disk.usedBytes)} / {formatBytes(disk.totalBytes)}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${usedPct}%` }} />
+      <div className={homeStyles.meterTrack}>
+        <div className={homeStyles.meterBar} data-level={level} style={{ width: `${usedPct}%` }} />
       </div>
-      <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-        空き {formatBytes(disk.availableBytes)}
-      </div>
+      <div className={homeStyles.meterFoot}>空き {formatBytes(disk.availableBytes)}</div>
     </div>
   );
 }
@@ -69,28 +67,23 @@ export function LibraryInfoCard() {
 
   return (
     <section className={homeStyles.section}>
-      <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">ライブラリ情報</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100 dark:divide-gray-800">
+      <h2 className={homeStyles.heading}>ライブラリ情報</h2>
+      <div className={`${homeStyles.stats} ${homeStyles.stats4}`}>
         <StatTile label="画像" value={libraryStats?.imageCount ?? 0} />
         <StatTile label="動画" value={videoCount} />
         <StatTile label="Stack" value={stackCount} />
         <StatTile label="タグ" value={tags.length} />
       </div>
       {videoCount > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <div className={homeStyles.meter}>
+          <div className={homeStyles.meterHead}>
             <span>視聴済み</span>
             <span>{watchedCount.toLocaleString()} / {videoCount.toLocaleString()} （未視聴 {unwatchedCount.toLocaleString()}）</span>
           </div>
-          <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-indigo-500 transition-all"
-              style={{ width: `${watchedPct}%` }}
-            />
+          <div className={homeStyles.meterTrack}>
+            <div className={homeStyles.meterBar} style={{ width: `${watchedPct}%` }} />
           </div>
-          <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            {watchedPct}%
-          </div>
+          <div className={homeStyles.meterFoot}>{watchedPct}%</div>
         </div>
       )}
       {diskInfo && <DiskBar disk={diskInfo} />}

@@ -16,22 +16,15 @@
     margin-inline-end: var(--space-1);
   }
 
+  /* アプリのアイコン画像 (余白込みの正方形)。少し傾けておき、hover でまっすぐにする */
   .logo {
-    display: grid;
-    place-items: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: var(--radius-md);
-    background: linear-gradient(135deg, var(--palette-accent-400), var(--palette-accent-600) 55%, oklch(62% 0.2 340));
-    color: var(--palette-white);
-    box-shadow: 0 3px 10px -3px oklch(54.5% 0.245 292 / 0.6);
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    object-fit: contain;
     rotate: -6deg;
     transition: rotate var(--duration-normal) var(--ease-out);
-
-    & svg {
-      width: 1.1rem;
-      height: 1.1rem;
-    }
+    user-select: none;
   }
   .brand:hover .logo {
     rotate: 0deg;
@@ -168,6 +161,17 @@
     }
     .header {
       gap: var(--space-2);
+    }
+  }
+}
+
+@layer ui {
+  .spinner {
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      rotate: 360deg;
     }
   }
 }

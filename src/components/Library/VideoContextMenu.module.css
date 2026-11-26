@@ -1,0 +1,31 @@
+/*
+ * 一覧・グリッドで右クリックしたときのメニュー
+ * 見た目は ui/Menu.module.css (DropdownMenu / ContextMenu と共通) を使い、ここでは位置と見出しだけ足す
+ */
+@layer ui {
+  .menu {
+    position: fixed;
+    max-width: 16rem;
+    transform-origin: top left;
+
+    &:focus {
+      outline: none;
+    }
+  }
+  /* 見出し (対象のタイトル)。アイコンの列がないので左の余白は詰める */
+  .title {
+    padding-inline-start: var(--space-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* ネイティブの <button> をメニューの行として使うので、ボタンの見た目を消す */
+  .item {
+    width: 100%;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+  }
+}

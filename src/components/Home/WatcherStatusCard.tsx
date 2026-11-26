@@ -8,27 +8,17 @@ export function WatcherStatusCard() {
 
   return (
     <section className={homeStyles.section}>
-      <div className="flex items-center gap-2 mb-2">
-        <span
-          className={`w-2 h-2 rounded-full flex-shrink-0 ${
-            isActive ? "bg-green-500" : "bg-gray-400 dark:bg-gray-600"
-          }`}
-        />
-        <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400">
-          ファイルウォッチャー
-        </h2>
-        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+      <div className={homeStyles.watcherHead}>
+        <span className={homeStyles.watcherDot} data-active={isActive || undefined} aria-hidden />
+        <h2 className={homeStyles.heading}>ファイルウォッチャー</h2>
+        <span className={homeStyles.watcherStatus}>
           {isActive ? `${watchingPaths.length} フォルダ監視中` : "停止中"}
         </span>
       </div>
       {isActive && (
-        <ul className="mt-2 space-y-1">
+        <ul className={homeStyles.watchPaths}>
           {watchingPaths.map((p) => (
-            <li
-              key={p}
-              className="text-xs text-gray-500 dark:text-gray-400 truncate pl-4 font-mono"
-              title={p}
-            >
+            <li key={p} className={homeStyles.truncate} title={p}>
               {p}
             </li>
           ))}

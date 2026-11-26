@@ -490,7 +490,7 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
                   style={{ position: 'absolute', top: virtualRow.start, left: 0, right: 0 }}
                 >
                   <div
-                    className="grid pb-4"
+                    className={styles.gridRow}
                     style={{
                       gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                       gap: GAP,

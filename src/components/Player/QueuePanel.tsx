@@ -5,6 +5,7 @@ import { usePlayerStore } from '../../store/usePlayerStore';
 import { useModalStore } from '../../store/useModalStore';
 import { X } from "lucide-react";
 import { Button } from "../ui";
+import styles from "./QueuePanel.module.css";
 
 function formatTime(sec: number | null): string {
   if (!sec) return '--:--';
@@ -40,11 +41,11 @@ export function QueuePanel() {
 
   return (
     <div
-      className="fixed right-0 z-40 bg-gray-900 border-l border-gray-700 shadow-xl flex flex-col"
-      style={{ bottom: PLAYER_HEIGHT, top: 0, width: 280 }}
+      className={styles.panel}
+      style={{ bottom: PLAYER_HEIGHT }}
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0">
-        <span className="text-sm font-medium text-gray-200">{t('queue.title', { count: queue.length })}</span>
+      <div className={styles.header}>
+        <span className={styles.title}>{t('queue.title', { count: queue.length })}</span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -56,38 +57,32 @@ export function QueuePanel() {
         </Button>
       </div>
 
-      <div className="overflow-y-auto flex-1">
+      <ul className={styles.list}>
         {queue.map((video, idx) => {
           const isCurrent = idx === queueIndex;
           return (
-            <div
+            <li
               key={`${video.id}-${idx}`}
-              className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer group transition-colors ${
-                isCurrent
-                  ? 'bg-blue-600/30 border-l-2 border-blue-500'
-                  : 'hover:bg-gray-800 border-l-2 border-transparent'
-              }`}
+              className={styles.item}
+              data-current={isCurrent || undefined}
+              aria-current={isCurrent || undefined}
               onClick={() => jumpToQueue(idx)}
             >
               {/* サムネイル */}
-              <div className="w-12 h-8 rounded overflow-hidden shrink-0 bg-gray-700">
+              <div className={styles.thumb}>
                 {video.thumbnail ? (
-                  <img
-                    src={convertFileSrc(video.thumbnail)}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={convertFileSrc(video.thumbnail)} alt="" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">▶</div>
+                  <span aria-hidden>▶</span>
                 )}
               </div>
 
               {/* タイトル + 時間 */}
-              <div className="flex-1 min-w-0">
-                <p className={`text-xs truncate ${isCurrent ? 'text-blue-200 font-medium' : 'text-gray-300'}`}>
+              <div className={styles.text}>
+                <p className={styles.name}>
                   {video.title ?? video.path.split('/').pop()}
                 </p>
-                <p className="text-xs text-gray-500 tabular-nums">
+                <p className={styles.duration}>
                   {formatTime(video.duration)}
                 </p>
               </div>
@@ -97,7 +92,7 @@ export function QueuePanel() {
                 <Button
                   variant="danger-soft"
                   size="icon-sm"
-                  className="opacity-0 group-hover:opacity-100"
+                  className={styles.remove}
                   aria-label={t('queue.remove')}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -109,12 +104,12 @@ export function QueuePanel() {
                 </Button>
               )}
               {isCurrent && (
-                <span className="text-blue-400 text-xs shrink-0">▶</span>
+                <span className={styles.playing} aria-hidden>▶</span>
               )}
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 }

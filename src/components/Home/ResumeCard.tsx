@@ -27,17 +27,17 @@ export function ResumeCard({ onOpen }: Props) {
 
   return (
     <section className={homeStyles.section}>
-      <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">続きから整理</h2>
-      <div className="flex items-center gap-4">
-        <button type="button" className={`${cardStyles.tile} w-36`} onClick={() => onOpen(video)}>
+      <h2 className={homeStyles.heading}>続きから整理</h2>
+      <div className={homeStyles.resume}>
+        <button type="button" className={cardStyles.tile} onClick={() => onOpen(video)}>
           <MediaThumb video={video} compact />
         </button>
-        <div className="min-w-0 flex-1">
-          <p className="font-bold truncate">{dirName(video.path)}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+        <div className={homeStyles.resumeText}>
+          <p className={`${homeStyles.resumeFolder} ${homeStyles.truncate}`}>{dirName(video.path)}</p>
+          <p className={`${homeStyles.muted} ${homeStyles.truncate}`}>
             最後に閲覧: {video.title ?? fileName(video.path)}
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
+          <p className={homeStyles.subtle}>
             {new Date(lastViewedAt).toLocaleString()}
           </p>
         </div>

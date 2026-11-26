@@ -33,8 +33,8 @@ export function RandomPlayCard({ onOpen }: Props) {
 
   return (
     <section className={homeStyles.section}>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400">ランダム再生</h2>
+      <div className={homeStyles.headingRow}>
+        <h2 className={homeStyles.heading}>ランダム再生</h2>
         <Button size="xs" variant="ghost" onClick={fetchRandom} disabled={isLoading}>
           <Shuffle aria-hidden />
           別の動画
@@ -42,13 +42,13 @@ export function RandomPlayCard({ onOpen }: Props) {
       </div>
 
       {isLoading && videos.length === 0 && (
-        <div className="h-24 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
+        <div className={homeStyles.placeholder}>
           読み込み中...
         </div>
       )}
 
       {!isLoading && videos.length === 0 && (
-        <div className="h-24 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
+        <div className={homeStyles.placeholder}>
           動画が見つかりません
         </div>
       )}

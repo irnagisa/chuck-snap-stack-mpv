@@ -57,7 +57,7 @@ function prefersReducedMotion(): boolean {
 
 /**
  * <html> に .light / .dark を付ける。
- * - .dark は Tailwind の dark: バリアント用、両クラスとも tokens.css の color-scheme 用
+ * - 両クラスとも tokens.css の color-scheme 用 (light-dark() の明暗がこれで決まる)
  * - animate=true なら View Transitions API で画面全体をクロスフェードする
  *   (個々の要素の CSS トランジションがバラバラに走らないよう、切替中は .theme-switching で止める)
  */

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/shallow";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, Film, Image as ImageIcon, Layers, LayoutGrid, List, Music, RotateCcw, Shuffle, SlidersHorizontal, X } from "lucide-react";
 import { Select, Button, SegmentedControl, Input, Popover, Tooltip } from "../ui";
+import styles from "./LibraryFilterBar.module.css";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useTagStore } from "../../store/useTagStore";
 import { TagBadge } from "./TagBadge";
@@ -127,31 +128,31 @@ export function LibraryFilterBar() {
 
   return (
     // 幅が足りないときは右側のグループごと次の行へ回り込む (縮めて潰さない)
-    <div className="flex flex-wrap items-start gap-x-2 gap-y-2 mb-3 shrink-0">
+    <div className={styles.bar}>
       {/* 左: 絞り込みボタン + 適用中の条件 (チップは折り返して並ぶ) */}
-      <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-48">
+      <div className={styles.filters}>
         <Popover.Root>
           <Popover.Trigger asChild>
             <Button variant={activeFilterCount > 0 ? "soft" : "secondary"} title={t("filters.title")}>
               <SlidersHorizontal aria-hidden />
               {t("filters.title")}
               {activeFilterCount > 0 && (
-                <span className="min-w-4 px-1 rounded-full bg-blue-600 text-white text-[10px] leading-4 tabular-nums">
+                <span className={styles.count}>
                   {activeFilterCount}
                 </span>
               )}
             </Button>
           </Popover.Trigger>
-          <Popover.Content align="start" className="w-[22rem]">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold">{t("filters.title")}</h3>
+          <Popover.Content align="start" className={styles.popover}>
+            <div className={styles.popoverHead}>
+              <h3 className={styles.popoverTitle}>{t("filters.title")}</h3>
               <Button variant="ghost" size="xs" disabled={activeFilterCount === 0} onClick={resetFilters}>
                 <RotateCcw aria-hidden />
                 {t("filters.reset")}
               </Button>
             </div>
 
-            <div className="flex flex-col gap-3.5">
+            <div className={styles.fields}>
               <FilterField label={t("filters.rating")}>
                 <SegmentedControl
                   size="xs"
@@ -168,7 +169,7 @@ export function LibraryFilterBar() {
                 {filterMinRating > 0 && (
                   <SegmentedControl<RatingMode>
                     size="xs"
-                    className="mt-1.5"
+                    className={styles.ratingMode}
                     aria-label="評価の比較方法"
                     value={filterRatingMode}
                     onValueChange={setRatingMode}
@@ -212,7 +213,7 @@ export function LibraryFilterBar() {
                 />
               </FilterField>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className={styles.fieldPair}>
                 <FilterField label={t("filters.audio")}>
                   <SegmentedControl
                     size="xs"
@@ -247,10 +248,10 @@ export function LibraryFilterBar() {
               </div>
 
               <FilterField label={t("filters.duration")}>
-                <div className="flex items-center gap-1.5">
+                <div className={styles.range}>
                   <Input
                     size="sm"
-                    className="flex-1"
+                    className={styles.rangeInput}
                     type="number"
                     value={durationInput}
                     onChange={(e) => setDurationInput(e.target.value)}
@@ -258,10 +259,10 @@ export function LibraryFilterBar() {
                     min={0}
                     title="最小長さ (秒)"
                   />
-                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">〜</span>
+                  <span className={styles.rangeText}>〜</span>
                   <Input
                     size="sm"
-                    className="flex-1"
+                    className={styles.rangeInput}
                     type="number"
                     value={maxDurationInput}
                     onChange={(e) => setMaxDurationInput(e.target.value)}
@@ -269,7 +270,7 @@ export function LibraryFilterBar() {
                     min={0}
                     title="最大長さ (秒)"
                   />
-                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                  <span className={styles.rangeText}>
                     {t("filters.durationSuffix")}
                   </span>
                 </div>
@@ -369,7 +370,7 @@ export function LibraryFilterBar() {
       </div>
 
       {/* 右: 並び替え・再生・表示 */}
-      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+      <div className={styles.tools}>
         <Select<SortBy>
           value={filterSortBy}
           onValueChange={(v) => setSort(v, filterSortOrder)}
@@ -393,7 +394,7 @@ export function LibraryFilterBar() {
           </Button>
         </Tooltip>
 
-        <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" aria-hidden />
+        <span className={styles.divider} aria-hidden />
 
         <Tooltip
           content={filterCollapseGroups ? t("groups.collapseOnTitle") : t("groups.collapseOffTitle")}
@@ -432,7 +433,7 @@ export function LibraryFilterBar() {
           </Button>
         </Tooltip>
 
-        <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" aria-hidden />
+        <span className={styles.divider} aria-hidden />
 
         <SegmentedControl<ViewMode>
           size="xs"
@@ -475,8 +476,8 @@ export function LibraryFilterBar() {
 
 function FilterField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5 min-w-0">
-      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</span>
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>{label}</span>
       {children}
     </div>
   );
@@ -485,15 +486,15 @@ function FilterField({ label, children }: { label: string; children: ReactNode }
 /** 適用中の条件を表すチップ (× で解除) */
 function FilterChip({ label, clearLabel, onClear }: { label: string; clearLabel: string; onClear: () => void }) {
   return (
-    <span className="inline-flex items-center gap-0.5 h-6 pl-2.5 pr-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+    <span className={styles.chip}>
       {label}
       <button
         type="button"
         onClick={onClear}
         aria-label={`${label} を${clearLabel}`}
-        className="grid place-items-center size-4 rounded-full hover:bg-blue-200/60 dark:hover:bg-blue-800/60"
+        className={styles.chipClear}
       >
-        <X className="size-3" aria-hidden />
+        <X aria-hidden />
       </button>
     </span>
   );

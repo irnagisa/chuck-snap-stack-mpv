@@ -16,20 +16,21 @@ export function RecentFoldersCard({ onSelect }: Props) {
 
   return (
     <section className={homeStyles.section}>
-      <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">最近開いたフォルダ</h2>
-      <div className="flex flex-col gap-0.5">
+      <h2 className={homeStyles.heading}>最近開いたフォルダ</h2>
+      <ul className={homeStyles.folderList}>
         {recentFolders.map((f) => (
-          <button
-            type="button"
-            key={f.path}
-            className="text-left px-2 py-1.5 rounded text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 truncate"
-            title={f.path}
-            onClick={() => onSelect(f.path)}
-          >
-            {basename(f.path)}
-          </button>
+          <li key={f.path}>
+            <button
+              type="button"
+              className={`${homeStyles.folder} ${homeStyles.truncate}`}
+              title={f.path}
+              onClick={() => onSelect(f.path)}
+            >
+              {basename(f.path)}
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   );
 }
