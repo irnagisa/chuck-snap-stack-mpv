@@ -8,9 +8,11 @@ import {
   FolderInput,
   FolderOutput,
   FolderTree,
+  Layers,
   LoaderCircle,
   PencilLine,
   RefreshCw,
+  Unlink,
   Star,
   Tags,
   Trash2,
@@ -19,6 +21,7 @@ import {
 import { toast } from "../../store/useToastStore";
 import { Button } from "../ui";
 import { checkSilence } from "./silenceCheck";
+import { removeFromGroup } from "../../lib/groups";
 
 interface Props {
   selectedVideoIds: Set<number>;
@@ -33,12 +36,13 @@ export function BatchActionBar({
 }: Props) {
   const { t } = useTranslation();
   const { openBulkModal } = useModalStore();
-  const { assignCategoryFromPath, rescanMultiple, videos, fetchVideos } = useLibraryStore(
+  const { assignCategoryFromPath, rescanMultiple, videos, fetchVideos, videoGroups } = useLibraryStore(
     useShallow((s) => ({
       assignCategoryFromPath: s.assignCategoryFromPath,
       rescanMultiple: s.rescanMultiple,
       videos: s.videos,
       fetchVideos: s.fetchVideos,
+      videoGroups: s.videoGroups,
     }))
   );
   /** 無音の音声トラックを調べている間の進み具合 */
@@ -78,6 +82,8 @@ export function BatchActionBar({
   if (selectedVideoIds.size === 0) return null;
 
   const ids = () => Array.from(selectedVideoIds);
+  // いまのページで分かる範囲で、グループに入っているものがあるか
+  const groupedIds = ids().filter((id) => videoGroups?.[id] != null);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-2xl shrink-0">
@@ -106,6 +112,27 @@ export function BatchActionBar({
         <Star aria-hidden />
         {t("batch.setRating")}
       </Button>
+      <Button variant="soft" onClick={() => openBulkModal("group")}>
+        <Layers aria-hidden />
+        {t("batch.group")}
+      </Button>
+      {groupedIds.length > 0 && (
+        <Button
+          variant="soft"
+          onClick={async () => {
+            try {
+              await removeFromGroup(groupedIds);
+              toast.success(t("batch.ungroupDone", { count: groupedIds.length }));
+              onClearSelection();
+            } catch (e) {
+              toast.error(String(e));
+            }
+          }}
+        >
+          <Unlink aria-hidden />
+          {t("batch.ungroup")}
+        </Button>
+      )}
       <Button variant="soft" onClick={() => openBulkModal("moveDir")}>
         <FolderOutput aria-hidden />
         {t("batch.moveDir")}

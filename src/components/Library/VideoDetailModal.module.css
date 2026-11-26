@@ -30,6 +30,30 @@
     overflow-y: auto;
   }
 
+  /* ---- タブ ---- */
+  /* スクロールしてもタブはパネルの上に残す */
+  .tabBar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: var(--space-2) 0;
+    background: var(--color-bg-surface);
+  }
+  .tabCount {
+    min-width: 1rem;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-full);
+    background: color-mix(in oklch, var(--color-accent) 15%, transparent);
+    color: var(--color-accent);
+    font-size: 0.625rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1rem;
+  }
+  /* タブの中の最初の区切りは線を引かない (タブが区切りになる) */
+  .tabContent > .section:first-child {
+    border-top: none;
+  }
+
   /* ---- サムネイル + 再生 ---- */
   .hero {
     display: flex;

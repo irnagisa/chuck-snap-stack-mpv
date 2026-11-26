@@ -17,6 +17,49 @@ export interface Video {
   source_type: 'import' | 'download' | 'dragdrop' | 'watcher' | 'link' | null;
 }
 
+/** グループの種類: 同じ内容の別パターン / シリーズ (連番の回) */
+export type MediaGroupKind = 'variants' | 'series';
+
+/** 一覧の動画が入っているグループ */
+export interface VideoGroupInfo {
+  groupId: number;
+  name: string;
+  kind: MediaGroupKind;
+  memberCount: number;
+}
+
+export interface MediaGroupDetail {
+  id: number;
+  name: string;
+  kind: MediaGroupKind;
+  coverVideoId: number | null;
+  createdAt: string;
+  members: Video[];
+}
+
+export interface MediaGroupSummary {
+  id: number;
+  name: string;
+  kind: MediaGroupKind;
+  memberCount: number;
+  thumbnail: string | null;
+}
+
+/** ライブラリ全体から探した、まとめる候補 */
+export interface MediaGroupSuggestion {
+  key: string;
+  name: string;
+  kind: MediaGroupKind;
+  videos: Video[];
+}
+
+/** ある動画と一緒にまとめられそうな動画 */
+export interface MediaGroupCandidate {
+  video: Video;
+  kind: MediaGroupKind;
+  groupId: number | null;
+}
+
 export interface Chapter {
   title: string;
   startTime: number;

@@ -10,16 +10,17 @@ import { useTagStore } from '../../store/useTagStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { TranscodeModal } from './TranscodeModal';
-import { Button, Checkbox, Dialog, Input, SegmentedControl, Select } from '../ui';
+import { Button, Checkbox, Dialog, Input, SegmentedControl, Select, Tabs } from '../ui';
 import { ThumbImage } from './MediaThumb';
 import { TagBadge } from './TagBadge';
+import { GroupSection } from './GroupSection';
 import styles from './VideoDetailModal.module.css';
 import type { Video, SubtitleFile, AiSuggestionResult, AiNewSuggestion } from '../../types';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from '../../store/useToastStore';
 import { similarityPct } from '../../utils/phash';
 import { formatTime, formatFileSize } from '../../utils/time';
-import { Check, ExternalLink, Film, FolderOpen, Image as ImageIcon, LoaderCircle, Maximize2, Music, Play, Plus, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Film, FolderOpen, Image as ImageIcon, Info, Layers, LoaderCircle, Maximize2, Music, Play, Plus, Wrench, X } from "lucide-react";
 
 interface Props {
   video: Video;
@@ -43,6 +44,21 @@ interface VideoForPhash {
 }
 
 type SimilarThreshold = 4 | 8 | 12;
+
+type DetailTab = 'info' | 'group' | 'similar' | 'tools';
+
+const DETAIL_TAB_KEY = 'detailTab';
+
+/** 前に開いていたタブ (動画を切り替えても同じタブのまま見られるように覚えておく) */
+function readDetailTab(): DetailTab {
+  try {
+    const v = localStorage.getItem(DETAIL_TAB_KEY);
+    if (v === 'info' || v === 'group' || v === 'similar' || v === 'tools') return v;
+  } catch {
+    // 読めなければ最初のタブ
+  }
+  return 'info';
+}
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -85,6 +101,25 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
   const [localSourceUrl, setLocalSourceUrl] = useState(video.source_url ?? '');
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // タブ: リンクには類似・ツールが無い (AI タグ提案が有効ならツールは出す)
+  const groupInfo = useLibraryStore((s) => s.videoGroups[video.id]);
+  const tabs: DetailTab[] = [
+    'info',
+    'group',
+    ...(isLink ? [] : (['similar'] as const)),
+    ...(!isLink || aiEnabled ? (['tools'] as const) : []),
+  ];
+  const [tab, setTab] = useState<DetailTab>(readDetailTab);
+  const activeTab = tabs.includes(tab) ? tab : 'info';
+  const changeTab = (next: DetailTab) => {
+    setTab(next);
+    try {
+      localStorage.setItem(DETAIL_TAB_KEY, next);
+    } catch {
+      // 覚えられなくても切り替えはできる
+    }
+  };
 
   // Similar videos state
   const { openDetailVideo } = useModalStore();
@@ -496,335 +531,373 @@ export function VideoDetailModal({ video, onClose, onViewImage }: Props) {
             </div>
           </div>
 
-          {/* タイトル・パス・URL */}
-          <section className={styles.section}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="detail-title">{t('detail.titleField')}</label>
-              <Input
-                id="detail-title"
-                size="md"
-                variant="ghost"
-                className={styles.fullWidth}
-                ref={titleRef}
-                value={localTitle}
-                onChange={(e) => setLocalTitle(e.target.value)}
-                onBlur={handleTitleSave}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
-              />
-              <label className={styles.check}>
-                <Checkbox checked={renameFile} onCheckedChange={(v) => setRenameFile(v === true)} />
-                {t('detail.renameFile')}
-              </label>
+          <Tabs.Root value={activeTab} onValueChange={(v) => changeTab(v as DetailTab)}>
+            <div className={styles.tabBar}>
+              <Tabs.List aria-label={t('detail.tabsLabel')}>
+                <Tabs.Trigger value="info">
+                  <Info aria-hidden />
+                  {t('detail.tabInfo')}
+                </Tabs.Trigger>
+                <Tabs.Trigger value="group">
+                  <Layers aria-hidden />
+                  {t('detail.tabGroup')}
+                  {groupInfo && groupInfo.memberCount >= 2 && <span className={styles.tabCount}>{groupInfo.memberCount}</span>}
+                </Tabs.Trigger>
+                {tabs.includes('similar') && (
+                  <Tabs.Trigger value="similar">
+                    <Copy aria-hidden />
+                    {t('detail.tabSimilar')}
+                  </Tabs.Trigger>
+                )}
+                {tabs.includes('tools') && (
+                  <Tabs.Trigger value="tools">
+                    <Wrench aria-hidden />
+                    {t('detail.tabTools')}
+                  </Tabs.Trigger>
+                )}
+              </Tabs.List>
             </div>
 
-            {!isLink && (
-              <div className={styles.field}>
-                <div className={styles.labelRow}>
-                  <span className={styles.label}>{t('detail.path')}</span>
-                  <Button
+            <Tabs.Content value="info" className={styles.tabContent}>
+              {/* タイトル・パス・URL */}
+              <section className={styles.section}>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="detail-title">{t('detail.titleField')}</label>
+                  <Input
+                    id="detail-title"
+                    size="md"
                     variant="ghost"
-                    size="xs"
-                    onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(t('detail.revealFailed', { error: errorText(e) })))}
-                    title={t('detail.openFinder')}
-                  >
-                    <FolderOpen aria-hidden />
-                    {t('detail.openFinder')}
-                  </Button>
+                    className={styles.fullWidth}
+                    ref={titleRef}
+                    value={localTitle}
+                    onChange={(e) => setLocalTitle(e.target.value)}
+                    onBlur={handleTitleSave}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                  />
+                  <label className={styles.check}>
+                    <Checkbox checked={renameFile} onCheckedChange={(v) => setRenameFile(v === true)} />
+                    {t('detail.renameFile')}
+                  </label>
                 </div>
-                <p className={styles.path}>{video.path}</p>
-              </div>
-            )}
 
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="detail-url">{t('detail.url')}</label>
-              <Input
-                id="detail-url"
-                size="sm"
-                variant="ghost"
-                className={styles.fullWidth}
-                placeholder={t('detail.urlPlaceholder')}
-                value={localSourceUrl}
-                onChange={(e) => setLocalSourceUrl(e.target.value)}
-                onBlur={handleSourceUrlSave}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
-              />
-              {localSourceUrl && (
-                <button
-                  type="button"
-                  className={styles.link}
-                  onClick={() => openUrl(localSourceUrl).catch((e: unknown) => toast.error(t('detail.openUrlFailed', { error: errorText(e) })))}
-                  title={localSourceUrl}
+                {!isLink && (
+                  <div className={styles.field}>
+                    <div className={styles.labelRow}>
+                      <span className={styles.label}>{t('detail.path')}</span>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(t('detail.revealFailed', { error: errorText(e) })))}
+                        title={t('detail.openFinder')}
+                      >
+                        <FolderOpen aria-hidden />
+                        {t('detail.openFinder')}
+                      </Button>
+                    </div>
+                    <p className={styles.path}>{video.path}</p>
+                  </div>
+                )}
+
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="detail-url">{t('detail.url')}</label>
+                  <Input
+                    id="detail-url"
+                    size="sm"
+                    variant="ghost"
+                    className={styles.fullWidth}
+                    placeholder={t('detail.urlPlaceholder')}
+                    value={localSourceUrl}
+                    onChange={(e) => setLocalSourceUrl(e.target.value)}
+                    onBlur={handleSourceUrlSave}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                  />
+                  {localSourceUrl && (
+                    <button
+                      type="button"
+                      className={styles.link}
+                      onClick={() => openUrl(localSourceUrl).catch((e: unknown) => toast.error(t('detail.openUrlFailed', { error: errorText(e) })))}
+                      title={localSourceUrl}
+                    >
+                      {localSourceUrl}
+                    </button>
+                  )}
+                </div>
+              </section>
+
+              {/* カテゴリ・タグ・評価 */}
+              <section className={styles.section}>
+                <VideoOrganizerPanel video={video} />
+              </section>
+
+              {/* メタデータ */}
+              {!isLink && (
+                <section className={styles.section}>
+                  <dl className={styles.meta}>
+                    <div className={styles.metaWide}>
+                      <dt>{t('detail.mediaType')}</dt>
+                      <dd>
+                        <Select
+                          fullWidth
+                          value={localMediaType}
+                          onValueChange={handleMediaTypeChange}
+                          aria-label={t('detail.mediaType')}
+                          options={[
+                            { value: 'video', label: t('detail.mediaVideo') },
+                            { value: 'audio', label: t('detail.mediaAudio') },
+                            { value: 'image', label: t('detail.mediaImage') },
+                          ]}
+                        />
+                      </dd>
+                    </div>
+                    {video.duration != null && (
+                      <div>
+                        <dt>{t('detail.duration')}</dt>
+                        <dd>{formatTime(video.duration)}</dd>
+                      </div>
+                    )}
+                    {video.progress > 0 && (
+                      <div>
+                        <dt>{t('detail.watchProgress')}</dt>
+                        <dd>{formatTime(video.progress)}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>{t('detail.fileSize')}</dt>
+                      <dd>{fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}</dd>
+                    </div>
+                    {dimensions && (
+                      <div>
+                        <dt>{t('detail.resolution')}</dt>
+                        <dd>{dimensions.width} × {dimensions.height}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>{t('detail.createdAt')}</dt>
+                      <dd>{new Date(video.created_at).toLocaleDateString()}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('detail.playCount')}</dt>
+                      <dd>{video.watch_count ?? 0}{t('detail.playCountUnit')}</dd>
+                    </div>
+                  </dl>
+                </section>
+              )}
+            </Tabs.Content>
+
+            <Tabs.Content value="group" className={styles.tabContent}>
+              <GroupSection video={video} />
+            </Tabs.Content>
+
+            <Tabs.Content value="similar" className={styles.tabContent}>
+              {/* 類似動画 */}
+              {!isLink && (
+                <Section
+                  title={t('detail.similarVideos')}
+                  actions={
+                    <div className={styles.row}>
+                      <span className={styles.muted}>{t('detail.similarSensitivity')}</span>
+                      <SegmentedControl
+                        size="xs"
+                        aria-label={t('detail.similarSensitivity')}
+                        value={String(similarThreshold)}
+                        onValueChange={(v) => handleSimilarThresholdChange(Number(v) as SimilarThreshold)}
+                        options={([4, 8, 12] as SimilarThreshold[]).map((th) => ({
+                          value: String(th),
+                          label:
+                            th === 4
+                              ? t('detail.similarSensHigh')
+                              : th === 8
+                              ? t('detail.similarSensNormal')
+                              : t('detail.similarSensLow'),
+                        }))}
+                      />
+                    </div>
+                  }
                 >
-                  {localSourceUrl}
-                </button>
-              )}
-            </div>
-          </section>
-
-          {/* カテゴリ・タグ・評価 */}
-          <section className={styles.section}>
-            <VideoOrganizerPanel video={video} />
-          </section>
-
-          {/* メタデータ */}
-          {!isLink && (
-            <section className={styles.section}>
-              <dl className={styles.meta}>
-                <div className={styles.metaWide}>
-                  <dt>{t('detail.mediaType')}</dt>
-                  <dd>
-                    <Select
-                      fullWidth
-                      value={localMediaType}
-                      onValueChange={handleMediaTypeChange}
-                      aria-label={t('detail.mediaType')}
-                      options={[
-                        { value: 'video', label: t('detail.mediaVideo') },
-                        { value: 'audio', label: t('detail.mediaAudio') },
-                        { value: 'image', label: t('detail.mediaImage') },
-                      ]}
-                    />
-                  </dd>
-                </div>
-                {video.duration != null && (
-                  <div>
-                    <dt>{t('detail.duration')}</dt>
-                    <dd>{formatTime(video.duration)}</dd>
-                  </div>
-                )}
-                {video.progress > 0 && (
-                  <div>
-                    <dt>{t('detail.watchProgress')}</dt>
-                    <dd>{formatTime(video.progress)}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt>{t('detail.fileSize')}</dt>
-                  <dd>{fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}</dd>
-                </div>
-                {dimensions && (
-                  <div>
-                    <dt>{t('detail.resolution')}</dt>
-                    <dd>{dimensions.width} × {dimensions.height}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt>{t('detail.createdAt')}</dt>
-                  <dd>{new Date(video.created_at).toLocaleDateString()}</dd>
-                </div>
-                <div>
-                  <dt>{t('detail.playCount')}</dt>
-                  <dd>{video.watch_count ?? 0}{t('detail.playCountUnit')}</dd>
-                </div>
-              </dl>
-            </section>
-          )}
-
-          {/* サムネイルの差し替え */}
-          {!isLink && (
-            <Section title={t('detail.thumbnail')}>
-              <div className={styles.row}>
-                <Input
-                  size="sm"
-                  className={styles.secondsInput}
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={thumbTimestamp}
-                  onChange={(e) => setThumbTimestamp(e.target.value)}
-                  aria-label={t('detail.captureAt')}
-                />
-                <span className={styles.muted}>{t('detail.captureAt')}</span>
-                <Button variant="secondary" size="sm" onClick={handleCaptureThumb} disabled={isCapturingThumb}>
-                  {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
-                </Button>
-              </div>
-            </Section>
-          )}
-
-          {/* AI タグ提案 */}
-          {aiEnabled && (
-            <Section title={t('detail.aiTitle')}>
-              <p className={styles.warning}>{t('detail.aiNsfwWarning')}</p>
-
-              {aiModelDownloaded === false && !aiDownloading && (
-                <Button variant="primary" size="md" fullWidth onClick={handleDownloadAiModel}>
-                  {t('detail.aiEnable', { size: aiModelType === 'joytag' ? '~700 MB' : '~200 MB' })}
-                </Button>
-              )}
-
-              {aiDownloading && (
-                <div className={styles.stackTight}>
-                  <div className={styles.meter}>
-                    <div className={styles.meterBar} style={{ width: `${Math.round(aiDownloadProgress * 100)}%` }} />
-                  </div>
-                  <p className={`${styles.muted} ${styles.center}`}>
-                    {t('detail.aiDownloading', { percent: Math.round(aiDownloadProgress * 100) })}
-                  </p>
-                </div>
-              )}
-
-              {aiModelDownloaded && !aiDownloading && (
-                <>
-                  <Button variant="primary" size="sm" onClick={handleAnalyzeTags} disabled={aiAnalyzing || !localThumbnail}>
-                    {aiAnalyzing ? t('detail.aiAnalyzing') : t('detail.aiAnalyze')}
-                  </Button>
-                  {!localThumbnail && <p className={styles.muted}>{t('detail.aiNeedThumbnail')}</p>}
-                  {aiError && <p className={styles.error}>{aiError}</p>}
-
-                  {aiResult && aiResult.matched_tags.length > 0 && (
-                    <div className={styles.stackTight}>
-                      <p className={styles.label}>{t('detail.aiMatched')}</p>
-                      {aiResult.matched_tags.map((m) => {
-                        const tag = tags.find((tg) => tg.id === m.tag_id);
-                        if (!tag) return null;
+                  {!similarDetected && !similarLoading ? (
+                    <div className={styles.placeholder}>
+                      <p className={styles.muted}>{t('detail.similarNotRun')}</p>
+                      <Button variant="primary" size="sm" onClick={() => detectSimilar()}>
+                        {t('detail.similarDetect')}
+                      </Button>
+                    </div>
+                  ) : similarLoading ? (
+                    <div className={styles.placeholder}>
+                      <LoaderCircle className={styles.spinner} aria-hidden />
+                      <p className={styles.muted}>
+                        {similarHashProgress
+                          ? t('detail.similarComputing', { done: similarHashProgress.done, total: similarHashProgress.total })
+                          : '…'}
+                      </p>
+                      {similarHashProgress && (
+                        <div className={`${styles.meter} ${styles.meterNarrow}`}>
+                          <div
+                            className={styles.meterBar}
+                            style={{ width: `${(similarHashProgress.done / similarHashProgress.total) * 100}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : similarVideos.length === 0 ? (
+                    <div className={styles.placeholder}>
+                      <p className={styles.muted}>{t('detail.similarEmpty')}</p>
+                      <Button variant="secondary" size="sm" onClick={() => detectSimilar()}>
+                        {t('detail.similarRedetect')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className={styles.list}>
+                      {similarVideos.map((sim) => {
+                        const pct = currentPhash ? similarityPct(sim.phash, currentPhash) : null;
                         return (
-                          <label key={m.tag_id} className={styles.check}>
-                            <Checkbox onCheckedChange={(v) => { if (v === true) handleApplyMatchedTag(m.tag_id); }} />
-                            <TagBadge tag={tag} showIcon />
-                            <span className={styles.score}>{(m.score * 100).toFixed(0)}%</span>
-                          </label>
+                          <button key={sim.id} type="button" className={styles.similar} onClick={() => handleOpenSimilar(sim)}>
+                            <span className={styles.similarThumb}>
+                              {sim.thumbnail ? <ThumbImage src={sim.thumbnail} alt="" /> : <Film aria-hidden />}
+                            </span>
+                            <span className={styles.similarText}>
+                              <span className={styles.ellipsis}>{sim.title ?? sim.path.split('/').pop()}</span>
+                              {sim.duration != null && <span className={styles.subtle}>{formatTime(sim.duration)}</span>}
+                            </span>
+                            {pct !== null && (
+                              <span className={styles.pct} data-level={pct >= 95 ? 'high' : pct >= 88 ? 'mid' : undefined}>
+                                {t('detail.similarPct', { pct })}
+                              </span>
+                            )}
+                          </button>
                         );
                       })}
                     </div>
                   )}
+                </Section>
+              )}
+            </Tabs.Content>
 
-                  {aiResult && aiResult.new_suggestions.length > 0 && (
+            <Tabs.Content value="tools" className={styles.tabContent}>
+              {/* サムネイルの差し替え */}
+              {!isLink && (
+                <Section title={t('detail.thumbnail')}>
+                  <div className={styles.row}>
+                    <Input
+                      size="sm"
+                      className={styles.secondsInput}
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={thumbTimestamp}
+                      onChange={(e) => setThumbTimestamp(e.target.value)}
+                      aria-label={t('detail.captureAt')}
+                    />
+                    <span className={styles.muted}>{t('detail.captureAt')}</span>
+                    <Button variant="secondary" size="sm" onClick={handleCaptureThumb} disabled={isCapturingThumb}>
+                      {isCapturingThumb ? t('detail.capturing') : t('detail.capture')}
+                    </Button>
+                  </div>
+                </Section>
+              )}
+
+              {/* AI タグ提案 */}
+              {aiEnabled && (
+                <Section title={t('detail.aiTitle')}>
+                  <p className={styles.warning}>{t('detail.aiNsfwWarning')}</p>
+
+                  {aiModelDownloaded === false && !aiDownloading && (
+                    <Button variant="primary" size="md" fullWidth onClick={handleDownloadAiModel}>
+                      {t('detail.aiEnable', { size: aiModelType === 'joytag' ? '~700 MB' : '~200 MB' })}
+                    </Button>
+                  )}
+
+                  {aiDownloading && (
                     <div className={styles.stackTight}>
-                      <p className={styles.label}>{t('detail.aiNew')}</p>
-                      <div className={styles.wrap}>
-                        {aiResult.new_suggestions.map((sug) => (
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            key={sug.name}
-                            onClick={() => handleNewSuggestionClick(sug)}
-                            title={t('detail.aiScore', { score: (sug.score * 100).toFixed(0) })}
-                          >
-                            <Plus aria-hidden />
-                            {sug.name}
-                          </Button>
-                        ))}
+                      <div className={styles.meter}>
+                        <div className={styles.meterBar} style={{ width: `${Math.round(aiDownloadProgress * 100)}%` }} />
                       </div>
+                      <p className={`${styles.muted} ${styles.center}`}>
+                        {t('detail.aiDownloading', { percent: Math.round(aiDownloadProgress * 100) })}
+                      </p>
                     </div>
                   )}
-                </>
-              )}
-            </Section>
-          )}
 
-          {/* 字幕 */}
-          {!isLink && (
-            <Section
-              title={t('detail.subtitle')}
-              actions={
-                <Button variant="secondary" size="xs" onClick={handleScanSubtitles} disabled={isScanningSubs}>
-                  {isScanningSubs ? t('detail.searchingSubtitle') : t('detail.searchSubtitle')}
-                </Button>
-              }
-            >
-              {subtitles.length === 0 && !isScanningSubs && <p className={styles.muted}>{t('detail.subtitleHelp')}</p>}
-              {subtitles.length > 0 && (
-                <ul className={styles.list}>
-                  {subtitles.map((sub) => {
-                    const loaded = loadedSubtitle === sub.path;
-                    return (
-                      <li key={sub.path} className={styles.subRow}>
-                        <span className={styles.ellipsis}>{sub.name}</span>
-                        <span className={styles.ext}>{sub.ext}</span>
-                        <Button variant={loaded ? 'soft' : 'primary'} size="xs" onClick={() => handleLoadSubtitle(sub.path)}>
-                          {loaded && <Check aria-hidden />}
-                          {loaded ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Section>
-          )}
+                  {aiModelDownloaded && !aiDownloading && (
+                    <>
+                      <Button variant="primary" size="sm" onClick={handleAnalyzeTags} disabled={aiAnalyzing || !localThumbnail}>
+                        {aiAnalyzing ? t('detail.aiAnalyzing') : t('detail.aiAnalyze')}
+                      </Button>
+                      {!localThumbnail && <p className={styles.muted}>{t('detail.aiNeedThumbnail')}</p>}
+                      {aiError && <p className={styles.error}>{aiError}</p>}
 
-          {/* 類似動画 */}
-          {!isLink && (
-            <Section
-              title={t('detail.similarVideos')}
-              actions={
-                <div className={styles.row}>
-                  <span className={styles.muted}>{t('detail.similarSensitivity')}</span>
-                  <SegmentedControl
-                    size="xs"
-                    aria-label={t('detail.similarSensitivity')}
-                    value={String(similarThreshold)}
-                    onValueChange={(v) => handleSimilarThresholdChange(Number(v) as SimilarThreshold)}
-                    options={([4, 8, 12] as SimilarThreshold[]).map((th) => ({
-                      value: String(th),
-                      label:
-                        th === 4
-                          ? t('detail.similarSensHigh')
-                          : th === 8
-                          ? t('detail.similarSensNormal')
-                          : t('detail.similarSensLow'),
-                    }))}
-                  />
-                </div>
-              }
-            >
-              {!similarDetected && !similarLoading ? (
-                <div className={styles.placeholder}>
-                  <p className={styles.muted}>{t('detail.similarNotRun')}</p>
-                  <Button variant="primary" size="sm" onClick={() => detectSimilar()}>
-                    {t('detail.similarDetect')}
-                  </Button>
-                </div>
-              ) : similarLoading ? (
-                <div className={styles.placeholder}>
-                  <LoaderCircle className={styles.spinner} aria-hidden />
-                  <p className={styles.muted}>
-                    {similarHashProgress
-                      ? t('detail.similarComputing', { done: similarHashProgress.done, total: similarHashProgress.total })
-                      : '…'}
-                  </p>
-                  {similarHashProgress && (
-                    <div className={`${styles.meter} ${styles.meterNarrow}`}>
-                      <div
-                        className={styles.meterBar}
-                        style={{ width: `${(similarHashProgress.done / similarHashProgress.total) * 100}%` }}
-                      />
-                    </div>
+                      {aiResult && aiResult.matched_tags.length > 0 && (
+                        <div className={styles.stackTight}>
+                          <p className={styles.label}>{t('detail.aiMatched')}</p>
+                          {aiResult.matched_tags.map((m) => {
+                            const tag = tags.find((tg) => tg.id === m.tag_id);
+                            if (!tag) return null;
+                            return (
+                              <label key={m.tag_id} className={styles.check}>
+                                <Checkbox onCheckedChange={(v) => { if (v === true) handleApplyMatchedTag(m.tag_id); }} />
+                                <TagBadge tag={tag} showIcon />
+                                <span className={styles.score}>{(m.score * 100).toFixed(0)}%</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {aiResult && aiResult.new_suggestions.length > 0 && (
+                        <div className={styles.stackTight}>
+                          <p className={styles.label}>{t('detail.aiNew')}</p>
+                          <div className={styles.wrap}>
+                            {aiResult.new_suggestions.map((sug) => (
+                              <Button
+                                variant="secondary"
+                                size="xs"
+                                key={sug.name}
+                                onClick={() => handleNewSuggestionClick(sug)}
+                                title={t('detail.aiScore', { score: (sug.score * 100).toFixed(0) })}
+                              >
+                                <Plus aria-hidden />
+                                {sug.name}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
-                </div>
-              ) : similarVideos.length === 0 ? (
-                <div className={styles.placeholder}>
-                  <p className={styles.muted}>{t('detail.similarEmpty')}</p>
-                  <Button variant="secondary" size="sm" onClick={() => detectSimilar()}>
-                    {t('detail.similarRedetect')}
-                  </Button>
-                </div>
-              ) : (
-                <div className={styles.list}>
-                  {similarVideos.map((sim) => {
-                    const pct = currentPhash ? similarityPct(sim.phash, currentPhash) : null;
-                    return (
-                      <button key={sim.id} type="button" className={styles.similar} onClick={() => handleOpenSimilar(sim)}>
-                        <span className={styles.similarThumb}>
-                          {sim.thumbnail ? <ThumbImage src={sim.thumbnail} alt="" /> : <Film aria-hidden />}
-                        </span>
-                        <span className={styles.similarText}>
-                          <span className={styles.ellipsis}>{sim.title ?? sim.path.split('/').pop()}</span>
-                          {sim.duration != null && <span className={styles.subtle}>{formatTime(sim.duration)}</span>}
-                        </span>
-                        {pct !== null && (
-                          <span className={styles.pct} data-level={pct >= 95 ? 'high' : pct >= 88 ? 'mid' : undefined}>
-                            {t('detail.similarPct', { pct })}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                </Section>
               )}
-            </Section>
-          )}
+
+              {/* 字幕 */}
+              {!isLink && (
+                <Section
+                  title={t('detail.subtitle')}
+                  actions={
+                    <Button variant="secondary" size="xs" onClick={handleScanSubtitles} disabled={isScanningSubs}>
+                      {isScanningSubs ? t('detail.searchingSubtitle') : t('detail.searchSubtitle')}
+                    </Button>
+                  }
+                >
+                  {subtitles.length === 0 && !isScanningSubs && <p className={styles.muted}>{t('detail.subtitleHelp')}</p>}
+                  {subtitles.length > 0 && (
+                    <ul className={styles.list}>
+                      {subtitles.map((sub) => {
+                        const loaded = loadedSubtitle === sub.path;
+                        return (
+                          <li key={sub.path} className={styles.subRow}>
+                            <span className={styles.ellipsis}>{sub.name}</span>
+                            <span className={styles.ext}>{sub.ext}</span>
+                            <Button variant={loaded ? 'soft' : 'primary'} size="xs" onClick={() => handleLoadSubtitle(sub.path)}>
+                              {loaded && <Check aria-hidden />}
+                              {loaded ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
+                            </Button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </Section>
+              )}
+            </Tabs.Content>
+          </Tabs.Root>
         </div>
       </div>
     </>

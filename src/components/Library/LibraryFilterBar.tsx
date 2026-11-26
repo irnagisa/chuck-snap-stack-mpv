@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/shallow";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, Film, Image as ImageIcon, LayoutGrid, List, Music, RotateCcw, Shuffle, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, Film, Image as ImageIcon, Layers, LayoutGrid, List, Music, RotateCcw, Shuffle, SlidersHorizontal, X } from "lucide-react";
 import { Select, Button, SegmentedControl, Input, Popover, Tooltip } from "../ui";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { useTagStore } from "../../store/useTagStore";
@@ -23,7 +23,7 @@ export function LibraryFilterBar() {
   const {
     filterTagIds, filterTagMode, filterSortBy, filterSortOrder,
     filterMinRating, filterRatingMode, filterHasAudio, filterWatchedStatus, filterMediaType, filterAv1,
-    filterMinDuration, filterMaxDuration, totalCount,
+    filterMinDuration, filterMaxDuration, totalCount, filterCollapseGroups, setCollapseGroups,
     toggleTagFilter, clearTagFilters, setTagMode, setSort,
     setMinRating, setRatingMode, setHasAudio, setWatchedStatus, setMediaType, setAv1Filter,
     setMinDuration, setMaxDuration,
@@ -41,6 +41,8 @@ export function LibraryFilterBar() {
     filterMinDuration: s.filterMinDuration,
     filterMaxDuration: s.filterMaxDuration,
     totalCount: s.totalCount,
+    filterCollapseGroups: s.filterCollapseGroups,
+    setCollapseGroups: s.setCollapseGroups,
     toggleTagFilter: s.toggleTagFilter,
     clearTagFilters: s.clearTagFilters,
     setTagMode: s.setTagMode,
@@ -393,6 +395,20 @@ export function LibraryFilterBar() {
 
         <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" aria-hidden />
 
+        <Tooltip
+          content={filterCollapseGroups ? t("groups.collapseOnTitle") : t("groups.collapseOffTitle")}
+          side="bottom"
+        >
+          <Button
+            variant={filterCollapseGroups ? "soft" : "ghost"}
+            size="icon"
+            aria-label={t("groups.collapse")}
+            aria-pressed={filterCollapseGroups}
+            onClick={() => setCollapseGroups(!filterCollapseGroups)}
+          >
+            <Layers aria-hidden />
+          </Button>
+        </Tooltip>
         {totalCount > 0 && (
           <Tooltip content={t("app.shuffleAllTitle", { count: totalCount.toLocaleString() })} side="bottom">
             <Button

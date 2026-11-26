@@ -11,6 +11,8 @@ import { BulkRenameModal } from './Library/BulkRenameModal';
 import { BulkRatingModal } from './Library/BulkRatingModal';
 import { BulkMoveDirModal } from './Library/BulkMoveDirModal';
 import { DuplicatesModal } from './Library/DuplicatesModal';
+import { BulkGroupModal } from './Library/BulkGroupModal';
+import { GroupSuggestionsModal } from './Library/GroupSuggestionsModal';
 import { MissingFilesModal } from './Library/MissingFilesModal';
 import { StatsModal } from './Library/StatsModal';
 import { StorageModal } from './Library/StorageModal';
@@ -31,6 +33,7 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
     showSettings, closeSettings,
     showDownload, closeDownload,
     showDuplicates, closeDuplicates,
+    showGroupSuggestions, closeGroupSuggestions,
     showMissingFiles, closeMissingFiles,
     showStats, closeStats,
     showStorage, closeStorage,
@@ -49,6 +52,8 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {showDownload && <DownloadModal onClose={closeDownload} />}
 
       {showDuplicates && <DuplicatesModal onClose={closeDuplicates} />}
+
+      {showGroupSuggestions && <GroupSuggestionsModal onClose={closeGroupSuggestions} />}
 
       {showMissingFiles && <MissingFilesModal onClose={closeMissingFiles} />}
 
@@ -127,6 +132,18 @@ export function AppModals({ selectedVideoIds, selectedVideos, onClearSelection }
       {bulkModal === 'rating' && (
         <BulkRatingModal
           videoIds={Array.from(selectedVideoIds)}
+          onClose={closeBulkModal}
+          onDone={() => {
+            closeBulkModal();
+            onClearSelection();
+          }}
+        />
+      )}
+
+      {bulkModal === 'group' && selectedVideoIds.size > 0 && (
+        <BulkGroupModal
+          videoIds={Array.from(selectedVideoIds)}
+          videos={selectedVideos}
           onClose={closeBulkModal}
           onDone={() => {
             closeBulkModal();

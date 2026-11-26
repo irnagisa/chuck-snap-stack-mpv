@@ -1,0 +1,150 @@
+/* 詳細パネルの「グループ」欄 (区切り・サムネイルなどは VideoDetailModal.module.css を使う) */
+@layer ui {
+  .titleRow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+
+    & svg {
+      width: 0.875rem;
+      height: 0.875rem;
+      color: var(--color-accent);
+    }
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1-5);
+  }
+
+  .members {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    &[aria-busy] {
+      opacity: 0.7;
+    }
+  }
+
+  .member {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    border-radius: var(--radius-lg);
+    transition: background-color var(--duration-fast) ease;
+
+    &:hover {
+      background: var(--color-bg-hover);
+    }
+    &[data-current] {
+      background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+    }
+  }
+
+  .index {
+    flex-shrink: 0;
+    width: 1.25rem;
+    color: var(--color-fg-subtle);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* サムネイル + 名前 (押すとその動画の詳細を開く) */
+  .memberMain {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-1-5);
+    border: none;
+    border-radius: var(--radius-lg);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &[aria-current] {
+      cursor: default;
+    }
+    &:focus-visible {
+      outline: 2px solid var(--color-focus-ring);
+      outline-offset: -2px;
+    }
+  }
+
+  /* 行の操作は hover・フォーカス中だけ出す (候補の「追加」は常に出す) */
+  .memberActions {
+    display: flex;
+    flex-shrink: 0;
+    padding-right: var(--space-1);
+    opacity: 0;
+    transition: opacity var(--duration-fast) ease;
+
+    &[data-visible] {
+      opacity: 1;
+    }
+  }
+  .member:hover .memberActions,
+  .member:focus-within .memberActions {
+    opacity: 1;
+  }
+
+  .coverMark {
+    margin-right: var(--space-1-5);
+    padding: 0 var(--space-1-5);
+    border-radius: var(--radius-full);
+    background: color-mix(in oklch, var(--color-accent) 15%, transparent);
+    color: var(--color-accent);
+    font-weight: var(--weight-semibold);
+  }
+
+  .candidates {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px dashed var(--color-border);
+  }
+  .candidatesHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .picker {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: 18rem;
+  }
+  .pickerList {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 16rem;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+
+    & .memberMain:hover {
+      background: var(--color-bg-hover);
+    }
+  }
+}
