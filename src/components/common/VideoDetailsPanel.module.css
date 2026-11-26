@@ -1,0 +1,178 @@
+/* 詳細パネルの「情報」 (タイトル・パス・URL・メタデータ・サムネイル・字幕) */
+@layer ui {
+  .root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  /* ---- 項目 ---- */
+  /* 見出し: 隣の「評価・カテゴリ・タグ」(VideoOrganizerPanel の .label) と揃える */
+  .label {
+    display: block;
+    margin-bottom: var(--space-2);
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+  }
+  /* 見出しの右にボタンを置く行 */
+  .labelRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+
+    & .label {
+      margin-bottom: 0;
+    }
+  }
+  /* 見出しのすぐ横にボタンを置く行 (字幕) */
+  .labelRowStart {
+    justify-content: flex-start;
+  }
+  .help {
+    margin: 0;
+    color: var(--color-fg-subtle);
+    font-size: var(--text-xs);
+  }
+  .fullWidth {
+    width: 100%;
+  }
+
+  /* ---- タイトル ---- */
+  .renameToggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    width: fit-content;
+    margin-top: var(--space-1);
+    color: var(--color-fg-subtle);
+    font-size: var(--text-xs);
+    cursor: pointer;
+  }
+
+  /* ---- パス ---- */
+  .path {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+    line-height: 1.625;
+    overflow-wrap: anywhere;
+  }
+
+  /* ---- URL (リンクの見た目のクリック要素) ---- */
+  .urlLink {
+    display: block;
+    max-width: 100%;
+    margin-top: var(--space-0-5);
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    background: none;
+    color: var(--color-accent);
+    font: inherit;
+    font-size: var(--text-xs);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+    &:focus-visible {
+      outline: 2px solid var(--color-focus-ring);
+      outline-offset: 2px;
+      border-radius: var(--radius-xs);
+    }
+  }
+
+  /* ---- メタデータ ---- */
+  .meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+
+    & .labelRow {
+      margin-bottom: 0;
+    }
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2-5) var(--space-4);
+    margin: 0;
+  }
+  .statLabel {
+    margin: 0 0 var(--space-0-5);
+    color: var(--color-fg-subtle);
+    font-size: 0.625rem;
+  }
+  .statValue {
+    margin: 0;
+    color: var(--color-fg);
+    font-size: var(--text-xs);
+  }
+  .progressLabel {
+    margin-bottom: var(--space-1);
+  }
+  .progressTrack {
+    height: 0.375rem;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-active);
+  }
+  .progressBar {
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+  }
+
+  /* ---- サムネイル ---- */
+  .thumbRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .timestampInput {
+    width: 5rem;
+  }
+  .thumbUnit {
+    flex-shrink: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-xs);
+  }
+  .waveform {
+    margin-top: var(--space-2);
+  }
+
+  /* ---- 字幕 ---- */
+  .subtitles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .subtitle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+  }
+  .subtitleName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-fg);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .subtitleExt {
+    color: var(--color-fg-subtle);
+    text-transform: uppercase;
+  }
+}

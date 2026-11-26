@@ -703,3 +703,11 @@
     }
   }
 }
+
+@layer ui {
+  /* グリッド表示の 1 行 (仮想スクロールの行。列数は style で渡す) */
+  .gridRow {
+    display: grid;
+    padding-bottom: var(--space-4);
+  }
+}

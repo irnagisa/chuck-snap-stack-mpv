@@ -3,8 +3,8 @@
  *
  * - あたたかみのあるニュートラル + ぶどう色 (violet) のアクセント
  * - 大きめの角丸・やわらかい影・丸ゴシック
- * - プリミティブ (--palette-*) は直接使わず、セマンティックトークン経由で参照する
- *   (例外: tailwind-bridge.css が既存 Tailwind 画面向けにプリミティブを割り当てる)
+ * - プリミティブ (--palette-*) は原則セマンティックトークン経由で参照する
+ *   (例外: 再生バーなど常に暗い面・色付きの通知の面は、明暗に関係なくプリミティブを直接使う)
  * - ダークモードは light-dark() + color-scheme で切り替える (下記 semantic colors 参照)
  */
 @layer tokens {
@@ -39,6 +39,14 @@
     /* 差し色: Inbox バッジなど */
     --palette-amber-400: oklch(82.8% 0.189 84.429);
     --palette-amber-500: oklch(76.9% 0.188 70.08);
+    --palette-amber-600: oklch(66.6% 0.179 58.318);
+    --palette-amber-700: oklch(55.5% 0.163 48.998);
+
+    /* 成功・稼働中 */
+    --palette-green-400: oklch(79.2% 0.209 151.711);
+    --palette-green-500: oklch(72.3% 0.219 149.579);
+    --palette-green-600: oklch(62.7% 0.194 149.214);
+    --palette-green-700: oklch(52.7% 0.154 150.069);
 
     --palette-red-400: oklch(70.4% 0.191 22.216);
     --palette-red-500: oklch(63.7% 0.237 25.331);
@@ -90,6 +98,15 @@
     --color-danger: var(--palette-red-600);
     --color-danger-hover: var(--palette-red-700);
     --color-danger-fg: light-dark(var(--palette-red-500), var(--palette-red-400));
+    --color-danger-soft: light-dark(oklch(57.7% 0.245 27.325 / 0.1), oklch(70.4% 0.191 22.216 / 0.16));
+
+    --color-success: light-dark(var(--palette-green-600), var(--palette-green-500));
+    --color-success-fg: light-dark(var(--palette-green-700), var(--palette-green-400));
+    --color-success-soft: light-dark(oklch(62.7% 0.194 149.214 / 0.1), oklch(72.3% 0.219 149.579 / 0.16));
+
+    --color-warning: var(--palette-amber-500);
+    --color-warning-fg: light-dark(var(--palette-amber-700), var(--palette-amber-400));
+    --color-warning-soft: light-dark(oklch(76.9% 0.188 70.08 / 0.14), oklch(76.9% 0.188 70.08 / 0.16));
 
     --color-focus-ring: light-dark(var(--palette-accent-500), var(--palette-accent-400));
 
@@ -131,10 +148,7 @@
     --space-8: 2rem;
     --space-10: 2.5rem;
 
-    /*
-     * ---- radius ----
-     * Tailwind v4 の rounded-* も同名の変数を参照するので、既存画面の角丸もここで一括で丸くなる
-     */
+    /* ---- radius ---- */
     --radius-xs: 0.25rem;
     --radius-sm: 0.4rem;
     --radius-md: 0.6rem;

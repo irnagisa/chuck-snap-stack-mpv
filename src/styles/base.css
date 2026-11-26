@@ -1,6 +1,5 @@
 /*
- * ベーススタイル (リセットは Tailwind の preflight に任せている。
- * Tailwind を外すタイミングで最小リセットをここへ移す)
+ * ベーススタイル (リセットは reset.css)
  */
 @layer tokens {
   body {

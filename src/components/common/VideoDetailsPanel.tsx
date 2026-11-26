@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { toast } from '../../store/useToastStore';
-import { Check } from 'lucide-react';
-import { Select, Button, Input, Checkbox } from '../ui';
+import { Check, Folder } from 'lucide-react';
+import { Select, Button, Input, Checkbox, cx } from '../ui';
 import type { Video, SubtitleFile } from '../../types';
 import { formatTime, formatFileSize } from '../../utils/time';
+import styles from './VideoDetailsPanel.module.css';
 
 interface Props {
   video: Video;
@@ -35,6 +36,9 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
   const [isScanningSubs, setIsScanningSubs] = useState(false);
   const [loadedSubtitle, setLoadedSubtitle] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
+  const urlId = useId();
+  const thumbId = useId();
 
   useEffect(() => {
     setLocalTitle(video.title ?? video.path.split('/').pop() ?? '');
@@ -178,16 +182,17 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={styles.root}>
       {/* タイトル */}
       <div>
-        <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
+        <label className={styles.label} htmlFor={titleId}>
           {t('detail.titleField')}
         </label>
         <Input
+          id={titleId}
           size="md"
           variant="ghost"
-          className="w-full"
+          className={styles.fullWidth}
           ref={titleRef}
           value={localTitle}
           onChange={(e) => setLocalTitle(e.target.value)}
@@ -196,56 +201,41 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
         />
-        <label className="flex items-center gap-1.5 mt-1 cursor-pointer w-fit">
+        <label className={styles.renameToggle}>
           <Checkbox
             checked={renameFile}
             onCheckedChange={(v) => setRenameFile(v === true)}
           />
-          <span className="text-xs text-gray-400 dark:text-gray-500">{t('detail.renameFile')}</span>
+          {t('detail.renameFile')}
         </label>
       </div>
 
       {/* パス */}
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="block text-xs font-medium text-gray-400 dark:text-gray-500">
-            {t('detail.path')}
-          </label>
+        <div className={styles.labelRow}>
+          <span className={styles.label}>{t('detail.path')}</span>
           <Button
             variant="ghost"
             size="xs"
             onClick={() => revealItemInDir(video.path).catch((e: unknown) => toast.error(`Finder での表示に失敗しました: ${e instanceof Error ? e.message : String(e)}`))}
           >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-              />
-            </svg>
+            <Folder aria-hidden />
             {t('detail.openFinder')}
           </Button>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 break-all leading-relaxed">
-          {video.path}
-        </p>
+        <p className={styles.path}>{video.path}</p>
       </div>
 
       {/* URL */}
       <div>
-        <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">
+        <label className={styles.label} htmlFor={urlId}>
           {t('detail.url')}
         </label>
         <Input
+          id={urlId}
           size="sm"
           variant="ghost"
-          className="w-full"
+          className={styles.fullWidth}
           placeholder={t('detail.urlPlaceholder')}
           value={localSourceUrl}
           onChange={(e) => setLocalSourceUrl(e.target.value)}
@@ -257,7 +247,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
         {localSourceUrl && (
           <button
             type="button"
-            className="text-xs text-blue-500 hover:underline mt-0.5 block truncate max-w-full text-left"
+            className={styles.urlLink}
             onClick={() => openUrl(localSourceUrl).catch((e: unknown) => toast.error(`URL を開けませんでした: ${e instanceof Error ? e.message : String(e)}`))}
             title={localSourceUrl}
           >
@@ -267,11 +257,9 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
       </div>
 
       {/* メタデータ */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
-            {t('detail.mediaType')}
-          </label>
+      <div className={styles.meta}>
+        <div className={styles.labelRow}>
+          <span className={styles.label}>{t('detail.mediaType')}</span>
           <Button
             variant="secondary"
             size="xs"
@@ -292,73 +280,41 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
             { value: 'image', label: t('detail.mediaImage') },
           ]}
         />
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+        <dl className={styles.stats}>
           {video.duration != null && (
-            <div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
-                {t('detail.duration')}
-              </p>
-              <p className="text-xs text-gray-800 dark:text-gray-200">
-                {formatTime(video.duration)}
-              </p>
-            </div>
+            <Stat label={t('detail.duration')}>{formatTime(video.duration)}</Stat>
           )}
-          <div>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
-              {t('detail.fileSize')}
-            </p>
-            <p className="text-xs text-gray-800 dark:text-gray-200">
-              {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
-            </p>
-          </div>
+          <Stat label={t('detail.fileSize')}>
+            {fileSizeBytes != null ? formatFileSize(fileSizeBytes) : '—'}
+          </Stat>
           {dimensions && (
-            <div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
-                {t('detail.resolution')}
-              </p>
-              <p className="text-xs text-gray-800 dark:text-gray-200">
-                {dimensions.width} × {dimensions.height}
-              </p>
-            </div>
+            <Stat label={t('detail.resolution')}>
+              {dimensions.width} × {dimensions.height}
+            </Stat>
           )}
           {video.progress > 0 && (
-            <div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
-                {t('detail.watchProgress')}
-              </p>
-              <p className="text-xs text-gray-800 dark:text-gray-200">
-                {formatTime(video.progress)}
-              </p>
-            </div>
+            <Stat label={t('detail.watchProgress')}>{formatTime(video.progress)}</Stat>
           )}
-          <div>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
-              {t('detail.createdAt')}
-            </p>
-            <p className="text-xs text-gray-800 dark:text-gray-200">
-              {new Date(video.created_at).toLocaleDateString()}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
-              {t('detail.playCount')}
-            </p>
-            <p className="text-xs text-gray-800 dark:text-gray-200">
-              {video.watch_count ?? 0}
-              {t('detail.playCountUnit')}
-            </p>
-          </div>
-        </div>
+          <Stat label={t('detail.createdAt')}>
+            {new Date(video.created_at).toLocaleDateString()}
+          </Stat>
+          <Stat label={t('detail.playCount')}>
+            {video.watch_count ?? 0}
+            {t('detail.playCountUnit')}
+          </Stat>
+        </dl>
         {progressPercent !== null && progressPercent > 0 && (
           <div>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">
-              {t('detail.watchProgress')}
-            </p>
-            <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 rounded-full"
-                style={{ width: `${progressPercent}%` }}
-              />
+            <p className={cx(styles.statLabel, styles.progressLabel)}>{t('detail.watchProgress')}</p>
+            <div
+              className={styles.progressTrack}
+              role="progressbar"
+              aria-label={t('detail.watchProgress')}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progressPercent)}
+            >
+              <div className={styles.progressBar} style={{ width: `${progressPercent}%` }} />
             </div>
           </div>
         )}
@@ -366,22 +322,21 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
 
       {/* サムネイル変更 */}
       <div>
-        <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
+        <label className={styles.label} htmlFor={thumbId}>
           {t('detail.thumbnail')}
         </label>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className={styles.thumbRow}>
           <Input
+            id={thumbId}
             size="sm"
-            className="w-20"
+            className={styles.timestampInput}
             type="number"
             min={0}
             step={1}
             value={thumbTimestamp}
             onChange={(e) => setThumbTimestamp(e.target.value)}
           />
-          <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-            {t('detail.captureAt')}
-          </span>
+          <span className={styles.thumbUnit}>{t('detail.captureAt')}</span>
           <Button
             variant="secondary"
             size="sm"
@@ -392,7 +347,7 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           </Button>
         </div>
         {localMediaType === 'audio' && (
-          <div className="mt-2">
+          <div className={styles.waveform}>
             <Button
               variant="secondary"
               size="sm"
@@ -407,10 +362,8 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
 
       {/* 字幕 */}
       <div>
-        <div className="flex items-center gap-2 mb-1.5">
-          <label className="text-xs font-medium text-gray-400 dark:text-gray-500">
-            {t('detail.subtitle')}
-          </label>
+        <div className={cx(styles.labelRow, styles.labelRowStart)}>
+          <span className={styles.label}>{t('detail.subtitle')}</span>
           <Button
             variant="secondary"
             size="xs"
@@ -421,14 +374,14 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
           </Button>
         </div>
         {subtitles.length === 0 && !isScanningSubs && (
-          <p className="text-xs text-gray-400 dark:text-gray-500">{t('detail.subtitleHelp')}</p>
+          <p className={styles.help}>{t('detail.subtitleHelp')}</p>
         )}
         {subtitles.length > 0 && (
-          <div className="flex flex-col gap-1">
+          <ul className={styles.subtitles}>
             {subtitles.map((sub) => (
-              <div key={sub.path} className="flex items-center gap-2 text-xs">
-                <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{sub.name}</span>
-                <span className="text-gray-400 dark:text-gray-500 uppercase">{sub.ext}</span>
+              <li key={sub.path} className={styles.subtitle}>
+                <span className={styles.subtitleName} title={sub.name}>{sub.name}</span>
+                <span className={styles.subtitleExt}>{sub.ext}</span>
                 <Button
                   variant={loadedSubtitle === sub.path ? 'soft' : 'primary'}
                   size="xs"
@@ -437,11 +390,20 @@ export function VideoDetailsPanel({ video, onThumbnailChange }: Props) {
                   {loadedSubtitle === sub.path && <Check aria-hidden />}
                   {loadedSubtitle === sub.path ? t('detail.subtitleLoaded') : t('detail.subtitleLoad')}
                 </Button>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+function Stat({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt className={styles.statLabel}>{label}</dt>
+      <dd className={styles.statValue}>{children}</dd>
     </div>
   );
 }

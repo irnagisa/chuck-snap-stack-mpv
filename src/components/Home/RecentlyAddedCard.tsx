@@ -15,7 +15,7 @@ export function RecentlyAddedCard({ onOpen }: Props) {
 
   return (
     <section className={homeStyles.section}>
-      <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3">最近追加</h2>
+      <h2 className={homeStyles.heading}>最近追加</h2>
       <div className={homeStyles.strip}>
         {recentVideos.map((v) => (
           <button type="button" key={v.id} className={cardStyles.tile} onClick={() => onOpen(v)}>

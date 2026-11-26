@@ -22,6 +22,7 @@ import { toast } from "../../store/useToastStore";
 import { Button } from "../ui";
 import { checkSilence } from "./silenceCheck";
 import { removeFromGroup } from "../../lib/groups";
+import styles from "./BatchActionBar.module.css";
 
 interface Props {
   selectedVideoIds: Set<number>;
@@ -86,8 +87,8 @@ export function BatchActionBar({
   const groupedIds = ids().filter((id) => videoGroups?.[id] != null);
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-2xl shrink-0">
-      <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 shrink-0 mr-1">
+    <div className={styles.bar} role="toolbar" aria-label={t("batch.selectedCount", { count: selectedVideoIds.size })}>
+      <span className={styles.count}>
         {t("batch.selectedCount", { count: selectedVideoIds.size })}
       </span>
       <Button variant="soft" onClick={() => openBulkModal("tag")}>
@@ -142,7 +143,7 @@ export function BatchActionBar({
         {t("batch.rename")}
       </Button>
       <Button variant="soft" disabled={!!silenceProgress} onClick={handleCheckSilence}>
-        {silenceProgress ? <LoaderCircle className="animate-spin" aria-hidden /> : <AudioLines aria-hidden />}
+        {silenceProgress ? <LoaderCircle className={styles.spinner} aria-hidden /> : <AudioLines aria-hidden />}
         {silenceProgress ? t("batch.checkSilenceProgress", silenceProgress) : t("batch.checkSilence")}
       </Button>
       <Button
@@ -160,7 +161,7 @@ export function BatchActionBar({
         <Trash2 aria-hidden />
         {t("batch.delete")}
       </Button>
-      <Button variant="ghost" size="xs" className="ml-auto" onClick={onClearSelection}>
+      <Button variant="ghost" size="xs" className={styles.end} onClick={onClearSelection}>
         <X aria-hidden />
         {t("batch.deselect")}
       </Button>

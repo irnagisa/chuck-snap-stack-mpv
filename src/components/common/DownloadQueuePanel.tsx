@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { X } from 'lucide-react';
-import { Button } from '../ui';
+import { Button, cx } from '../ui';
+import styles from './Notice.module.css';
 import { useDownloadStore, type DownloadJob } from '../../store/useDownloadStore';
 
 function formatBytes(n: number): string {
@@ -21,28 +22,24 @@ function JobCard({ job, onCancel, onDismiss }: {
   const shortLabel = label.length > 40 ? `${label.slice(0, 37)}...` : label;
 
   return (
-    <div className={`flex flex-col gap-1.5 px-3 py-2.5 rounded-lg shadow-lg text-xs pointer-events-auto
-      ${job.phase === 'error'
-        ? 'bg-red-600 text-white'
-        : job.phase === 'done'
-        ? 'bg-green-600 text-white'
-        : 'bg-gray-800 dark:bg-gray-700 text-gray-100'
-      }`}
+    <div
+      className={cx(styles.card, styles.job)}
+      data-tone={job.phase === 'error' ? 'error' : job.phase === 'done' ? 'success' : undefined}
     >
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="shrink-0">
+      <div className={styles.jobHead}>
+        <span className={styles.icon} aria-hidden>
           {job.phase === 'done' ? '✓' :
            job.phase === 'error' ? '✕' :
            job.phase === 'queued' ? '…' : '↓'}
         </span>
-        <span className="flex-1 truncate font-medium" title={label}>{shortLabel}</span>
+        <span className={styles.jobTitle} title={label}>{shortLabel}</span>
         {(job.phase === 'done' || job.phase === 'error' || job.phase === 'cancelled') && (
           <Button size="icon-sm" variant="inherit" aria-label="閉じる" onClick={() => onDismiss(job.id)}>
             <X aria-hidden />
           </Button>
         )}
         {job.phase === 'downloading' && (
-          <Button size="xs" variant="inherit" className="text-red-300 hover:text-red-100" onClick={onCancel}>
+          <Button size="xs" variant="inherit" className={styles.cancel} onClick={onCancel}>
             {t('downloadQueue.cancel')}
           </Button>
         )}
@@ -50,15 +47,14 @@ function JobCard({ job, onCancel, onDismiss }: {
 
       {job.phase === 'downloading' && (
         <>
-          <div className="w-full h-1.5 bg-gray-600 dark:bg-gray-500 rounded-full overflow-hidden">
+          <div className={styles.track}>
             <div
-              className={`h-full rounded-full transition-all duration-200 ${
-                job.progress.percent > 0 ? 'bg-blue-400' : 'bg-blue-400 animate-pulse w-full'
-              }`}
+              className={styles.bar}
+              data-indeterminate={job.progress.percent > 0 ? undefined : true}
               style={job.progress.percent > 0 ? { width: `${job.progress.percent}%` } : undefined}
             />
           </div>
-          <div className="flex justify-between text-gray-300">
+          <div className={styles.jobMeta}>
             <span>
               {!job.useYtdlp && job.progress.total > 0
                 ? `${formatBytes(job.progress.downloaded)} / ${formatBytes(job.progress.total)}`
@@ -74,11 +70,11 @@ function JobCard({ job, onCancel, onDismiss }: {
       )}
 
       {job.phase === 'queued' && (
-        <span className="text-gray-400">{t('downloadQueue.queued')}</span>
+        <span className={styles.jobNote}>{t('downloadQueue.queued')}</span>
       )}
 
       {job.phase === 'error' && (
-        <span className="text-red-200 break-all">{job.errorMsg}</span>
+        <span className={styles.jobError}>{job.errorMsg}</span>
       )}
     </div>
   );
@@ -91,7 +87,7 @@ export function DownloadQueuePanel() {
 
   return (
     <div
-      className="fixed bottom-24 right-4 flex flex-col gap-2 z-[150] pointer-events-none w-72"
+      className={cx(styles.stack, styles.downloadStack)}
       aria-live="polite"
     >
       {jobs.map((job) => (

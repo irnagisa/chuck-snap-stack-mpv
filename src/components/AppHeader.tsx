@@ -22,6 +22,8 @@ import { useLibraryStore } from "../store/useLibraryStore";
 import { useShallow } from "zustand/shallow";
 import { Button, Checkbox, Input, Tooltip, motionPresets } from "./ui";
 import styles from "./AppHeader.module.css";
+// アプリのアイコン (Dock / タスクバー) と同じ画像。アイコンを差し替えるとロゴも揃う
+import appIcon from "../../src-tauri/icons/128x128.png";
 
 type MainView = "home" | "library" | "inbox";
 
@@ -90,9 +92,7 @@ export function AppHeader({
   return (
     <header className={styles.header}>
       <div className={styles.brand}>
-        <span className={styles.logo} aria-hidden>
-          <Layers strokeWidth={2.25} />
-        </span>
+        <img className={styles.logo} src={appIcon} alt="" width={128} height={128} draggable={false} />
         <h1 className={styles.title}>Chuck Snap Stack</h1>
       </div>
 
@@ -140,7 +140,7 @@ export function AppHeader({
 
       <div className={styles.actions}>
         <Button variant="primary" disabled={!isDbReady || isBusy} onClick={onPickDir}>
-          {isBusy ? <LoaderCircle className="animate-spin" aria-hidden /> : <FolderPlus aria-hidden />}
+          {isBusy ? <LoaderCircle className={styles.spinner} aria-hidden /> : <FolderPlus aria-hidden />}
           {isBusy ? t("app.scanning") : t("app.addFolder")}
         </Button>
 

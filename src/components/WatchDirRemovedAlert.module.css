@@ -1,0 +1,50 @@
+/* 監視フォルダが見つからなくなったときの警告 (画面下の中央に浮かぶ) */
+@layer ui {
+  .stack {
+    position: fixed;
+    bottom: 7rem;
+    left: 50%;
+    z-index: var(--z-dialog);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    translate: -50% 0;
+    pointer-events: none;
+  }
+  .alert {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-lg);
+    background: oklch(47.3% 0.137 46.201 / 0.9);
+    color: oklch(96.2% 0.059 95.617);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(8px);
+    pointer-events: auto;
+  }
+  .icon {
+    color: oklch(87.9% 0.169 91.605);
+  }
+  .label {
+    flex-shrink: 0;
+  }
+  .dir {
+    max-width: 20rem;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 「見つからないものとして扱う」は面より一段濃く */
+  .confirm[data-variant] {
+    margin-left: var(--space-2);
+    background: var(--palette-amber-700);
+    opacity: 1;
+
+    &:hover:not(:disabled) {
+      background: var(--palette-amber-600);
+    }
+  }
+}

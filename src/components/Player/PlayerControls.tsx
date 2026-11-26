@@ -6,7 +6,8 @@ import { useModalStore } from '../../store/useModalStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { invoke } from '@tauri-apps/api/core';
 import { formatTime } from '../../utils/time';
-import { Select, Button, Slider } from '../ui';
+import { Select, Button, Slider, cx } from '../ui';
+import styles from './PlayerControls.module.css';
 import { Camera, ListVideo, Pause, PictureInPicture2, Play, Repeat, Shuffle, SkipBack, SkipForward, Square, X } from "lucide-react";
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
@@ -43,11 +44,11 @@ function PlayerSeekBar() {
   const pct = (t: number) => duration > 0 ? `${(t / duration) * 100}%` : '0%';
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-400 w-10 text-right shrink-0 tabular-nums">
+    <div className={styles.seek}>
+      <span className={styles.time} data-align="end">
         {formatTime(localSeek)}
       </span>
-      <div className="flex-1 relative">
+      <div className={styles.track}>
         <Slider
           min={0}
           max={duration > 0 ? duration : 100}
@@ -61,7 +62,7 @@ function PlayerSeekBar() {
         {duration > 0 && chapters.map((ch, i) => (
           <div
             key={i}
-            className="absolute top-0 bottom-0 w-0.5 bg-yellow-400 opacity-70 pointer-events-none"
+            className={styles.chapter}
             style={{ left: pct(ch.startTime) }}
             title={ch.title || `チャプター ${i + 1}`}
           />
@@ -69,24 +70,22 @@ function PlayerSeekBar() {
         {/* A-B ループマーカー */}
         {duration > 0 && abLoopA !== null && (
           <div
-            className="absolute -top-1 w-0 h-0 pointer-events-none"
+            className={styles.abMarker}
+            data-point="a"
             style={{ left: pct(abLoopA) }}
             title={`A点: ${formatTime(abLoopA)}`}
-          >
-            <div className="w-2 h-2 bg-blue-400 rounded-full -translate-x-1/2" />
-          </div>
+          />
         )}
         {duration > 0 && abLoopB !== null && (
           <div
-            className="absolute -top-1 w-0 h-0 pointer-events-none"
+            className={styles.abMarker}
+            data-point="b"
             style={{ left: pct(abLoopB) }}
             title={`B点: ${formatTime(abLoopB)}`}
-          >
-            <div className="w-2 h-2 bg-red-400 rounded-full -translate-x-1/2" />
-          </div>
+          />
         )}
       </div>
-      <span className="text-xs text-gray-400 w-10 shrink-0 tabular-nums">
+      <span className={styles.time}>
         {duration > 0 ? formatTime(duration) : '--:--'}
       </span>
     </div>
@@ -150,15 +149,11 @@ export function PlayerControls() {
   // ミニプレイヤーモード中はフッターを非表示
   if (isMiniPlayer) return null;
 
-  // 再生バーは常に暗い面なので、配下のボタン等はダーク配色で描画する (scheme-dark)
-  const barClass =
-    "scheme-dark fixed bottom-3 left-3 right-3 rounded-2xl bg-gray-900/95 backdrop-blur-md text-white shadow-xl ring-1 ring-white/10";
-
   if (!currentVideo) {
     return (
-      <div className={`${barClass} px-4 py-2 flex items-center gap-2`}>
-        <span className="text-xs text-gray-500 shrink-0">{t('player.playbackSettings')}</span>
-        <div className="w-px h-4 bg-gray-700 shrink-0" />
+      <div className={cx(styles.bar, styles.idle)}>
+        <span className={styles.idleLabel}>{t('player.playbackSettings')}</span>
+        <div className={styles.divider} aria-hidden />
         <Button
           variant="ghost"
           onClick={toggleShuffle}
@@ -183,16 +178,16 @@ export function PlayerControls() {
   }
 
   return (
-    <div className={`${barClass} px-4 pt-2.5 pb-3 flex flex-col gap-2`}>
+    <div className={cx(styles.bar, styles.playing)}>
       <PlayerSeekBar />
 
-      <div className="flex items-center gap-1 flex-wrap">
+      <div className={styles.controls}>
         {queue.length > 0 && (
-          <span className="text-xs text-gray-400 shrink-0 tabular-nums">
+          <span className={styles.position}>
             {t('player.queuePosition', { current: queueIndex + 1, total: queue.length })}
           </span>
         )}
-        <span className="flex-1 text-sm truncate text-gray-300 min-w-0">
+        <span className={styles.title}>
           {currentVideo.title ?? currentVideo.path.split('/').pop()}
         </span>
 
@@ -218,7 +213,7 @@ export function PlayerControls() {
           value={String(speed)}
           onValueChange={(v) => setSpeed(Number(v))}
           title={t('player.speed')}
-          className="shrink-0"
+          className={styles.noShrink}
           options={SPEED_OPTIONS.map((s) => ({ value: String(s), label: s === 1.0 ? '1x' : `${s}x` }))}
         />
 

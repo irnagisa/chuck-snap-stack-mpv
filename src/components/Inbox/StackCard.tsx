@@ -5,6 +5,7 @@ import { Button } from "../ui";
 import { MediaThumb } from "../Library/MediaThumb";
 import cardStyles from "../Library/VideoCard.module.css";
 import homeStyles from "../Home/Home.module.css";
+import styles from "./Inbox.module.css";
 
 interface Props {
   stack: InboxStack;
@@ -49,25 +50,25 @@ export default function StackCard({
   return (
     <div className={homeStyles.section}>
       {/* Stack header */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="px-2 h-5 inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 text-[10px] font-semibold text-gray-500 dark:text-gray-400">
+      <div className={styles.stackHead}>
+        <span className={styles.pill}>
           {stackTypeLabel[stack.stackType]}
         </span>
         <span
-          className="font-semibold text-sm text-gray-800 dark:text-gray-200"
+          className={styles.stackLabel}
           title={stack.stackType === 'directory' ? stack.groupKey : undefined}
         >
           {stack.label}
         </span>
         {stack.stackType === 'directory' && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate min-w-0 max-w-xs" title={stack.groupKey}>
+          <span className={styles.stackKey} title={stack.groupKey}>
             {stack.groupKey}
           </span>
         )}
-        <span className="px-2 h-5 inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/50 text-[11px] font-bold text-blue-700 dark:text-blue-300 tabular-nums">
+        <span className={`${styles.pill} ${styles.pillCount}`}>
           {stack.count} 件
         </span>
-        <div className="ml-auto flex gap-1">
+        <div className={styles.stackActions}>
           <Button
             variant="ghost"
             size="sm"
@@ -132,8 +133,8 @@ export default function StackCard({
         })}
         {stack.count > stack.videos.length && (
           <button type="button" className={cardStyles.tile} onClick={onOpen}>
-            <div className={`${cardStyles.thumb} grid place-items-center`} data-compact="">
-              <span className="text-sm font-bold text-gray-500 dark:text-gray-400">
+            <div className={`${cardStyles.thumb} ${styles.more}`} data-compact="">
+              <span className={styles.moreCount}>
                 +{stack.count - stack.videos.length}
               </span>
             </div>

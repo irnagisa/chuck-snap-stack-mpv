@@ -1,0 +1,31 @@
+@layer ui {
+  .root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    height: 100%;
+    padding: var(--space-6);
+    text-align: center;
+  }
+  .title {
+    margin: 0;
+    color: var(--color-danger-fg);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+  .message {
+    max-width: 32rem;
+    margin: 0;
+    padding: var(--space-3);
+    overflow: auto;
+    border-radius: var(--radius-xs);
+    background: var(--color-bg-hover);
+    color: var(--color-fg-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-align: left;
+    white-space: pre-wrap;
+  }
+}

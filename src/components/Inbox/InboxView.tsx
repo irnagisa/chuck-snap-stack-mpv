@@ -7,7 +7,8 @@ import type { Video } from '../../types';
 import type { Tag } from '../../types';
 import StackCard from './StackCard';
 import QuickSort from './QuickSort';
-import { Button } from "../ui";
+import { Button, cx } from "../ui";
+import styles from "./Inbox.module.css";
 
 export default function InboxView() {
   const { videos, stats, isLoading, activeStack, fetchInbox, graduateFromInbox, setActiveStack, batchVideos, startBatch, clearBatch } =
@@ -121,22 +122,22 @@ export default function InboxView() {
   ];
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+    <div className={styles.view}>
       {/* Inbox header + stats */}
-      <div className="px-4 pt-3 pb-2 border-b border-gray-100 dark:border-gray-800 shrink-0">
-        <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-base font-semibold">Inbox</h2>
+      <div className={styles.header}>
+        <div className={styles.titleRow}>
+          <h2 className={styles.title}>Inbox</h2>
           {isLoading && (
-            <div className="w-3 h-3 border-[1.5px] border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+            <div className={cx(styles.spinner, styles.spinnerSmall)} aria-hidden />
           )}
           {stats && (
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className={styles.countText}>
               {stats.inboxCount} 件の未整理ファイル
             </span>
           )}
           {stats && stats.inboxCount > 0 && (
-            <div className="ml-auto flex items-center gap-1">
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">バッチ:</span>
+            <div className={styles.batch}>
+              <span className={styles.batchLabel}>バッチ:</span>
               {([10, 20, 30] as const).map((n) => (
                 <Button
                   variant="secondary"
@@ -160,16 +161,16 @@ export default function InboxView() {
           </Button>
         </div>
         {stats && (
-          <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400 mb-2">
+          <div className={styles.stats}>
             <span>全体: {stats.total.toLocaleString()}</span>
-            <span className="text-amber-600 dark:text-amber-400">Inbox: {stats.inboxCount}</span>
+            <span className={styles.statInbox}>Inbox: {stats.inboxCount}</span>
             <span>カテゴリ未設定: {stats.missingCategory}</span>
             <span>評価未設定: {stats.missingRating}</span>
-            <span className="text-green-600 dark:text-green-400">もう少し: {stats.almostDone}</span>
+            <span className={styles.statAlmost}>もう少し: {stats.almostDone}</span>
           </div>
         )}
         {/* Stack type filter chips */}
-        <div className="flex flex-wrap gap-1">
+        <div className={styles.typeFilters}>
           {filterDefs.map(({ type, label, description }) => {
             const active = !hiddenTypes.has(type);
             return (
@@ -190,14 +191,14 @@ export default function InboxView() {
 
       {/* Bulk operation bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/50 border-b border-blue-200 dark:border-blue-800 shrink-0">
-          <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+        <div className={styles.selection}>
+          <span className={styles.selectionCount}>
             {selectedIds.size} 件選択中
           </span>
           <Button
             variant="soft"
             size="xs"
-            className="ml-auto"
+            className={styles.end}
             onClick={() => setSelectedIds(new Set())}
           >
             選択解除
@@ -206,31 +207,31 @@ export default function InboxView() {
       )}
 
       {/* Loading bar */}
-      <div className="h-[2px] shrink-0 overflow-hidden bg-transparent">
+      <div className={styles.loadingTrack}>
         {isLoading && (
-          <div className="h-full w-1/4 bg-blue-500 inbox-loading-bar" />
+          <div className={styles.loadingBar} />
         )}
       </div>
 
       {/* Workbench */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className={styles.workbench}>
         {isLoading && videos.length === 0 && (
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mt-4">
-            <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin shrink-0" />
+          <div className={styles.loading}>
+            <div className={styles.spinner} aria-hidden />
             <span>読み込み中...</span>
           </div>
         )}
         {!isLoading && videos.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-48 text-center">
-            <p className="text-3xl mb-3">✓</p>
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Inbox は空です</p>
-            <p className="text-xs text-gray-400 dark:text-gray-600 max-w-xs">
+          <div className={styles.empty}>
+            <p className={styles.emptyIcon} aria-hidden>✓</p>
+            <p className={styles.emptyTitle}>Inbox は空です</p>
+            <p className={styles.emptyHelp}>
               動画・音楽・画像ファイルをスキャンしてライブラリに追加すると、未整理のファイルがここに表示されます。
             </p>
           </div>
         )}
         {(batchVideos !== null || hasAnyStacks) && (
-          <div className="flex flex-col gap-6">
+          <div className={styles.buckets}>
             {/* Batch card */}
             {batchVideos !== null && (() => {
               const batchStack: InboxStack = {
@@ -264,26 +265,27 @@ export default function InboxView() {
               const isCollapsed = collapsedBuckets.has(key);
               const vCount = bucketVideos[key].length;
               return (
-                <div key={key} className="flex flex-col gap-3">
+                <div key={key} className={styles.bucket}>
                   <button
                     type="button"
                     onClick={() => toggleBucket(key)}
-                    className="flex items-center gap-2 w-full text-left"
+                    className={styles.bucketToggle}
+                    aria-expanded={!isCollapsed}
                   >
-                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                    <span className={styles.rule} aria-hidden />
+                    <span className={styles.bucketLabel}>
                       {label}
                     </span>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                    <span className={styles.bucketMeta}>
                       {description} · {vCount}件
                     </span>
-                    <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0 w-3 text-center">
+                    <span className={styles.rule} aria-hidden />
+                    <span className={styles.bucketChevron} aria-hidden>
                       {isCollapsed ? '▶' : '▼'}
                     </span>
                   </button>
                   {!isCollapsed && (
-                    <div className="flex flex-col gap-3">
+                    <div className={styles.stacks}>
                       {stacks.map((stack) => (
                         <StackCard
                           key={`${stack.stackType}-${stack.groupKey}`}
@@ -304,7 +306,7 @@ export default function InboxView() {
           </div>
         )}
         {!isLoading && videos.length > 0 && !hasAnyStacks && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
+          <p className={styles.noStacks}>
             表示するスタックがありません（フィルターをご確認ください）
           </p>
         )}
