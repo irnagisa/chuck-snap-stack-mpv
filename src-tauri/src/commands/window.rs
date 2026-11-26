@@ -19,10 +19,32 @@ impl Default for MiniPlayerWindowState {
     }
 }
 
+/// ミニプレイヤーの大きさ。compact は再生操作だけ、medium は評価・カテゴリ・タグも編集できる
+fn mini_player_dimensions(size: Option<&str>) -> ((f64, f64), (f64, f64)) {
+    match size {
+        // (最小サイズ, 初期サイズ)
+        Some("medium") => ((320.0, 300.0), (360.0, 500.0)),
+        _ => ((260.0, 110.0), (300.0, 150.0)),
+    }
+}
+
+fn apply_mini_player_size(window: &tauri::WebviewWindow, size: Option<&str>) -> Result<(), String> {
+    let ((min_w, min_h), (w, h)) = mini_player_dimensions(size);
+    // 最小サイズ制約を先に合わせてからリサイズ (小さくするときに制約で止まらないように)
+    window
+        .set_min_size(Some(Size::Logical(LogicalSize::new(min_w, min_h))))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_size(Size::Logical(LogicalSize::new(w, h)))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn enter_mini_player(
     app: AppHandle,
     state: tauri::State<'_, MiniPlayerWindowState>,
+    size: Option<String>,
 ) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -36,16 +58,19 @@ pub async fn enter_mini_player(
         physical.height as f64 / scale,
     ));
 
-    // 最小サイズ制約を緩めてからリサイズ
-    window
-        .set_min_size(Some(Size::Logical(LogicalSize::new(260.0_f64, 110.0_f64))))
-        .map_err(|e| e.to_string())?;
-    window
-        .set_size(Size::Logical(LogicalSize::new(300.0_f64, 150.0_f64)))
-        .map_err(|e| e.to_string())?;
+    apply_mini_player_size(&window, size.as_deref())?;
     window.set_always_on_top(true).map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+/// ミニプレイヤーのまま大きさ (compact / medium) を切り替える。元のウィンドウサイズは保ったまま
+#[tauri::command]
+pub async fn set_mini_player_size(app: AppHandle, size: String) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or("window not found")?;
+    apply_mini_player_size(&window, Some(size.as_str()))
 }
 
 #[tauri::command]

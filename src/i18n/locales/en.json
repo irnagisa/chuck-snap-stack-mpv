@@ -762,6 +762,8 @@
     "screenshot": "Screenshot",
     "showQueue": "Show queue",
     "miniPlayer": "Mini player",
+    "miniPlayerMedium": "Medium size (edit rating, category and tags)",
+    "miniPlayerCompact": "Compact size",
     "exit": "Exit",
     "seek": "Playback position"
   },

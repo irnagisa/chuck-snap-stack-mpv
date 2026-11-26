@@ -118,7 +118,8 @@ interface LibraryActions {
   addVideoFromPath: (path: string, title: string, sourceUrl?: string, sourceType?: string) => Promise<number | null>;
   removeVideoByPath: (path: string) => Promise<void>;
   batchWatcherUpdate: (batch: { creates: { path: string; title: string }[]; removes: string[]; renames: { old_path: string; new_path: string; title: string }[] }) => Promise<void>;
-  moveVideoFile: (videoId: number, destDir: string) => Promise<string | null>;
+  /** sourcePath は表示中の一覧に無い動画 (ミニプレイヤーで再生中など) を動かすときに渡す */
+  moveVideoFile: (videoId: number, destDir: string, sourcePath?: string) => Promise<string | null>;
   renameVideoFile: (videoId: number, newPath: string) => Promise<void>;
   updateVideoPath: (oldPath: string, newPath: string) => Promise<void>;
   addPendingRemovedWatchDir: (dir: string) => void;
@@ -622,12 +623,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     });
   },
 
-  moveVideoFile: async (videoId: number, destDir: string) => {
-    const video = get().videos.find((v) => v.id === videoId);
-    if (!video) return null;
+  moveVideoFile: async (videoId: number, destDir: string, sourcePath?: string) => {
+    const path = get().videos.find((v) => v.id === videoId)?.path ?? sourcePath;
+    if (!path) return null;
     try {
       const newPath = await invoke<string>('move_video_file', {
-        sourcePath: video.path,
+        sourcePath: path,
         destDir,
       });
       try {

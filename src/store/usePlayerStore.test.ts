@@ -14,6 +14,7 @@ vi.mock('./useLibraryStore', () => ({
   },
 }));
 
+import { invoke } from '@tauri-apps/api/core';
 import { usePlayerStore } from './usePlayerStore';
 import type { Video } from '../types';
 
@@ -46,6 +47,7 @@ const initialState = {
   isLooping: false,
   isShuffle: false,
   isMiniPlayer: false,
+  miniPlayerSize: 'compact' as const,
   queue: [],
   queueIndex: -1,
   originalQueue: [],
@@ -205,5 +207,46 @@ describe('reorderQueue', () => {
     const state = usePlayerStore.getState();
     expect(state.queue).toEqual([v3, v1, v2]);
     expect(state.queueIndex).toBe(1); // v1 is now at index 1
+  });
+});
+
+describe('miniPlayerSize', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
+  });
+
+  it('enters the mini player with the remembered size', () => {
+    usePlayerStore.setState({ miniPlayerSize: 'medium' });
+
+    usePlayerStore.getState().toggleMiniPlayer();
+
+    expect(usePlayerStore.getState().isMiniPlayer).toBe(true);
+    expect(invoke).toHaveBeenCalledWith('enter_mini_player', { size: 'medium' });
+  });
+
+  it('resizes the window when switching size inside the mini player', () => {
+    usePlayerStore.setState({ isMiniPlayer: true });
+
+    usePlayerStore.getState().setMiniPlayerSize('medium');
+
+    expect(usePlayerStore.getState().miniPlayerSize).toBe('medium');
+    expect(invoke).toHaveBeenCalledWith('set_mini_player_size', { size: 'medium' });
+  });
+
+  it('only remembers the size outside the mini player', () => {
+    usePlayerStore.getState().setMiniPlayerSize('medium');
+
+    expect(usePlayerStore.getState().miniPlayerSize).toBe('medium');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('rolls back when the resize fails', async () => {
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('boom'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    usePlayerStore.setState({ isMiniPlayer: true });
+
+    usePlayerStore.getState().setMiniPlayerSize('medium');
+    await vi.waitFor(() => expect(usePlayerStore.getState().miniPlayerSize).toBe('compact'));
   });
 });

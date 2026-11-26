@@ -4,6 +4,7 @@ import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } 
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useInboxStore } from '../../store/useInboxStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { usePlayerStore } from '../../store/usePlayerStore';
 import { toast } from '../../store/useToastStore';
 import { TagBadge, tagColorStyle } from '../Library/TagBadge';
 import { ColorSwatches, TAXONOMY_COLORS } from '../Library/ColorSwatches';
@@ -24,9 +25,11 @@ function findWatchDir(filePath: string, watchDirs: string[]): string | null {
 
 interface Props {
   video: Video;
+  /** 狭い場所 (ミニプレイヤー) 向けに説明文を省いて詰める */
+  dense?: boolean;
 }
 
-export function VideoOrganizerPanel({ video }: Props) {
+export function VideoOrganizerPanel({ video, dense = false }: Props) {
   const { t } = useTranslation();
   const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
     useTagStore();
@@ -93,6 +96,8 @@ export function VideoOrganizerPanel({ video }: Props) {
     const next = star === localRating ? 0 : star;
     setLocalRating(next);
     await updateVideo(video.id, { rating: next });
+    // 再生中の動画ならプレイヤー側の値も合わせる
+    usePlayerStore.getState().patchVideoFields(video.id, { rating: next });
     // 自動卒業が発生した場合に InboxView を更新する (非ブロッキング)
     fetchInbox().catch(() => {});
   };
@@ -119,15 +124,18 @@ export function VideoOrganizerPanel({ video }: Props) {
     setCategoryId(value);
     const catId = value ? Number(value) : null;
     await setVideoCategory(video.id, catId);
+    usePlayerStore.getState().patchVideoFields(video.id, { category_id: catId });
 
     if (moveFile) {
       const watchDir = findWatchDir(video.path, watchDirs);
       if (watchDir) {
         const catPath = catId !== null ? getCategoryPath(catId, categories) : null;
         const destDir = catPath ? `${watchDir}/${catPath}` : `${watchDir}/Unsorted`;
-        const result = await moveVideoFile(video.id, destDir);
+        const result = await moveVideoFile(video.id, destDir, video.path);
         if (result === null) {
           toast.error(t('syncMode.moveFileFailed'));
+        } else {
+          usePlayerStore.getState().patchVideoFields(video.id, { path: result });
         }
       }
     }
@@ -139,7 +147,7 @@ export function VideoOrganizerPanel({ video }: Props) {
   const shownRating = hoverRating || localRating;
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-dense={dense || undefined}>
       {/* 評価 */}
       <div className={styles.field}>
         <span className={styles.label}>{t('detail.rating')}</span>
@@ -236,11 +244,13 @@ export function VideoOrganizerPanel({ video }: Props) {
             </div>
           )}
         </div>
-        <p className={styles.help}>
-          {categoryMode === 'sync'
-            ? t('bulkCategory.syncModeNote')
-            : t('bulkCategory.virtualModeNote')}
-        </p>
+        {!dense && (
+          <p className={styles.help}>
+            {categoryMode === 'sync'
+              ? t('bulkCategory.syncModeNote')
+              : t('bulkCategory.virtualModeNote')}
+          </p>
+        )}
       </div>
 
       {/* タグ */}

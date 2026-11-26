@@ -4,6 +4,15 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
+
+    /* ミニプレイヤー: 間隔を詰め、候補の一覧も小さな窓に収まる高さにする */
+    &[data-dense] {
+      gap: var(--space-3);
+
+      & .menu {
+        max-height: 10rem;
+      }
+    }
   }
 
   .field {
