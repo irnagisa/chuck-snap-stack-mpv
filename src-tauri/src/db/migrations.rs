@@ -59,6 +59,13 @@ fn upgrade_unversioned(conn: &Connection) -> Result<()> {
         // 後から足されたテーブル (media_groups など) が無い DB でも下の移し替えを同じ形で書けるように、
         // 無いテーブルを先に作っておく
         super::schema::create_tables(&tx)?;
+        // 古い DB には後から足された列が無いことがある (足す前の版で止まっていた DB)。
+        // 移し替えの SQL が同じ形で書けるように、無い列を NULL のまま足しておく
+        for (table, column, ty) in LEGACY_COLUMNS {
+            if !column_exists(&tx, table, column)? {
+                tx.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {ty}"))?;
+            }
+        }
         for t in TABLES {
             tx.execute_batch(&format!("ALTER TABLE {t} RENAME TO legacy_{t}"))?;
         }
@@ -84,6 +91,41 @@ fn upgrade_unversioned(conn: &Connection) -> Result<()> {
     })();
     conn.execute_batch("PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON;")?;
     result
+}
+
+/// 版を付ける前に ALTER TABLE で足していった列 (`COPY_LEGACY` が読むもの)
+const LEGACY_COLUMNS: [(&str, &str, &str); 23] = [
+    ("videos", "category_id", "INTEGER"),
+    ("videos", "has_audio", "INTEGER"),
+    ("videos", "watch_count", "INTEGER"),
+    ("videos", "media_type", "TEXT"),
+    ("videos", "source_url", "TEXT"),
+    ("videos", "status", "TEXT"),
+    ("videos", "source_type", "TEXT"),
+    ("videos", "phash", "TEXT"),
+    ("videos", "last_viewed_at", "TEXT"),
+    ("videos", "file_size", "INTEGER"),
+    ("videos", "audio_silence", "TEXT"),
+    ("videos", "silent_audio_streams", "TEXT"),
+    ("videos", "silent_audio_bytes", "INTEGER"),
+    ("videos", "audio_silence_sampled", "INTEGER"),
+    ("videos", "content_digest", "TEXT"),
+    ("videos", "content_digest_key", "TEXT"),
+    ("videos", "group_id", "INTEGER"),
+    ("videos", "group_position", "INTEGER"),
+    ("tags", "tag_category_id", "INTEGER"),
+    ("tags", "icon", "TEXT"),
+    ("categories", "parent_id", "INTEGER"),
+    ("categories", "icon", "TEXT"),
+    ("watch_dirs", "use_dir_as_category", "INTEGER"),
+];
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+        [table, column],
+        |r| r.get(0),
+    )
 }
 
 /// `legacy_*` から新しいテーブルへ移す。参照先の無い行は落とすか NULL にする。
@@ -294,6 +336,26 @@ mod tests {
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_video_tags_video_id'"), 0);
         assert_eq!(count(&conn, "PRAGMA foreign_keys"), 1);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM pragma_foreign_key_check"), 0);
+    }
+
+    #[test]
+    fn unversioned_db_missing_later_columns_is_rebuilt() {
+        let conn = unversioned_db();
+        // 無音の簡易判定・抜き出しのハッシュの列を足す前の版で止まっていた DB
+        // (DROP COLUMN は外部キーを持たない列なら使える)
+        conn.execute_batch(
+            "ALTER TABLE videos DROP COLUMN audio_silence_sampled;
+             ALTER TABLE videos DROP COLUMN content_digest;
+             ALTER TABLE videos DROP COLUMN content_digest_key;
+             DROP TABLE media_probe;",
+        )
+        .unwrap();
+        init_db(&conn).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), SCHEMA_VERSION);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM videos"), 3);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM media_silent_audio WHERE video_id = 1 AND sampled = 0"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM media_content_digest"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM sqlite_master WHERE name LIKE 'legacy%'"), 0);
     }
 
     #[test]
