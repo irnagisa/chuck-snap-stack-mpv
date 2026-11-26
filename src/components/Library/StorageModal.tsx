@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { AudioLines, CircleStop, Gauge, LoaderCircle, Shrink, Sparkles, Trash2, VolumeX } from "lucide-react";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { useTranscodeStore } from "../../store/useTranscodeStore";
 import { toast } from "../../store/useToastStore";
 import { formatFileSize } from "../../utils/time";
 import { Button, Checkbox, ConfirmDialog, Dialog, SegmentedControl, useDialogClose } from "../ui";
@@ -116,11 +117,12 @@ export function StorageModal({ onClose }: Props) {
   const { t } = useTranslation();
   const removeMultiple = useLibraryStore((s) => s.removeMultiple);
   const generateThumbnails = useLibraryStore((s) => s.generateThumbnails);
+  const removedSourcePaths = useTranscodeStore((s) => s.removedSourcePaths);
 
   const [overview, setOverview] = useState<StorageOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [kind, setKind] = useState<CandidateKind>("large");
-  const [candidates, setCandidates] = useState<CleanupCandidates | null>(null);
+  const [loadedCandidates, setCandidates] = useState<CleanupCandidates | null>(null);
   const [dupes, setDupes] = useState<DuplicateGroups | null>(null);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -209,6 +211,24 @@ export function StorageModal({ onClose }: Props) {
     setSelected(new Set());
     loadCandidates(kind);
   }, [kind, loadCandidates]);
+
+  /**
+   * 変換後に元ファイルをゴミ箱へ移した動画は、一覧を読み直さずにすぐ外す
+   * (元ファイルを残した場合はそのまま表示する)。変換をこの画面から始める高ビットレート・無音の一覧だけ
+   */
+  const candidates = useMemo(() => {
+    if (!loadedCandidates || (kind !== "highBitrate" && kind !== "silentAudio") || removedSourcePaths.size === 0) {
+      return loadedCandidates;
+    }
+    const removed = loadedCandidates.items.filter((i) => removedSourcePaths.has(i.path));
+    if (removed.length === 0) return loadedCandidates;
+    return {
+      ...loadedCandidates,
+      items: loadedCandidates.items.filter((i) => !removedSourcePaths.has(i.path)),
+      totalCount: Math.max(0, loadedCandidates.totalCount - removed.length),
+      totalBytes: Math.max(0, loadedCandidates.totalBytes - removed.reduce((s, i) => s + i.fileSize, 0)),
+    };
+  }, [loadedCandidates, kind, removedSourcePaths]);
 
   // ── 内訳 ────────────────────────────────────────────────────────────────
 

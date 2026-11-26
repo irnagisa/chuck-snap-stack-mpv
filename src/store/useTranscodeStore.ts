@@ -77,6 +77,11 @@ interface TranscodeStore {
   isDone: boolean;
   /** 直近に失敗したジョブ */
   lastError: { videoName: string; message: string } | null;
+  /**
+   * 変換後に元ファイルをゴミ箱へ移した (ライブラリから外した) パス (バッチをまたいで持つ)。
+   * 開いている整理画面の一覧から、読み直さずにすぐ外すのに使う
+   */
+  removedSourcePaths: ReadonlySet<string>;
 
   /** キューに追加する。同じファイルが実行中・待機中の場合は追加せず false を返す */
   enqueue(opts: EnqueueOptions): boolean;
@@ -86,6 +91,8 @@ interface TranscodeStore {
   cancelAll(): Promise<void>;
   /** 待機中のジョブを 1 件外す */
   removeFromQueue(id: number): void;
+  /** 変換後に元ファイルを消したことを記録する (removedSourcePaths) */
+  markSourceRemoved(path: string): void;
   dismiss(): void;
 }
 
@@ -218,6 +225,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
     batch: EMPTY_BATCH,
     isDone: false,
     lastError: null,
+    removedSourcePaths: new Set(),
 
     enqueue(opts) {
       const { current, queue, isDone } = get();
@@ -257,6 +265,10 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
         const queue = s.queue.filter((j) => j.id !== id);
         return { queue, batch: { ...s.batch, total: s.batch.total - (s.queue.length - queue.length) } };
       });
+    },
+
+    markSourceRemoved(path) {
+      set((s) => ({ removedSourcePaths: new Set(s.removedSourcePaths).add(path) }));
     },
 
     dismiss() {

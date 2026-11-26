@@ -178,6 +178,8 @@ export function enqueueTranscode(
         toast.error(t('transcode.trashOriginalFailed', { error: String(e) }));
         return;
       }
+      // ファイルはもう無いので、ライブラリから外せなくても整理画面の一覧からは外す
+      useTranscodeStore.getState().markSourceRemoved(source.path);
       try {
         await library.removeVideo(source.id);
       } catch (e) {
