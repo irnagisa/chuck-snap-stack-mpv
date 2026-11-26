@@ -121,6 +121,29 @@ describe('enqueue', () => {
   });
 });
 
+describe('removedSourcePaths', () => {
+  it('records only sources marked as removed, and keeps them across batches', async () => {
+    useTranscodeStore.setState({ removedSourcePaths: new Set() });
+    const s = useTranscodeStore.getState();
+    // 元ファイルを残した変換は記録しない
+    s.enqueue(makeOpts('/v/kept.mp4'));
+    s.enqueue(
+      makeOpts('/v/trashed.mp4', {
+        onSuccess: vi.fn(async () => useTranscodeStore.getState().markSourceRemoved('/v/trashed.mp4')),
+      }),
+    );
+    await flush();
+    pending[0].resolve('/v/kept.av1.mkv');
+    await flush();
+    pending[1].resolve('/v/trashed.av1.mkv');
+    await flush();
+    expect([...useTranscodeStore.getState().removedSourcePaths]).toEqual(['/v/trashed.mp4']);
+
+    useTranscodeStore.getState().dismiss();
+    expect([...useTranscodeStore.getState().removedSourcePaths]).toEqual(['/v/trashed.mp4']);
+  });
+});
+
 describe('discarded', () => {
   it('counts a discarded job without calling onSuccess and continues', async () => {
     const onSuccess = vi.fn(() => Promise.resolve());
