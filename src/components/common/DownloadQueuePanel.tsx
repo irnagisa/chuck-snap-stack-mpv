@@ -89,6 +89,7 @@ export function DownloadQueuePanel() {
     <div
       className={cx(styles.stack, styles.downloadStack)}
       aria-live="polite"
+      data-floating-layer
     >
       {jobs.map((job) => (
         <JobCard

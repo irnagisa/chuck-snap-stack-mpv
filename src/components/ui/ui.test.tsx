@@ -52,6 +52,31 @@ describe('Dialog', () => {
     expect(onChange).toHaveBeenCalledWith(false);
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
+
+  it('stays open when clicking a floating layer (toast) above it, but closes on other outside clicks', async () => {
+    const onChange = vi.fn();
+    render(
+      <>
+        <Harness onChange={onChange} />
+        <div data-floating-layer>
+          <span>トースト</span>
+        </div>
+        <span>外側</span>
+      </>,
+    );
+    // Radix は setTimeout で外側クリックの監視を始める
+    await new Promise((r) => setTimeout(r, 0));
+    const toast = screen.getByText('トースト');
+    fireEvent.pointerDown(toast, { button: 0, pointerType: 'mouse' });
+    fireEvent.click(toast);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    const outside = screen.getByText('外側');
+    fireEvent.pointerDown(outside, { button: 0, pointerType: 'mouse' });
+    fireEvent.click(outside);
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
 });
 
 describe('useDialogClose', () => {

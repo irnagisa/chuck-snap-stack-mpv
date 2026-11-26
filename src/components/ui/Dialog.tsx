@@ -8,6 +8,18 @@ import styles from "./Dialog.module.css";
 
 export type DialogSize = "sm" | "md" | "lg" | "xl";
 
+/**
+ * トースト・ダウンロードの進み具合など、モーダルより上に浮かぶ層の印 (`data-floating-layer`)。
+ * 見た目はモーダルより上なので、ここへの操作でモーダルが閉じないようにする。
+ */
+function isInFloatingLayer(target: EventTarget | null) {
+  return target instanceof Element && target.closest("[data-floating-layer]") != null;
+}
+
+function keepOpenOnFloatingLayer(e: { target: EventTarget | null; preventDefault: () => void }) {
+  if (isInFloatingLayer(e.target)) e.preventDefault();
+}
+
 interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,6 +74,7 @@ export function Dialog({
             <RxDialog.Content
               asChild
               forceMount
+              onInteractOutside={keepOpenOnFloatingLayer}
               {...(description == null && { "aria-describedby": undefined })}
             >
               <motion.div
