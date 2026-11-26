@@ -59,7 +59,7 @@ export function DuplicatesModal({ onClose }: Props) {
   const detectExact = async () => {
     setLoading(true);
     try {
-      const allVideos = await fetchAllForShuffle();
+      const allVideos = await fetchAllForShuffle({ collapseGroups: false });
       const paths = allVideos.map((v) => v.path);
       const sizes: (number | null)[] = await invoke('get_file_sizes', { paths });
 

@@ -71,6 +71,7 @@ chuck-snap-stack/
 │   │   │   ├── db_videos_scan.rs # ディレクトリスキャン・インポート
 │   │   │   ├── db_tags.rs      # タグ・カテゴリ DB
 │   │   │   ├── db_playlists.rs # プレイリスト DB
+│   │   │   ├── db_groups.rs    # グループ (シリーズ・別パターン) とファイル名からのまとめる候補
 │   │   │   ├── db_settings.rs  # 設定 DB
 │   │   │   ├── db_stats.rs     # ライブラリ統計
 │   │   │   ├── storage.rs      # 容量の内訳・整理候補・サムネイルの掃除・ゴミ箱と退避フォルダ
@@ -137,7 +138,18 @@ CREATE TABLE videos (
   file_size           INTEGER,               -- ファイルサイズ (bytes, ソート用キャッシュ)
   audio_silence       TEXT,                  -- 無音の音声トラック: 'none' | 'partial' | 'all' (NULL = 未確認)
   silent_audio_streams TEXT,                 -- 無音のトラックの番号 (ffprobe の index、カンマ区切り)
-  silent_audio_bytes  INTEGER                -- 無音のトラックの容量の見込み (外すと空く)
+  silent_audio_bytes  INTEGER,               -- 無音のトラックの容量の見込み (外すと空く)
+  group_id            INTEGER REFERENCES media_groups(id) ON DELETE SET NULL,
+  group_position      INTEGER                -- グループ内の並び順
+);
+
+-- グループ (シリーズ・同じ内容の別パターン)。ライブラリでは代表の 1 件にまとめて表示できる
+CREATE TABLE media_groups (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  name           TEXT NOT NULL,
+  kind           TEXT NOT NULL DEFAULT 'variants', -- 'variants' | 'series'
+  cover_video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL, -- 代表 (NULL = 並び順で最初)
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- カテゴリ (階層構造対応)

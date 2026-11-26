@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod link;
 pub mod db_export;
+pub mod db_groups;
 pub mod db_playlists;
 pub mod db_settings;
 pub mod db_stats;

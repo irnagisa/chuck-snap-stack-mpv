@@ -2,12 +2,13 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Video, Playlist } from '../types';
 
-type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | 'rating' | 'moveDir' | null;
+type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | 'rating' | 'moveDir' | 'group' | null;
 
 interface ModalStore {
   showSettings: boolean;
   showDownload: boolean;
   showDuplicates: boolean;
+  showGroupSuggestions: boolean;
   showMissingFiles: boolean;
   showStats: boolean;
   showStorage: boolean;
@@ -27,6 +28,8 @@ interface ModalStore {
   closeDownload: () => void;
   openDuplicates: () => void;
   closeDuplicates: () => void;
+  openGroupSuggestions: () => void;
+  closeGroupSuggestions: () => void;
   openMissingFiles: () => void;
   closeMissingFiles: () => void;
   openStats: () => void;
@@ -56,6 +59,7 @@ export const useModalStore = create<ModalStore>((set) => ({
   showSettings: false,
   showDownload: false,
   showDuplicates: false,
+  showGroupSuggestions: false,
   showMissingFiles: false,
   showStats: false,
   showStorage: false,
@@ -75,6 +79,8 @@ export const useModalStore = create<ModalStore>((set) => ({
   closeDownload: () => set({ showDownload: false }),
   openDuplicates: () => set({ showDuplicates: true }),
   closeDuplicates: () => set({ showDuplicates: false }),
+  openGroupSuggestions: () => set({ showGroupSuggestions: true }),
+  closeGroupSuggestions: () => set({ showGroupSuggestions: false }),
   openMissingFiles: () => set({ showMissingFiles: true }),
   closeMissingFiles: () => set({ showMissingFiles: false }),
   openStats: () => set({ showStats: true }),
@@ -106,6 +112,7 @@ export const useModalStore = create<ModalStore>((set) => ({
     showSettings: false,
     showDownload: false,
     showDuplicates: false,
+    showGroupSuggestions: false,
     showMissingFiles: false,
     showStats: false,
     showStorage: false,

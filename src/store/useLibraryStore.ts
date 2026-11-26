@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { Video, Tag } from '../types';
+import type { Video, Tag, VideoGroupInfo } from '../types';
 import {
   generateThumbnailsWorker,
   rescanVideoWorker,
@@ -13,6 +13,17 @@ import { useToastStore, toast } from './useToastStore';
 import { RECENT_FOLDERS_SETTING_KEY, type RecentFolderEntry } from './useHomeStore';
 
 const RECENT_FOLDERS_MAX = 8;
+
+const COLLAPSE_GROUPS_KEY = 'collapseGroups';
+
+/** グループをまとめて表示するか (既定はまとめる) */
+function readCollapseGroups(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_GROUPS_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
 
 async function recordRecentFolder(dir: string): Promise<void> {
   const raw = await invoke<string | null>('db_get_setting', { key: RECENT_FOLDERS_SETTING_KEY });
@@ -66,8 +77,12 @@ interface LibraryState {
   filterWatchDir: string | null;
   filterMediaType: MediaTypeFilter;
   filterAv1: Av1Filter;
+  /** グループ (シリーズ・別パターン) を代表の 1 件にまとめて表示する */
+  filterCollapseGroups: boolean;
   filterSortBy: SortBy;
   filterSortOrder: SortOrder;
+  /** 表示中の動画が入っているグループ (動画 ID → グループ) */
+  videoGroups: Record<number, VideoGroupInfo>;
   watchDirs: string[];
   isScanning: boolean;
   isThumbnailGenerating: boolean;
@@ -82,7 +97,8 @@ interface LibraryActions {
   initDb: () => Promise<void>;
   incrementWatchCount: (videoId: number) => Promise<void>;
   fetchVideos: () => Promise<void>;
-  fetchAllForShuffle: () => Promise<Video[]>;
+  /** 絞り込みに合う全件。collapseGroups を省くと一覧の表示 (グループをまとめるか) に合わせる */
+  fetchAllForShuffle: (opts?: { collapseGroups?: boolean }) => Promise<Video[]>;
   setSearch: (search: string) => Promise<void>;
   setCategoryFilter: (id: number | null) => Promise<void>;
   toggleTagFilter: (tagId: number) => Promise<void>;
@@ -99,6 +115,7 @@ interface LibraryActions {
   setWatchDirFilter: (dir: string | null) => Promise<void>;
   setMediaType: (mediaType: MediaTypeFilter) => Promise<void>;
   setAv1Filter: (av1: Av1Filter) => Promise<void>;
+  setCollapseGroups: (collapse: boolean) => Promise<void>;
   setSort: (sortBy: SortBy, sortOrder: SortOrder) => Promise<void>;
   setPage: (page: number) => Promise<void>;
   scanAndImport: (path: string, useDirectoryAsCategory?: boolean) => Promise<void>;
@@ -178,8 +195,10 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterWatchDir: null,
   filterMediaType: 'all',
   filterAv1: 'all',
+  filterCollapseGroups: readCollapseGroups(),
   filterSortBy: 'created_at',
   filterSortOrder: 'desc',
+  videoGroups: {},
   watchDirs: [],
   isScanning: false,
   isThumbnailGenerating: false,
@@ -225,13 +244,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       currentPage, pageSize, filterSortBy, filterSortOrder,
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1,
+      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
     } = get();
 
     const result = await invoke<{
       videos: Video[];
       totalCount: number;
       videoTags: { videoId: number; id: number; name: string; color: string; icon: string | null; tagCategoryId: number | null; createdAt: string }[];
+      videoGroups: ({ videoId: number } & VideoGroupInfo)[];
     }>('db_fetch_videos', {
       filter: {
         filterSearch,
@@ -247,6 +267,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterWatchDir,
         filterMediaType,
         filterAv1,
+        filterCollapseGroups,
         filterSortBy,
         filterSortOrder,
         currentPage,
@@ -257,7 +278,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const { videos, totalCount, videoTags: videoTagRows } = result;
     const maxPage = Math.max(1, Math.ceil(totalCount / pageSize));
     const page = Math.min(currentPage, maxPage);
-    set({ videos, totalCount, currentPage: page });
+    const videoGroups: Record<number, VideoGroupInfo> = {};
+    for (const { videoId, ...info } of result.videoGroups ?? []) videoGroups[videoId] = info;
+    set({ videos, totalCount, currentPage: page, videoGroups });
 
     const prevVideoTags = useTagStore.getState().videoTags;
     const videoTagsMap: Record<number, Tag[]> = {};
@@ -283,7 +306,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     useTagStore.setState({ videoTags: normalizedVideoTags });
   },
 
-  fetchAllForShuffle: async () => {
+  fetchAllForShuffle: async (opts) => {
     const { filterSortBy, filterSortOrder } = get();
     return invoke<Video[]>('db_fetch_all_for_shuffle', {
       filter: {
@@ -300,6 +323,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterWatchDir: get().filterWatchDir,
         filterMediaType: get().filterMediaType,
         filterAv1: get().filterAv1,
+        filterCollapseGroups: opts?.collapseGroups ?? get().filterCollapseGroups,
         filterSortBy,
         filterSortOrder,
         currentPage: 1,
@@ -389,6 +413,16 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   setAv1Filter: async (av1: Av1Filter) => {
     set({ filterAv1: av1, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  setCollapseGroups: async (collapse: boolean) => {
+    try {
+      localStorage.setItem(COLLAPSE_GROUPS_KEY, collapse ? '1' : '0');
+    } catch {
+      // 保存できなくてもこの起動中は効く
+    }
+    set({ filterCollapseGroups: collapse, currentPage: 1 });
     await get().fetchVideos();
   },
 

@@ -3,8 +3,9 @@ import type { LibraryViewHandle } from './LibraryGrid';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from "react-i18next";
-import type { Video, Tag, Category } from '../../types';
+import type { Video, Tag, Category, VideoGroupInfo } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
+import { useLibraryStore } from '../../store/useLibraryStore';
 import { useShallow } from 'zustand/shallow';
 import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { useVideoPreview } from '../../hooks/useVideoPreview';
@@ -13,7 +14,7 @@ import { VideoContextMenu } from './VideoContextMenu';
 import { formatTime } from '../../utils/time';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { Check, FileX, ListPlus, Play, Star, Trash2 } from "lucide-react";
+import { Check, FileX, Layers, ListPlus, Play, Star, Trash2 } from "lucide-react";
 import { Button } from "../ui";
 import { AudioWave, MediaThumb, MediaTypeIcon } from "./MediaThumb";
 import styles from "./VideoCard.module.css";
@@ -43,6 +44,8 @@ interface VideoRowProps {
   isDetailVideo: boolean;
   tags: Tag[];
   category: Category | null;
+  /** 入っているグループ (2 件以上のときだけ印を出す) */
+  group?: VideoGroupInfo;
   idx: number;
   listRowSize: 'S' | 'M' | 'L' | 'XL';
   onPlay: (video: Video) => void;
@@ -66,6 +69,7 @@ const VideoRow = memo(function VideoRow({
   isDetailVideo,
   tags,
   category,
+  group,
   idx,
   listRowSize,
   onPlay,
@@ -207,6 +211,16 @@ const VideoRow = memo(function VideoRow({
           {t('library.noFile')}
         </span>
       )}
+      {group && group.memberCount >= 2 && (
+        <span
+          className={styles.softPill}
+          data-tone="accent"
+          title={t(group.kind === 'series' ? 'groups.badgeSeries' : 'groups.badgeVariants', { name: group.name, count: group.memberCount })}
+        >
+          <Layers aria-hidden />
+          {group.memberCount}
+        </span>
+      )}
       {(isImage || isAudio) && (
         <span className={styles.softPill}>
           <MediaTypeIcon type={v.media_type} />
@@ -283,6 +297,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
   // (fetchVideos の normalizedVideoTags によりタグ内容が変わっていない動画の配列参照は維持される)
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
   const categories = useTagStore(useShallow((s) => s.categories));
+  const videoGroups = useLibraryStore((s) => s.videoGroups);
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const [contextMenu, setContextMenu] = useState<{ video: Video; x: number; y: number } | null>(null);
 
@@ -402,6 +417,7 @@ export const LibraryList = forwardRef<LibraryViewHandle, Props>(function Library
                     isDetailVideo={v.id === (detailVideoId ?? null)}
                     tags={videoTags[v.id] ?? []}
                     category={v.category_id != null ? categoryMap[v.category_id] : null}
+                    group={videoGroups[v.id]}
                     idx={virtualItem.index}
                     listRowSize={listRowSize}
                     onPlay={onPlay}

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::db::DbState;
+use super::db_groups::{self, VideoGroupRow};
 use super::db_tags::VideoTagRow;
 use super::storage;
 use super::utils::normalize_path_str;
@@ -35,6 +36,8 @@ pub struct FetchVideosResult {
     pub videos: Vec<Video>,
     pub total_count: i64,
     pub video_tags: Vec<VideoTagRow>,
+    /// ページ内の動画が入っているグループ (グループに入っていない動画は含まない)
+    pub video_groups: Vec<VideoGroupRow>,
 }
 
 /// `filter_has_audio` で無音の音声トラックがあるものを選ぶ値
@@ -60,6 +63,9 @@ pub struct VideoFilter {
     /// "all" | "only" | "exclude" — AV1 変換済み (`*.av1.mkv`) の絞り込み
     #[serde(default = "default_av1_filter")]
     pub filter_av1: String,
+    /// グループ (シリーズ・別パターン) を代表の 1 件にまとめて返す
+    #[serde(default)]
+    pub filter_collapse_groups: bool,
     pub filter_sort_by: String,
     pub filter_sort_order: String,
     pub current_page: i64,
@@ -310,6 +316,26 @@ fn build_where_clause(
     (where_clause, params)
 }
 
+/// 絞り込み済みの動画を返す FROM 句の中身 (別名 `v`)。
+/// `collapse` のときはグループごとに代表の 1 件だけを残す。代表は表紙が条件に合えば表紙、
+/// 合わなければグループ内の並び順で最初のもの。グループに入っていない動画はそのまま残る。
+fn video_source(where_clause: &str, collapse: bool) -> String {
+    if !collapse {
+        return format!("videos v {where_clause}");
+    }
+    format!(
+        "(SELECT * FROM (
+            SELECT v.*, ROW_NUMBER() OVER (
+              PARTITION BY COALESCE(v.group_id, -v.id)
+              ORDER BY CASE WHEN v.id = g.cover_video_id THEN 0 ELSE 1 END,
+                       COALESCE(v.group_position, 0), v.id
+            ) AS group_rn
+            FROM videos v LEFT JOIN media_groups g ON g.id = v.group_id
+            {where_clause}
+          ) WHERE group_rn = 1) v"
+    )
+}
+
 pub(crate) fn media_type_for_path(path: &str) -> &'static str {
     let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
     let ext = ext.as_str();
@@ -402,9 +428,10 @@ pub async fn db_fetch_videos(
     }
     let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
+    let source = video_source(&where_clause, filter.filter_collapse_groups);
 
     let total_count: i64 = {
-        let sql = format!("SELECT COUNT(*) FROM videos v {where_clause}");
+        let sql = format!("SELECT COUNT(*) FROM {source}");
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         stmt.query_row(rusqlite::params_from_iter(params.iter()), |r| r.get(0))
             .map_err(|e| e.to_string())?
@@ -421,7 +448,7 @@ pub async fn db_fetch_videos(
         "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
                 v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
                 v.created_at, v.media_type, v.source_url, v.status, v.source_type
-         FROM videos v {where_clause}
+         FROM {source}
          ORDER BY {sort_col} {dir}
          LIMIT ? OFFSET ?"
     );
@@ -466,7 +493,10 @@ pub async fn db_fetch_videos(
         tag_rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?
     };
 
-    Ok(FetchVideosResult { videos, total_count, video_tags })
+    let ids: Vec<i64> = videos.iter().map(|v| v.id).collect();
+    let video_groups = db_groups::group_rows_for_videos(&conn, &ids).map_err(|e| e.to_string())?;
+
+    Ok(FetchVideosResult { videos, total_count, video_tags, video_groups })
 }
 
 #[tauri::command]
@@ -481,6 +511,7 @@ pub async fn db_fetch_all_for_shuffle(
     }
     let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
+    let source = video_source(&where_clause, filter.filter_collapse_groups);
 
     let sort_col = sort_column(&filter.filter_sort_by);
     let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
@@ -489,7 +520,7 @@ pub async fn db_fetch_all_for_shuffle(
         "SELECT v.id, v.path, v.title, v.duration, v.thumbnail, v.watched_at,
                 v.progress, v.rating, v.category_id, v.has_audio, v.watch_count,
                 v.created_at, v.media_type, v.source_url, v.status, v.source_type
-         FROM videos v {where_clause}
+         FROM {source}
          ORDER BY {sort_col} {dir}"
     );
 
@@ -1314,6 +1345,7 @@ pub async fn db_find_video_page(
     }
     let conn = state.conn_read()?;
     let (where_clause, params) = build_where_clause(&conn, &filter);
+    let source = video_source(&where_clause, filter.filter_collapse_groups);
 
     let sort_col = sort_column(&filter.filter_sort_by);
     let dir = if filter.filter_sort_order == "asc" { "ASC" } else { "DESC" };
@@ -1322,7 +1354,7 @@ pub async fn db_find_video_page(
     let sql = format!(
         "WITH ranked AS (
            SELECT v.id, ROW_NUMBER() OVER (ORDER BY {sort_col} {dir}) AS rn
-           FROM videos v {where_clause}
+           FROM {source}
          )
          SELECT rn FROM ranked WHERE id = ?",
     );
@@ -1754,6 +1786,40 @@ mod tests {
         assert_eq!(with(2), ["/v/all.mp4", "/v/part.mp4"]);
         assert_eq!(with(1).len(), 4, "音声ありは従来どおりトラックの有無で選ぶ");
         assert_eq!(with(0), ["/v/mute.mp4"]);
+    }
+
+    #[test]
+    fn collapse_groups_keeps_one_representative_per_group() {
+        use super::super::db_groups::{create_group, KIND_SERIES};
+        let conn = setup();
+        let a = insert_video(&conn, "/v/ep1.mp4");
+        let b = insert_video(&conn, "/v/ep2.mp4");
+        let c = insert_video(&conn, "/v/ep3.mp4");
+        insert_video(&conn, "/v/solo.mp4");
+        let g = create_group(&conn, "show", KIND_SERIES, &[a, b, c]).unwrap();
+        let collapsed = |conn: &Connection, extra: &str| -> Vec<String> {
+            let mut json = serde_json::json!({
+                "filterSearch": extra, "filterCategoryId": null, "filterTagIds": [],
+                "filterTagMode": "and", "filterMinRating": 0, "filterHasAudio": null,
+                "filterMinDuration": 0.0, "filterMaxDuration": null, "filterWatchedStatus": "all",
+                "filterWatchDir": null, "filterMediaType": "all",
+                "filterSortBy": "created_at", "filterSortOrder": "asc",
+                "currentPage": 1, "pageSize": 100,
+            });
+            json["filterCollapseGroups"] = serde_json::json!(true);
+            let filter: super::VideoFilter = serde_json::from_value(json).unwrap();
+            let (where_clause, params) = super::build_where_clause(conn, &filter);
+            let source = super::video_source(&where_clause, true);
+            let mut stmt = conn.prepare(&format!("SELECT v.path FROM {source} ORDER BY v.id")).unwrap();
+            stmt.query_map(rusqlite::params_from_iter(params), |r| r.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        assert_eq!(collapsed(&conn, ""), ["/v/ep1.mp4", "/v/solo.mp4"], "並び順で最初のものが代表");
+        conn.execute("UPDATE media_groups SET cover_video_id = ?1 WHERE id = ?2", [c, g]).unwrap();
+        assert_eq!(collapsed(&conn, ""), ["/v/ep3.mp4", "/v/solo.mp4"], "代表を決めればそれを出す");
+        assert_eq!(collapsed(&conn, "ep2"), ["/v/ep2.mp4"], "代表が条件に合わなければ合うものを出す");
     }
 
     #[test]

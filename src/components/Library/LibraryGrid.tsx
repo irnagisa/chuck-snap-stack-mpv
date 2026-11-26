@@ -3,8 +3,9 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from "react-i18next";
-import type { Video, Tag, Category } from '../../types';
+import type { Video, Tag, Category, VideoGroupInfo } from '../../types';
 import { useTagStore } from '../../store/useTagStore';
+import { useLibraryStore } from '../../store/useLibraryStore';
 import { useLibraryViewStore } from '../../store/useLibraryViewStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useShallow } from 'zustand/shallow';
@@ -12,7 +13,7 @@ import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { useVideoPreview } from '../../hooks/useVideoPreview';
 import { DeleteVideoModal } from './DeleteVideoModal';
 import { VideoContextMenu } from './VideoContextMenu';
-import { Check, ExternalLink, FileX, Film, Image as ImageIcon, Link2, ListPlus, Music, Play, Star, Trash2, VolumeX } from 'lucide-react';
+import { Check, ExternalLink, FileX, Film, Image as ImageIcon, Layers, Link2, ListPlus, Music, Play, Star, Trash2, VolumeX } from 'lucide-react';
 import { Button } from '../ui';
 import { formatTime } from '../../utils/time';
 import { AudioWave, ThumbImage } from './MediaThumb';
@@ -26,6 +27,10 @@ interface VideoCardProps {
   isDetailVideo: boolean;
   tags: Tag[];
   category: Category | null;
+  /** 入っているグループ (2 件以上のときだけ印を出す) */
+  group?: VideoGroupInfo;
+  /** グループを代表の 1 件にまとめて表示しているか */
+  stacked: boolean;
   idx: number;
   onPlay: (video: Video) => void;
   onShowDetail: (video: Video) => void;
@@ -44,6 +49,8 @@ const VideoCard = memo(function VideoCard({
   isDetailVideo,
   tags,
   category,
+  group,
+  stacked,
   idx,
   onPlay,
   onShowDetail,
@@ -110,6 +117,7 @@ const VideoCard = memo(function VideoCard({
         })()
       : v.path.split('/').pop());
   const showDuration = !isImage && !isLink && v.duration != null && v.duration > 0;
+  const showGroup = group != null && group.memberCount >= 2;
   const progressWidth =
     progressPercent !== null && progressPercent > 0 ? progressPercent : v.progress > 0 && progressPercent === null ? 100 : 0;
 
@@ -136,6 +144,7 @@ const VideoCard = memo(function VideoCard({
         else handlePrimaryClick();
       }}
     >
+      {showGroup && stacked && <div className={styles.stackEdge} aria-hidden />}
       <div className={styles.thumb}>
         {v.thumbnail ? (
           <ThumbImage src={v.thumbnail} alt={v.title ?? ''} />
@@ -243,6 +252,18 @@ const VideoCard = memo(function VideoCard({
             </span>
           </div>
         )}
+        {showGroup && (
+          <div className={styles.bottomRight}>
+            <span
+              className={styles.pill}
+              data-tone={stacked ? 'accent' : undefined}
+              title={t(group.kind === 'series' ? 'groups.badgeSeries' : 'groups.badgeVariants', { name: group.name, count: group.memberCount })}
+            >
+              <Layers aria-hidden />
+              {group.memberCount}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className={styles.body}>
@@ -320,6 +341,8 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
   const hoverPreviewEnabled = useSettingsStore((s) => s.hoverPreviewEnabled);
   const videoTags = useTagStore(useShallow((s) => s.videoTags));
   const categories = useTagStore(useShallow((s) => s.categories));
+  const videoGroups = useLibraryStore((s) => s.videoGroups);
+  const collapseGroups = useLibraryStore((s) => s.filterCollapseGroups);
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const [contextMenu, setContextMenu] = useState<{ video: Video; x: number; y: number } | null>(null);
 
@@ -484,6 +507,8 @@ export const LibraryGrid = forwardRef<LibraryViewHandle, Props>(function Library
                           isDetailVideo={v.id === (detailVideoId ?? null)}
                           tags={videoTags[v.id] ?? []}
                           category={v.category_id != null ? categoryMap[v.category_id] : null}
+                          group={videoGroups[v.id]}
+                          stacked={collapseGroups}
                           idx={idx}
                           onPlay={onPlay}
                           onShowDetail={onShowDetail}

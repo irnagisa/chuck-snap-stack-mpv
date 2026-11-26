@@ -19,6 +19,7 @@ pub struct BackupData {
     pub settings: Vec<Value>,
     pub watch_dirs: Vec<Value>,
     pub smart_playlists: Vec<Value>,
+    pub media_groups: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -35,6 +36,7 @@ pub struct ImportData {
     pub settings: Option<Vec<Value>>,
     pub watch_dirs: Option<Vec<Value>>,
     pub smart_playlists: Option<Vec<Value>>,
+    pub media_groups: Option<Vec<Value>>,
 }
 
 fn select_all(conn: &rusqlite::Connection, table: &str) -> rusqlite::Result<Vec<Value>> {
@@ -98,6 +100,7 @@ pub async fn db_export_backup(state: State<'_, DbState>) -> Result<BackupData, S
         watch_dirs: select_all(&conn, "watch_dirs").map_err(|e| e.to_string())?,
         smart_playlists: select_all(&conn, "smart_playlists")
             .unwrap_or_default(),
+        media_groups: select_all(&conn, "media_groups").unwrap_or_default(),
     })
 }
 
@@ -124,6 +127,21 @@ pub async fn db_import_backup(
         )
         .map_err(|e| e.to_string())?;
         let _ = conn.execute_batch("DELETE FROM smart_playlists");
+        conn.execute_batch("DELETE FROM media_groups").map_err(|e| e.to_string())?;
+
+        // media_groups (videos.group_id が参照するので videos より先に入れる。代表は videos の後で戻す)
+        let groups = data.media_groups.unwrap_or_default();
+        for row in &groups {
+            conn.execute(
+                "INSERT OR IGNORE INTO media_groups (id, name, kind, created_at) VALUES (?1,?2,COALESCE(?3,'variants'),?4)",
+                rusqlite::params![
+                    row.get("id").and_then(|v| v.as_i64()),
+                    row.get("name").and_then(|v| v.as_str()),
+                    row.get("kind").and_then(|v| v.as_str()),
+                    row.get("created_at").and_then(|v| v.as_str()),
+                ],
+            ).map_err(|e| e.to_string())?;
+        }
 
         // categories
         for row in data.categories.unwrap_or_default() {
@@ -159,8 +177,9 @@ pub async fn db_import_backup(
             conn.execute(
                 "INSERT OR IGNORE INTO videos
                   (id, path, title, duration, thumbnail, watched_at, progress, rating,
-                   category_id, has_audio, watch_count, created_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                   category_id, has_audio, watch_count, created_at, group_id, group_position)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,
+                         (SELECT id FROM media_groups WHERE id = ?13),?14)",
                 rusqlite::params![
                     row.get("id").and_then(|v| v.as_i64()),
                     row.get("path").and_then(|v| v.as_str()),
@@ -174,8 +193,24 @@ pub async fn db_import_backup(
                     row.get("has_audio").and_then(|v| v.as_i64()),
                     row.get("watch_count").and_then(|v| v.as_i64()).unwrap_or(0),
                     row.get("created_at").and_then(|v| v.as_str()),
+                    row.get("group_id").and_then(|v| v.as_i64()),
+                    row.get("group_position").and_then(|v| v.as_i64()),
                 ],
             ).map_err(|e| e.to_string())?;
+        }
+
+        // グループの代表 (videos を入れた後でないと参照できない)
+        for row in &groups {
+            if let (Some(id), Some(cover)) = (
+                row.get("id").and_then(|v| v.as_i64()),
+                row.get("cover_video_id").and_then(|v| v.as_i64()),
+            ) {
+                conn.execute(
+                    "UPDATE media_groups SET cover_video_id = ?1
+                     WHERE id = ?2 AND EXISTS (SELECT 1 FROM videos WHERE id = ?1)",
+                    rusqlite::params![cover, id],
+                ).map_err(|e| e.to_string())?;
+            }
         }
 
         // video_tags

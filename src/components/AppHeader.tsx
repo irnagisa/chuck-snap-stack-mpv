@@ -71,6 +71,7 @@ export function AppHeader({
     openStorage,
     openExport,
     openDuplicates,
+    openGroupSuggestions,
     openMissingFiles,
   } = useModalStore();
 
@@ -81,6 +82,7 @@ export function AppHeader({
     { label: t("app.storageTitle"), icon: <HardDrive />, onClick: openStorage, needsDb: true },
     { label: t("app.exportTitle"), icon: <ArrowLeftRight />, onClick: openExport, needsDb: true },
     { label: t("app.duplicatesTitle"), icon: <Copy />, onClick: openDuplicates, needsDb: true },
+    { label: t("groups.suggestTitle"), icon: <Layers />, onClick: openGroupSuggestions, needsDb: true },
     { label: t("app.missingTitle"), icon: <FileQuestionMark />, onClick: openMissingFiles, needsDb: true },
     { label: t("app.settingsTitle"), icon: <Settings />, onClick: openSettings, needsDb: false },
   ];

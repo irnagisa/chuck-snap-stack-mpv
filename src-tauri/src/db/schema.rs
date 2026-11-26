@@ -61,6 +61,15 @@ pub fn init_db(conn: &Connection) -> Result<()> {
           file_size INTEGER
         );
 
+        -- 関連ファイルのまとまり (シリーズ・同じ内容の別パターン)。videos.group_id から参照する
+        CREATE TABLE IF NOT EXISTS media_groups (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          name           TEXT NOT NULL,
+          kind           TEXT NOT NULL DEFAULT 'variants',
+          cover_video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+          created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS playlists (
           id         INTEGER PRIMARY KEY AUTOINCREMENT,
           name       TEXT NOT NULL,
@@ -131,6 +140,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE videos ADD COLUMN audio_silence TEXT",
         "ALTER TABLE videos ADD COLUMN silent_audio_streams TEXT",
         "ALTER TABLE videos ADD COLUMN silent_audio_bytes INTEGER",
+        // グループ (commands/db_groups.rs)。group_position はグループ内の並び順
+        "ALTER TABLE videos ADD COLUMN group_id INTEGER REFERENCES media_groups(id) ON DELETE SET NULL",
+        "ALTER TABLE videos ADD COLUMN group_position INTEGER",
     ];
     for stmt in &alter_stmts {
         let _ = conn.execute_batch(stmt); // ignore "duplicate column" errors
@@ -141,7 +153,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_videos_last_viewed_at ON videos(last_viewed_at);
          CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
          CREATE INDEX IF NOT EXISTS idx_videos_media_type ON videos(media_type);
-         CREATE INDEX IF NOT EXISTS idx_videos_file_size ON videos(file_size);",
+         CREATE INDEX IF NOT EXISTS idx_videos_file_size ON videos(file_size);
+         CREATE INDEX IF NOT EXISTS idx_videos_group_id ON videos(group_id);",
     )?;
 
     Ok(())

@@ -235,6 +235,29 @@
     bottom: var(--space-2);
     left: var(--space-1-5);
   }
+  .bottomRight {
+    position: absolute;
+    right: var(--space-1-5);
+    bottom: var(--space-2);
+    z-index: 2;
+    display: flex;
+  }
+
+  /*
+   * グループをまとめて表示しているカード: 上に重なった 1 枚が見えるようにする。
+   * カードの外 (上側) にだけ描き、カードの中身には重ならない
+   */
+  .stackEdge {
+    position: absolute;
+    top: -5px;
+    right: var(--space-3);
+    left: var(--space-3);
+    height: 5px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background: color-mix(in oklch, var(--color-accent) 18%, var(--color-bg-card));
+    box-shadow: 0 0 0 1px var(--color-border);
+    pointer-events: none;
+  }
 
   /* 右上の hover 操作ボタン群 */
   .actions {
