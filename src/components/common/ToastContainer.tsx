@@ -14,6 +14,7 @@ export function ToastContainer() {
     <div
       className={cx(styles.stack, styles.toastStack)}
       aria-live="polite"
+      data-floating-layer
     >
       <AnimatePresence initial={false}>
         {toasts.map((toast) => (
