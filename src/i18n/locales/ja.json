@@ -120,7 +120,12 @@
     "rescan": "再スキャン",
     "setRating": "評価設定",
     "deselect": "選択解除",
-    "moveDir": "他のディレクトリへ移動"
+    "moveDir": "他のディレクトリへ移動",
+    "checkSilence": "無音を調べる",
+    "checkSilenceProgress": "無音を調べています ({{done}} / {{total}})",
+    "checkSilenceDone": "{{count}} 件を調べました。無音のトラックがあったのは {{found}} 件です",
+    "checkSilenceFailed": "{{count}} 件は読めませんでした",
+    "checkSilenceNoVideo": "選んだ中に動画がありません"
   },
   "pagination": {
     "prev": "前",
@@ -926,6 +931,12 @@
     "silenceUnchecked": "無音かどうかを調べていない動画が {{count}} 件あります。調べると一覧に出ます。",
     "silenceProgress": "音量を調べています ({{done}} / {{total}})",
     "silenceCheck": "無音かどうかを調べる",
+    "silenceCheckSome": "大きい順に {{count}} 件調べる",
+    "silenceCheckAll": "すべて調べる",
+    "silenceStop": "止める",
+    "silenceStopping": "止めています…",
+    "silenceDone": "{{count}} 件を調べました。無音のトラックがあったのは {{found}} 件です",
+    "silenceFailed": "{{count}} 件は読めませんでした (次回また調べます)",
     "silentTracks": "無音のトラック {{count}} 本",
     "silentFreed": "外すと約 {{size}}",
     "silentSummary": "{{count}} 件 · 外すと約 {{size}} 空きます",

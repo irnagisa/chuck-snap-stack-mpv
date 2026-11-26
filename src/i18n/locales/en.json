@@ -120,7 +120,12 @@
     "rescan": "Rescan",
     "setRating": "Set Rating",
     "deselect": "Deselect",
-    "moveDir": "Move to Folder"
+    "moveDir": "Move to Folder",
+    "checkSilence": "Check for silence",
+    "checkSilenceProgress": "Checking for silence ({{done}} / {{total}})",
+    "checkSilenceDone": "Checked {{count}} videos. {{found}} had silent tracks",
+    "checkSilenceFailed": "Couldn't read {{count}} files",
+    "checkSilenceNoVideo": "No videos in the selection"
   },
   "pagination": {
     "prev": "Prev",
@@ -926,6 +931,12 @@
     "silenceUnchecked": "{{count}} videos haven't been checked for silent audio yet. Check them to list any here.",
     "silenceProgress": "Checking volume ({{done}} / {{total}})",
     "silenceCheck": "Check for silence",
+    "silenceCheckSome": "Check {{count}} largest",
+    "silenceCheckAll": "Check all",
+    "silenceStop": "Stop",
+    "silenceStopping": "Stopping…",
+    "silenceDone": "Checked {{count}} videos. {{found}} had silent tracks",
+    "silenceFailed": "Couldn't read {{count}} files (will retry next time)",
     "silentTracks": "Silent tracks: {{count}}",
     "silentFreed": "about {{size}} if removed",
     "silentSummary": "{{count}} files · about {{size}} freed by removing them",

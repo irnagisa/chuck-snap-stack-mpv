@@ -200,6 +200,11 @@
     justify-content: space-between;
     gap: var(--space-2);
   }
+  .calloutActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
   .quarantineRow {
     display: flex;
     align-items: center;

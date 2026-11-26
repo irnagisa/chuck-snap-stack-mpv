@@ -120,7 +120,12 @@
     "rescan": "重新扫描",
     "setRating": "设置评分",
     "deselect": "取消选择",
-    "moveDir": "移动到其他文件夹"
+    "moveDir": "移动到其他文件夹",
+    "checkSilence": "检查静音",
+    "checkSilenceProgress": "正在检查静音（{{done}} / {{total}}）",
+    "checkSilenceDone": "已检查 {{count}} 个视频，其中 {{found}} 个有静音音轨",
+    "checkSilenceFailed": "{{count}} 个文件无法读取",
+    "checkSilenceNoVideo": "所选项目中没有视频"
   },
   "pagination": {
     "prev": "上一页",
@@ -926,6 +931,12 @@
     "silenceUnchecked": "有 {{count}} 个视频尚未检查是否为静音。检查后会显示在列表中。",
     "silenceProgress": "正在检查音量（{{done}} / {{total}}）",
     "silenceCheck": "检查是否静音",
+    "silenceCheckSome": "按大小检查 {{count}} 个",
+    "silenceCheckAll": "全部检查",
+    "silenceStop": "停止",
+    "silenceStopping": "正在停止…",
+    "silenceDone": "已检查 {{count}} 个视频，其中 {{found}} 个有静音音轨",
+    "silenceFailed": "{{count}} 个文件无法读取（下次会再试）",
     "silentTracks": "静音音轨 {{count}} 条",
     "silentFreed": "移除可省约 {{size}}",
     "silentSummary": "{{count}} 个 · 移除后约可释放 {{size}}",
