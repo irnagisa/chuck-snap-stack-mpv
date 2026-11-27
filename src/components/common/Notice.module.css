@@ -1,5 +1,5 @@
 /*
- * 画面の右下・下中央に浮かぶ通知カード (トースト・ダウンロードの進み具合)
+ * 画面の右下に浮かぶ通知カード (トースト)
  * 色付きの面なので、上に置くボタンは variant="inherit" で文字色を引き継ぐ
  */
 @layer ui {
@@ -13,13 +13,8 @@
     gap: var(--space-2);
     pointer-events: none;
   }
-  /* トーストはダウンロードの進み具合 (150) より上 */
   .toastStack {
     z-index: 200;
-  }
-  .downloadStack {
-    z-index: 150;
-    width: 18rem;
   }
 
   .card {
@@ -54,72 +49,8 @@
   }
   .message {
     flex: 1;
-  }
-
-  /* ---- ダウンロード ---- */
-  .job {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1-5);
-    padding: var(--space-2-5) var(--space-3);
-    font-size: var(--text-xs);
-  }
-  .jobHead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-  .jobTitle {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    font-weight: var(--weight-medium);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cancel[data-variant] {
-    color: oklch(80.8% 0.114 19.571);
-
-    &:hover:not(:disabled) {
-      color: oklch(93.6% 0.032 17.717);
-    }
-  }
-  .track {
-    width: 100%;
-    height: 0.375rem;
-    overflow: hidden;
-    border-radius: var(--radius-full);
-    background: light-dark(var(--palette-neutral-600), var(--palette-neutral-500));
-  }
-  .bar {
-    height: 100%;
-    border-radius: var(--radius-full);
-    background: var(--palette-accent-400);
-    transition: width 200ms ease;
-
-    /* 全体の大きさが分からないあいだは、幅いっぱいで明滅させる */
-    &[data-indeterminate] {
-      width: 100%;
-      animation: notice-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-  }
-  .jobMeta {
-    display: flex;
-    justify-content: space-between;
-    color: var(--palette-neutral-300);
-  }
-  .jobNote {
-    color: var(--palette-neutral-400);
-  }
-  .jobError {
-    color: oklch(88.5% 0.062 18.334);
+    /* 失敗の通知は 2 行目に理由を出す */
+    white-space: pre-line;
     overflow-wrap: anywhere;
-  }
-
-  @keyframes notice-pulse {
-    50% {
-      opacity: 0.5;
-    }
   }
 }

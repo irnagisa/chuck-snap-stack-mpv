@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { join, basename } from '@tauri-apps/api/path';
+import i18n from 'i18next';
 import { useLibraryStore } from './useLibraryStore';
+import { toast } from './useToastStore';
 
 export interface DownloadJob {
   id: string;
@@ -21,6 +23,18 @@ interface DownloadStore {
   addJob: (params: Pick<DownloadJob, 'url' | 'saveDir' | 'filename' | 'useYtdlp'>) => void;
   cancelActive: () => void;
   dismissJob: (id: string) => void;
+  /** 終わった (完了・失敗) ジョブを一覧から消す */
+  clearFinished: () => void;
+}
+
+/** 一覧から消してよい (もう動いていない) ジョブ */
+export function isFinishedDownload(job: DownloadJob): boolean {
+  return job.phase === 'done' || job.phase === 'error' || job.phase === 'cancelled';
+}
+
+/** 一覧・通知で使うジョブの表示名 */
+export function downloadJobLabel(job: DownloadJob): string {
+  return job.title || (job.useYtdlp ? job.url : job.filename) || job.url;
 }
 
 let isProcessing = false;
@@ -90,11 +104,8 @@ async function processNext() {
       ),
     }));
 
-    setTimeout(() => {
-      useDownloadStore.setState((s) => ({
-        jobs: s.jobs.filter((j) => j.id !== next.id),
-      }));
-    }, 5000);
+    // 完了したジョブは作業の一覧に残し (消すのは手で)、時間で消える通知で知らせる
+    toast.success(i18n.t('downloadQueue.done', { name: title || downloadJobLabel(next) }), 5000);
   } catch (e) {
     unlisten?.();
     const msg = e instanceof Error ? e.message : String(e);
@@ -108,6 +119,10 @@ async function processNext() {
           : j
       ),
     }));
+
+    if (phase === 'error') {
+      toast.error(`${i18n.t('downloadQueue.error', { name: downloadJobLabel(next) })}\n${msg}`, 8000);
+    }
 
     if (phase === 'cancelled') {
       setTimeout(() => {
@@ -159,6 +174,12 @@ export const useDownloadStore = create<DownloadStore>(() => ({
   dismissJob: (id) => {
     useDownloadStore.setState((s) => ({
       jobs: s.jobs.filter((j) => j.id !== id),
+    }));
+  },
+
+  clearFinished: () => {
+    useDownloadStore.setState((s) => ({
+      jobs: s.jobs.filter((j) => !isFinishedDownload(j)),
     }));
   },
 }));

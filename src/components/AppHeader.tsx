@@ -21,6 +21,7 @@ import { useModalStore } from "../store/useModalStore";
 import { useLibraryStore } from "../store/useLibraryStore";
 import { useShallow } from "zustand/shallow";
 import { Button, Checkbox, Input, Tooltip, motionPresets } from "./ui";
+import { ActivityButton } from "./Activity/ActivityButton";
 import styles from "./AppHeader.module.css";
 // アプリのアイコン (Dock / タスクバー) と同じ画像。アイコンを差し替えるとロゴも揃う
 import appIcon from "../../src-tauri/icons/128x128.png";
@@ -160,6 +161,7 @@ export function AppHeader({
       </div>
 
       <div className={styles.tools}>
+        <ActivityButton />
         {tools.map(({ label, icon, onClick, needsDb }) => (
           <Tooltip key={label} content={label} side="bottom">
             <Button

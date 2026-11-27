@@ -45,7 +45,8 @@
     "transcodeBatchPartial": "変換終了: {{total}} 件中 {{failed}} 件失敗",
     "storageTitle": "ストレージ整理",
     "transcodeDiscarded": "変換後のファイルを破棄: {{name}} (元のファイルを残しました)",
-    "transcodeBatchDiscarded": " ({{count}} 件は小さくならず破棄)"
+    "transcodeBatchDiscarded": " ({{count}} 件は小さくならず破棄)",
+    "thumbnailDone": "サムネイル生成完了: {{count}} 件"
   },
   "sidebar": {
     "label": "ライブラリのナビゲーション",
@@ -791,7 +792,10 @@
   "downloadQueue": {
     "queued": "待機中...",
     "downloading": "ダウンロード中...",
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "done": "ダウンロード完了: {{name}}",
+    "error": "ダウンロード失敗: {{name}}",
+    "cancelled": "キャンセルしました"
   },
   "confirm": {
     "cancel": "キャンセル",
@@ -1019,5 +1023,18 @@
     "suggestApplyAll": "すべてまとめる ({{count}})",
     "suggestDone": "まとめました",
     "suggestCreated": "{{count}} 個のグループを作りました"
+  },
+  "activity": {
+    "label": "作業の進み具合",
+    "title": "作業",
+    "empty": "進行中の作業はありません",
+    "clearFinished": "終わったものを消す",
+    "dismiss": "閉じる",
+    "thumbnails": "サムネイル",
+    "transcode": "変換",
+    "downloads": "ダウンロード",
+    "running": "{{count}} 件進行中",
+    "finished": "終わった作業があります",
+    "failed": "失敗した作業があります"
   }
 }

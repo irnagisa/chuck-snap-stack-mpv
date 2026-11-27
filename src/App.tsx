@@ -21,12 +21,9 @@ import { LibraryList } from "./components/Library/LibraryList";
 import { AppModals } from "./components/AppModals";
 import { VideoDetailModal } from "./components/Library/VideoDetailModal";
 import { ToastContainer } from "./components/common/ToastContainer";
-import { DownloadQueuePanel } from "./components/common/DownloadQueuePanel";
 import { ImageViewerModal } from "./components/Library/ImageViewerModal";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { AppHeader } from "./components/AppHeader";
-import { ThumbnailProgressBar } from "./components/ThumbnailProgressBar";
-import { TranscodeStatusBar } from "./components/TranscodeStatusBar";
 import { WatchDirRemovedAlert } from "./components/WatchDirRemovedAlert";
 import { LibrarySidebar } from "./components/Library/LibrarySidebar";
 import { LibraryFilterBar } from "./components/Library/LibraryFilterBar";
@@ -336,9 +333,6 @@ function App() {
             onUseDirAsCategoryChange={setUseDirAsCategory}
           />
 
-          <ThumbnailProgressBar />
-
-          <TranscodeStatusBar />
           <WatchDirRemovedAlert />
 
           {/* ボディ */}
@@ -471,7 +465,6 @@ function App() {
         onClearSelection={() => setSelectedVideoIds(new Set())}
       />
 
-      <DownloadQueuePanel />
       <ToastContainer />
 
       <ConfirmDialog

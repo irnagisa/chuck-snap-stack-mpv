@@ -120,6 +120,35 @@ export function finishedCount(batch: TranscodeBatch): number {
   return batch.succeeded + batch.failed + batch.discarded;
 }
 
+/** 終わったバッチの結果の 1 行 (作業の一覧と完了の通知で使う) */
+export function transcodeResultLabel(batch: TranscodeBatch, lastError: TranscodeStore['lastError']): string {
+  if (batch.total > 1) {
+    let label = batch.failed > 0
+      ? i18n.t('app.transcodeBatchPartial', { total: batch.total, failed: batch.failed })
+      : i18n.t('app.transcodeBatchSuccess', { total: batch.total });
+    if (batch.discarded > 0) label += i18n.t('app.transcodeBatchDiscarded', { count: batch.discarded });
+    return label;
+  }
+  if (batch.failed > 0 && lastError) return i18n.t('app.transcodeError', { name: lastError.videoName });
+  if (batch.discarded > 0) return i18n.t('app.transcodeDiscarded', { name: batch.lastDiscardedName });
+  return i18n.t('app.transcodeSuccess', { name: batch.lastSucceededName });
+}
+
+/** バッチが終わったことを、時間で消える通知で知らせる */
+function notifyBatchFinished(batch: TranscodeBatch, lastError: TranscodeStore['lastError']) {
+  // 1 件だけで破棄になったときは、破棄の通知 (減った割合つき) をもう出している
+  if (batch.total === 1 && batch.discarded === 1) return;
+  const label = transcodeResultLabel(batch, lastError);
+  if (batch.failed > 0) {
+    const detail = batch.total === 1 && lastError ? `\n${lastError.message}` : '';
+    toast.error(label + detail, 8000);
+  } else if (batch.succeeded === 0) {
+    toast.info(label, 5000);
+  } else {
+    toast.success(label, 5000);
+  }
+}
+
 let _nextId = 1;
 let _processing = false;
 /** 実行中ジョブへのキャンセル要求 (transcode_video 呼び出し前の要求を取りこぼさないため) */
@@ -182,7 +211,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
         batch: { ...s.batch, failed: s.batch.failed + 1 },
         lastError: { videoName: job.videoName, message },
       }));
-      // 後続ジョブの処理中もステータスバーの表示は次のジョブに移るため、トーストでも通知する
+      // 後続ジョブの処理中は作業の一覧の表示が次のジョブに移るため、トーストでも通知する
       if (get().queue.length > 0) {
         toast.error(`${i18n.t('app.transcodeError', { name: job.videoName })}\n${message}`);
       }
@@ -219,10 +248,11 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
       unlisten?.();
       _processing = false;
       _cancelRequested = false;
-      const { batch } = get();
+      const { batch, lastError } = get();
       const finished = finishedCount(batch);
       // すべてキャンセルされた場合は何も表示しない
       set({ current: null, progress: null, isDone: finished > 0, ...(finished === 0 && { batch: EMPTY_BATCH, lastError: null }) });
+      if (finished > 0) notifyBatchFinished(batch, lastError);
     }
   }
 

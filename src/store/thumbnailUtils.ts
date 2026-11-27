@@ -5,6 +5,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { appCacheDir, join } from '@tauri-apps/api/path';
 import type { Video } from '../types';
+import i18n from 'i18next';
+import { toast } from './useToastStore';
 
 export const THUMBNAIL_CONCURRENCY = 3;
 
@@ -212,6 +214,7 @@ export async function generateThumbnailsWorker(
         }));
       }
     }
+    if (cumulativeDone > 0) toast.success(i18n.t('app.thumbnailDone', { count: cumulativeDone }), 4000);
   } finally {
     set({ isThumbnailGenerating: false, isThumbnailPaused: false, thumbnailProgress: null });
     await onDone();
@@ -359,6 +362,7 @@ export async function rescanMultipleWorker(
       }
       setProgress(done, rows.length);
     }
+    if (done > 0) toast.success(i18n.t('app.thumbnailDone', { count: done }), 4000);
   } finally {
     await onDone();
   }
