@@ -182,6 +182,9 @@ const VideoCard = memo(function VideoCard({
 
         {/* 右上: 状態バッジ / hover 時は操作ボタン */}
         <div className={styles.topRight}>
+          {v.status === 'inbox' && !isPlaying && (
+            <span className={styles.pill} data-tone="new" title={t('library.newHint')}>{t('library.new')}</span>
+          )}
           {isPlaying && (
             <span className={styles.pill} data-tone="accent">
               <span className={styles.eq} aria-hidden><span /><span /><span /></span>

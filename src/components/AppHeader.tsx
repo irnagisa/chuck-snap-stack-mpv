@@ -10,7 +10,6 @@ import {
   HardDrive,
   FolderPlus,
   House,
-  Inbox,
   Layers,
   Library,
   LoaderCircle,
@@ -26,11 +25,10 @@ import styles from "./AppHeader.module.css";
 // アプリのアイコン (Dock / タスクバー) と同じ画像。アイコンを差し替えるとロゴも揃う
 import appIcon from "../../src-tauri/icons/128x128.png";
 
-type MainView = "home" | "library" | "inbox";
+type MainView = "home" | "library";
 
 interface Props {
   mainView: MainView;
-  inboxCount: number;
   searchInput: string;
   useDirAsCategory: boolean;
   onMainViewChange: (view: MainView) => void;
@@ -43,12 +41,10 @@ interface Props {
 const NAV_ITEMS: { view: MainView; label: string; icon: ReactNode }[] = [
   { view: "home", label: "ホーム", icon: <House aria-hidden /> },
   { view: "library", label: "ライブラリ", icon: <Library aria-hidden /> },
-  { view: "inbox", label: "Inbox", icon: <Inbox aria-hidden /> },
 ];
 
 export function AppHeader({
   mainView,
-  inboxCount,
   searchInput,
   useDirAsCategory,
   onMainViewChange,
@@ -119,9 +115,6 @@ export function AppHeader({
               <span className={styles.navLabel}>
                 {icon}
                 {label}
-                {view === "inbox" && inboxCount > 0 && (
-                  <span className={styles.badge}>{inboxCount > 999 ? "999+" : inboxCount}</span>
-                )}
               </span>
             </button>
           );

@@ -34,7 +34,6 @@ pub(crate) const MAX_THUMBNAIL_BYTES: u64 = 512 * 1024;
 const ORPHAN_GRACE: Duration = Duration::from_secs(10 * 60);
 
 /// 整理候補の「古い」の基準 (日数)
-const STALE_INBOX_DAYS: i64 = 30;
 const UNWATCHED_DAYS: i64 = 30;
 const LONG_UNVIEWED_DAYS: i64 = 180;
 
@@ -765,13 +764,6 @@ fn candidate_spec(kind: &str) -> Result<CandidateSpec, String> {
             ),
             Some(UNWATCHED_DAYS),
         ),
-        "staleInbox" => CandidateSpec::by_size(
-            format!(
-                "AND status = 'inbox'
-                 AND datetime(created_at) < datetime('now', '-{STALE_INBOX_DAYS} days')"
-            ),
-            Some(STALE_INBOX_DAYS),
-        ),
         "longUnviewed" => CandidateSpec::by_size(
             format!(
                 "AND {LAST_SEEN_EXPR} IS NOT NULL
@@ -965,7 +957,7 @@ fn by_av1_saving(conn: &rusqlite::Connection, filter: &str, limit: i64) -> Resul
 }
 
 /// 整理候補を容量の大きい順 (highBitrate は AV1 にしたときに減る割合の大きい順) に返す。
-/// kind: "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed" | "silentAudio"
+/// kind: "large" | "highBitrate" | "unwatched" | "longUnviewed" | "silentAudio"
 #[tauri::command]
 pub async fn get_cleanup_candidates(
     state: State<'_, DbState>,
@@ -1243,16 +1235,6 @@ mod tests {
         let c = query_candidates(&conn, "unwatched", 100).unwrap();
         assert_eq!(ids(&c), vec![target]);
         assert_eq!(c.threshold_days, Some(UNWATCHED_DAYS));
-    }
-
-    #[test]
-    fn stale_inbox_only_old_inbox_items() {
-        let conn = setup();
-        let target = add_candidate(&conn, "/m/a.mp4", 10, "status = 'inbox'");
-        add_candidate(&conn, "/m/new.mp4", 10, "status = 'inbox', created_at = CURRENT_TIMESTAMP");
-        add_candidate(&conn, "/m/active.mp4", 10, "");
-
-        assert_eq!(ids(&query_candidates(&conn, "staleInbox", 100).unwrap()), vec![target]);
     }
 
     #[test]

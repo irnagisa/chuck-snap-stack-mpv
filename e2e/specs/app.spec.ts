@@ -16,7 +16,7 @@ describe('Chuck Snap Stack - Smoke Tests', () => {
     const texts = await Promise.all(buttons.slice(0, 20).map(b => b.getText()))
     expect(texts).toContain('ホーム')
     expect(texts).toContain('ライブラリ')
-    expect(texts).toContain('Inbox')
+    expect(texts).not.toContain('Inbox')
   })
 
   it('ライブラリビューがデフォルトで表示される', async () => {

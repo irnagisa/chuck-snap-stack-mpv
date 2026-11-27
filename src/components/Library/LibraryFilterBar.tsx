@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/shallow";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, Film, Image as ImageIcon, Layers, LayoutGrid, List, Music, RotateCcw, Shuffle, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookmarkPlus, Film, Image as ImageIcon, Layers, LayoutGrid, List, Music, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { Select, Button, SegmentedControl, Input, Popover, Tooltip } from "../ui";
 import styles from "./LibraryFilterBar.module.css";
 import { useLibraryStore } from "../../store/useLibraryStore";
@@ -25,6 +25,7 @@ export function LibraryFilterBar() {
     filterTagIds, filterTagMode, filterSortBy, filterSortOrder,
     filterMinRating, filterRatingMode, filterHasAudio, filterWatchedStatus, filterMediaType, filterAv1,
     filterMinDuration, filterMaxDuration, totalCount, filterCollapseGroups, setCollapseGroups,
+    filterNewOnly, setNewOnly,
     toggleTagFilter, clearTagFilters, setTagMode, setSort,
     setMinRating, setRatingMode, setHasAudio, setWatchedStatus, setMediaType, setAv1Filter,
     setMinDuration, setMaxDuration,
@@ -43,6 +44,8 @@ export function LibraryFilterBar() {
     filterMaxDuration: s.filterMaxDuration,
     totalCount: s.totalCount,
     filterCollapseGroups: s.filterCollapseGroups,
+    filterNewOnly: s.filterNewOnly,
+    setNewOnly: s.setNewOnly,
     setCollapseGroups: s.setCollapseGroups,
     toggleTagFilter: s.toggleTagFilter,
     clearTagFilters: s.clearTagFilters,
@@ -278,6 +281,17 @@ export function LibraryFilterBar() {
             </div>
           </Popover.Content>
         </Popover.Root>
+
+        <Tooltip content={t("filters.newOnlyTitle")} side="bottom">
+          <Button
+            variant={filterNewOnly ? "soft" : "ghost"}
+            aria-pressed={filterNewOnly}
+            onClick={() => setNewOnly(!filterNewOnly)}
+          >
+            <Sparkles aria-hidden />
+            {t("filters.newOnly")}
+          </Button>
+        </Tooltip>
 
         {/* 適用中の条件 */}
         {filterMinRating !== 0 && (

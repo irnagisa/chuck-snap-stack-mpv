@@ -36,7 +36,7 @@
     --palette-accent-900: oklch(38% 0.17 293);
     --palette-accent-950: oklch(28% 0.13 291);
 
-    /* 差し色: Inbox バッジなど */
+    /* 差し色: 件数バッジ・新着の印など */
     --palette-amber-400: oklch(82.8% 0.189 84.429);
     --palette-amber-500: oklch(76.9% 0.188 70.08);
     --palette-amber-600: oklch(66.6% 0.179 58.318);

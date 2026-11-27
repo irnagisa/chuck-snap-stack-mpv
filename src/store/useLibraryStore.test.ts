@@ -494,3 +494,45 @@ describe('updateVideoPath', () => {
     expect(mockInvoke).toHaveBeenCalledWith('db_update_video_path', { oldPath: '/old.mp4', newPath: '/new.mp4' });
   });
 });
+
+// ── 新着 ─────────────────────────────────────────────────────────────────────
+
+describe('new items', () => {
+  const video = (id: number, status: 'inbox' | 'active' | 'missing') => ({
+    id, path: `/${id}.mp4`, title: null, duration: null, thumbnail: null,
+    watched_at: null, progress: 0, rating: 0, category_id: null, has_audio: null,
+    watch_count: 0, created_at: '2024-01-01', media_type: 'video' as const, source_url: null,
+    status, source_type: null,
+  });
+
+  it('setNewOnly passes filterNewOnly and resets the page', async () => {
+    useLibraryStore.setState({ currentPage: 3 });
+
+    await useLibraryStore.getState().setNewOnly(true);
+
+    expect(useLibraryStore.getState().currentPage).toBe(1);
+    expect(mockInvoke).toHaveBeenCalledWith('db_fetch_videos', expect.objectContaining({
+      filter: expect.objectContaining({ filterNewOnly: true }),
+    }));
+  });
+
+  it('markSeen clears the new flag of only that video and keeps it in the list', () => {
+    useLibraryStore.setState({ videos: [video(1, 'inbox'), video(2, 'inbox'), video(3, 'missing')] });
+
+    useLibraryStore.getState().markSeen(1);
+    useLibraryStore.getState().markSeen(3);
+
+    expect(useLibraryStore.getState().videos.map((v) => v.status)).toEqual(['active', 'inbox', 'missing']);
+  });
+
+  it('incrementWatchCount also clears the new flag', async () => {
+    useLibraryStore.setState({ videos: [video(1, 'inbox')] });
+    mockInvoke.mockResolvedValueOnce(undefined);
+
+    await useLibraryStore.getState().incrementWatchCount(1);
+
+    const v = useLibraryStore.getState().videos[0];
+    expect(v.status).toBe('active');
+    expect(v.watch_count).toBe(1);
+  });
+});

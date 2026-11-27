@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
-import { notifyInboxChanged } from '../../store/useInboxStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useTranscodeStore, type TranscodeJob, type TranscodeMode } from '../../store/useTranscodeStore';
 import { toast } from '../../store/useToastStore';
@@ -154,7 +153,6 @@ export function enqueueTranscode(
         toast.error(t('transcode.inheritFailed', { error: String(e) }));
         return;
       } finally {
-        notifyInboxChanged();
         await library.fetchVideos();
       }
 

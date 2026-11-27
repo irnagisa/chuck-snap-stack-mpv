@@ -49,14 +49,13 @@ chuck-snap-stack/
 │   └── wdio.conf.ts
 ├── src/                        # React フロントエンド
 │   ├── components/
-│   │   ├── Home/               # ダッシュボード (HomeView, 各サマリーカード)
+│   │   ├── Home/               # ダッシュボード (HomeView, 新着の件数・各サマリーカード)
 │   │   ├── Library/            # メディアライブラリ UI (32 ファイル)
-│   │   ├── Inbox/              # Inbox・クイックソート UI
 │   │   ├── Player/             # プレイヤー UI (mpv ウィンドウのラッパー)
 │   │   ├── Settings/           # 設定パネル
 │   │   └── common/             # 共通 UI コンポーネント
 │   ├── hooks/                  # カスタムフック
-│   ├── store/                  # Zustand ストア (13 ファイル)
+│   ├── store/                  # Zustand ストア (12 ファイル)
 │   ├── types/                  # TypeScript 型定義
 │   ├── utils/                  # ユーティリティ関数
 │   ├── lib/                    # メディアアイコン等
@@ -64,10 +63,10 @@ chuck-snap-stack/
 │   └── App.tsx
 ├── src-tauri/                  # Rust/Tauri バックエンド
 │   ├── src/
-│   │   ├── commands/           # Tauri コマンド (149 個)
+│   │   ├── commands/           # Tauri コマンド (146 個)
 │   │   │   ├── library.rs      # メディアファイル操作・メタデータ抽出
 │   │   │   ├── mpv.rs          # mpv プロセス管理・IPC
-│   │   │   ├── db_videos.rs    # メディア DB CRUD・Inbox 管理
+│   │   │   ├── db_videos.rs    # メディア DB CRUD・新着
 │   │   │   ├── db_videos_scan.rs # ディレクトリスキャン・インポート
 │   │   │   ├── db_tags.rs      # タグ・カテゴリ DB
 │   │   │   ├── db_playlists.rs # プレイリスト DB
@@ -129,7 +128,7 @@ CREATE TABLE videos (
   watch_count    INTEGER NOT NULL DEFAULT 0,
   media_type     TEXT NOT NULL DEFAULT 'video',    -- 'video' | 'audio' | 'image' | 'link' (CHECK)
   source_url     TEXT,
-  status         TEXT NOT NULL DEFAULT 'inbox',    -- 'inbox' (未整理) | 'active' (整理済み) | 'missing' (CHECK)
+  status         TEXT NOT NULL DEFAULT 'inbox',    -- 'inbox' (新着) | 'active' | 'missing' (CHECK)
   source_type    TEXT,                             -- 'import' | 'download' | 'dragdrop' | 'watcher' | 'link'
   last_viewed_at TEXT,                             -- 最終視聴日時
   file_size      INTEGER,                          -- ファイルサイズ (bytes, ソート用キャッシュ)
@@ -323,7 +322,7 @@ pub async fn command_name(
 .invoke_handler(tauri::generate_handler![
     commands::mpv::play,
     commands::library::scan_directory,
-    // ...他 147 個のコマンド
+    // ...他 144 個のコマンド
 ])
 ```
 
@@ -413,6 +412,7 @@ unlisten();
 - スキーマは `db/schema.rs` の `TABLES` / `INDEXES` が今の版のすべて。版は `PRAGMA user_version` (`SCHEMA_VERSION`) で持ち、変えるときは版を上げて `db/migrations.rs` の `migrate` に前の版からの書き換えを足す
 - 動画を消すときは `db_videos::delete_videos` (タグ付け・プレイリスト・キャッシュは CASCADE で消える。手で消さない)。複数の文を書くときは `conn.unchecked_transaction()` でトランザクションにする (`BEGIN` を手で書かない)
 - `Video` を読むときは `db_videos::VIDEO_COLUMNS` / `query_videos` を使う
+- 新着は `videos.status = 'inbox'`。ライブラリのカードに NEW の印、絞り込みの「新着」、ホームの件数で見せる。詳細を開いた (`db_update_last_viewed`)・再生した (`db_increment_watch_count`) ときに外れる。フォルダを登録したときの一括取り込み (`db_scan_and_import`) は新着にせず、再スキャン・監視・ダウンロード・ドラッグ＆ドロップで入ったものを新着にする
 - 整理画面の高ビットレートは、AV1 にしたときに減る割合の見積もり (`media_probe::estimate_av1_saving`、解像度・fps・コーデック・ビットレートからの目安) の大きい順に並べる。もとから AV1 の動画と、再エンコードしても縮まず破棄した動画 (`media_transcode_discarded`) は出さない
 - 整理画面の確認 (映像の情報・pHash・無音の簡易判定) は `useBackgroundChecks` が何もしていないときに裏で進める (設定 `background_checks`、既定 on)。急がない ffmpeg は `utils::background_command` で起動し、macOS では `taskpolicy -c utility` で優先度を下げる
 - AI タグ提案は tract-onnx で ONNX モデルを実行 (WD ViT Tagger v3)。モデルは `download_ai_model` でダウンロード

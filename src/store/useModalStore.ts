@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Video, Playlist } from '../types';
+import { useLibraryStore } from './useLibraryStore';
 
 type BulkModal = 'delete' | 'tag' | 'category' | 'rename' | 'rating' | 'moveDir' | 'group' | null;
 
@@ -95,6 +96,8 @@ export const useModalStore = create<ModalStore>((set) => ({
   closeSmartPlaylist: () => set({ showSmartPlaylist: false }),
   openDetailVideo: (video) => {
     set({ detailVideo: video });
+    // 開いたら新着から外す (DB は db_update_last_viewed が外す)
+    useLibraryStore.getState().markSeen(video.id);
     invoke('db_update_last_viewed', { videoId: video.id }).catch((e: unknown) => {
       console.error('[useModalStore] db_update_last_viewed error:', e);
     });

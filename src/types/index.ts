@@ -13,7 +13,7 @@ export interface Video {
   created_at: string;
   media_type: 'video' | 'audio' | 'image' | 'link';
   source_url: string | null;
-  /** inbox: 未整理 / active: 整理済み / missing: ファイルが見つからない */
+  /** inbox: 新着 (まだ詳細を開いても再生してもいない) / active / missing: ファイルが見つからない */
   status: 'inbox' | 'active' | 'missing';
   source_type: 'import' | 'download' | 'dragdrop' | 'watcher' | 'link' | null;
 }

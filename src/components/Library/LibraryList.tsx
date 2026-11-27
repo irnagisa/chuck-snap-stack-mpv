@@ -199,6 +199,9 @@ const VideoRow = memo(function VideoRow({
       </div>
 
       {/* 状態バッジ */}
+      {v.status === 'inbox' && !isPlaying && (
+        <span className={styles.softPill} data-tone="new" title={t('library.newHint')}>{t('library.new')}</span>
+      )}
       {isPlaying && (
         <span className={styles.softPill} data-tone="accent">
           <span className={styles.eq} aria-hidden><span /><span /><span /></span>

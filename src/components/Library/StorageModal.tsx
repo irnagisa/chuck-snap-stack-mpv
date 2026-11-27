@@ -54,7 +54,6 @@ const KINDS: CandidateKind[] = [
   "duplicates",
   "silentAudio",
   "unwatched",
-  "staleInbox",
   "longUnviewed",
 ];
 const KIND_LABEL: Record<CandidateKind, string> = {
@@ -63,7 +62,6 @@ const KIND_LABEL: Record<CandidateKind, string> = {
   duplicates: "storage.kindDuplicates",
   silentAudio: "storage.kindSilentAudio",
   unwatched: "storage.kindUnwatched",
-  staleInbox: "storage.kindStaleInbox",
   longUnviewed: "storage.kindLongUnviewed",
 };
 const KIND_DESC: Record<CandidateKind, string> = {
@@ -72,7 +70,6 @@ const KIND_DESC: Record<CandidateKind, string> = {
   duplicates: "storage.kindDescDuplicates",
   silentAudio: "storage.kindDescSilentAudio",
   unwatched: "storage.kindDescUnwatched",
-  staleInbox: "storage.kindDescStaleInbox",
   longUnviewed: "storage.kindDescLongUnviewed",
 };
 const MEDIA_LABEL: Record<string, string> = {
