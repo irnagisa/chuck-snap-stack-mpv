@@ -24,8 +24,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let db_path = app.path().app_data_dir()?.join("videos.db");
-            app.manage(DbState::open(&db_path)?);
+            let data_dir = app.path().app_data_dir()?;
+            // 初回起動ではフォルダがまだ無く、SQLite はフォルダを作らないので開けない
+            std::fs::create_dir_all(&data_dir)?;
+            app.manage(DbState::open(&data_dir.join("videos.db"))?);
             // 前回の強制終了・クラッシュで残った AV1 変換の一時ファイルを掃除する
             {
                 let handle = app.handle().clone();
