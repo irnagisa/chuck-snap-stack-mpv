@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Tag, Category, TagCategory } from '../types';
+import { notifyInboxChanged } from './useInboxStore';
 
 export interface CategoryNode extends Category {
   children: CategoryNode[];
@@ -226,6 +227,8 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
 
   deleteCategory: async (categoryId) => {
     await invoke('db_delete_category', { categoryId });
+    // そのカテゴリだった動画は Inbox に戻る
+    notifyInboxChanged();
     await get().fetchCategories();
   },
 
@@ -251,6 +254,7 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   addTagToMultiple: async (videoIds, tagId) => {
     if (videoIds.length === 0) return;
     await invoke('db_add_tag_to_multiple', { videoIds, tagId });
+    notifyInboxChanged();
     const cachedIds = Object.keys(get().videoTags).map(Number).filter(Number.isFinite);
     // 対象IDをキャッシュ済みIDに合算してリフレッシュ（タグなしビデオが選択対象の場合にも更新されるようにする）
     const allIds = [...new Set([...cachedIds, ...videoIds])];
@@ -262,5 +266,6 @@ export const useTagStore = create<TagState & TagActions>((set, get) => ({
   setCategoryMultiple: async (videoIds, categoryId) => {
     if (videoIds.length === 0) return;
     await invoke('db_set_category_multiple', { videoIds, categoryId });
+    notifyInboxChanged();
   },
 }));

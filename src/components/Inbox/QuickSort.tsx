@@ -19,7 +19,8 @@ interface Props {
 }
 
 export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail, onGraduate }: Props) {
-  const { quickSortIndex, setQuickSortIndex, fetchInbox } = useInboxStore();
+  const quickSortIndex = useInboxStore((s) => s.quickSortIndex);
+  const setQuickSortIndex = useInboxStore((s) => s.setQuickSortIndex);
   const { assignCategoryFromPath } = useLibraryStore();
 
   const current = videos[quickSortIndex];
@@ -71,7 +72,6 @@ export default function QuickSort({ stack, videos, onBack, onPlay, onShowDetail,
   const handleAssignCategory = async () => {
     if (!current) return;
     await assignCategoryFromPath([current.id]);
-    await fetchInbox();
   };
 
   return (

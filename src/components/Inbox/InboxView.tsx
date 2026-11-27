@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useInboxStore, buildStacks, getTimeBucket, type InboxStack, type StackType, type TimeBucket } from '../../store/useInboxStore';
+import { useShallow } from 'zustand/shallow';
+import { useInboxStore, markInboxViewShown, buildStacks, getTimeBucket, type InboxStack, type StackType, type TimeBucket } from '../../store/useInboxStore';
 import { useModalStore } from '../../store/useModalStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { useTagStore } from '../../store/useTagStore';
@@ -12,10 +13,26 @@ import styles from "./Inbox.module.css";
 
 export default function InboxView() {
   const { videos, stats, isLoading, activeStack, fetchInbox, graduateFromInbox, setActiveStack, batchVideos, startBatch, clearBatch } =
-    useInboxStore();
+    useInboxStore(useShallow((s) => ({
+      videos: s.videos,
+      stats: s.stats,
+      isLoading: s.isLoading,
+      activeStack: s.activeStack,
+      fetchInbox: s.fetchInbox,
+      graduateFromInbox: s.graduateFromInbox,
+      setActiveStack: s.setActiveStack,
+      batchVideos: s.batchVideos,
+      startBatch: s.startBatch,
+      clearBatch: s.clearBatch,
+    })));
   const openDetailVideo = useModalStore((s) => s.openDetailVideo);
   const playWithQueue = usePlayerStore((s) => s.playWithQueue);
-  const { videoTags, categories, fetchVideoTagsForIds, fetchCategories } = useTagStore();
+  const { videoTags, categories, fetchVideoTagsForIds, fetchCategories } = useTagStore(useShallow((s) => ({
+    videoTags: s.videoTags,
+    categories: s.categories,
+    fetchVideoTagsForIds: s.fetchVideoTagsForIds,
+    fetchCategories: s.fetchCategories,
+  })));
 
   // Stabilize the video list passed to QuickSort so that tag-loading mid-session
   // does NOT change `current` and cause VideoOrganizerPanel to cycle through videos,
@@ -40,6 +57,9 @@ export default function InboxView() {
     fetchCategories();
   }, []);
 
+  // 開いている間は、裏での追加や整理の後に一覧ごと読み直してもらう
+  useEffect(() => markInboxViewShown(), []);
+
   useEffect(() => {
     const newIds = videos.map((v) => v.id).filter((id) => !(id in videoTags));
     if (newIds.length > 0) {
@@ -55,17 +75,24 @@ export default function InboxView() {
     { key: 'archive', label: 'アーカイブ', description: '30日以降' },
   ];
 
-  const bucketVideos: Record<TimeBucket, Video[]> = {
-    active: videos.filter((v) => getTimeBucket(v.created_at) === 'active'),
-    review: videos.filter((v) => getTimeBucket(v.created_at) === 'review'),
-    archive: videos.filter((v) => getTimeBucket(v.created_at) === 'archive'),
-  };
+  // 一覧を 1 回だけなめて期間ごとに分ける (再描画のたびに全件を 3 回 filter しない)
+  const bucketVideos = useMemo(() => {
+    const buckets: Record<TimeBucket, Video[]> = { active: [], review: [], archive: [] };
+    for (const v of videos) buckets[getTimeBucket(v.created_at)].push(v);
+    return buckets;
+  }, [videos]);
 
-  const bucketStacks: Record<TimeBucket, InboxStack[]> = {
-    active: buildStacks(bucketVideos.active, videoTags, categories).filter((s) => !hiddenTypes.has(s.stackType)),
-    review: buildStacks(bucketVideos.review, videoTags, categories).filter((s) => !hiddenTypes.has(s.stackType)),
-    archive: buildStacks(bucketVideos.archive, videoTags, categories).filter((s) => !hiddenTypes.has(s.stackType)),
-  };
+  // QuickSort 中は一覧を出さないので組み立てない
+  const bucketStacks = useMemo((): Record<TimeBucket, InboxStack[]> => {
+    if (activeStack) return { active: [], review: [], archive: [] };
+    const build = (vs: Video[]) =>
+      buildStacks(vs, videoTags, categories).filter((s) => !hiddenTypes.has(s.stackType));
+    return {
+      active: build(bucketVideos.active),
+      review: build(bucketVideos.review),
+      archive: build(bucketVideos.archive),
+    };
+  }, [activeStack, bucketVideos, videoTags, categories, hiddenTypes]);
 
   const hasAnyStacks = Object.values(bucketStacks).some((ss) => ss.length > 0);
 
