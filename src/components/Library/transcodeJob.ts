@@ -1,23 +1,19 @@
 import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
+import { notifyInboxChanged } from '../../store/useInboxStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
-import { useTagStore } from '../../store/useTagStore';
 import { useTranscodeStore, type TranscodeJob, type TranscodeMode } from '../../store/useTranscodeStore';
 import { toast } from '../../store/useToastStore';
-import type { Tag } from '../../types';
 
 export type { TranscodeMode };
 export type TranscodeKind = TranscodeMode['kind'];
 
-/** 変換元の情報 (変換後のファイルへメタデータを引き継ぐのに使う) */
+/** 変換元の動画。引き継ぐ情報は変換が終わった時点の DB から読む (待機中の変更も写す) */
 export interface TranscodeSource {
   id: number;
   path: string;
   title: string | null;
   duration: number | null;
-  categoryId: number | null;
-  rating: number;
-  createdAt: string | null;
 }
 
 /** trash_transcode_source の戻り値 */
@@ -122,8 +118,9 @@ export function isEfficientCodec(codec: string | null): boolean {
 }
 
 /**
- * 変換をキューに追加する。変換に成功したら、評価・カテゴリ・タグ・追加日を変換後のファイルへ写し、
- * 指定があれば元ファイルをゴミ箱へ移動する。同じファイルが実行中・待機中なら追加せず false を返す。
+ * 変換をキューに追加する。変換に成功したら、変換元の情報 (タイトル・評価・カテゴリ・タグ・追加日・
+ * 整理の状態・視聴履歴・取得元・グループ・プレイリスト。db_videos.rs の inherit_video_metadata) を
+ * 変換後のファイルへ写し、指定があれば元ファイルをゴミ箱へ移動して、グループの代表も変換後へ移す。同じファイルが実行中・待機中なら追加せず false を返す。
  * 成功時の処理はモーダルが閉じた後に走るため、ストアと invoke だけで完結させる。
  */
 export function enqueueTranscode(
@@ -144,28 +141,22 @@ export function enqueueTranscode(
     prepare: opts.prepare,
     onSuccess: async (finalPath) => {
       const library = useLibraryStore.getState();
-      const tagStore = useTagStore.getState();
       const newId = await library.addVideoFromPath(finalPath, stem);
       if (newId == null) {
         if (opts.trashOriginal) toast.error(t('transcode.trashOriginalSkipped'));
         return;
       }
-      if (source.categoryId != null) {
-        await tagStore.setVideoCategory(newId, source.categoryId);
+      try {
+        await invoke('db_inherit_video_metadata', { sourceId: source.id, targetId: newId });
+      } catch (e) {
+        // 引き継げなかったまま元を消すと情報が失われるので、元ファイルは残す
+        console.error('[transcode] 変換元の情報の引き継ぎに失敗:', e);
+        toast.error(t('transcode.inheritFailed', { error: String(e) }));
+        return;
+      } finally {
+        notifyInboxChanged();
+        await library.fetchVideos();
       }
-      await library.updateVideo(newId, {
-        ...(source.rating > 0 ? { rating: source.rating } : {}),
-        ...(source.createdAt ? { created_at: source.createdAt } : {}),
-      });
-      // タグは変換完了時点のものを写す (待機中に付け替えた分も引き継ぐ)
-      const tags = await invoke<Tag[]>('db_fetch_video_tags', { videoId: source.id }).catch((e: unknown) => {
-        console.error('[transcode] 元ファイルのタグ取得に失敗:', e);
-        return [] as Tag[];
-      });
-      for (const tag of tags) {
-        await tagStore.addTagToVideo(newId, tag.id);
-      }
-      await library.fetchVideos();
 
       // 元ファイルをゴミ箱へ移動 (メタデータのコピー完了後のみ)。
       // 変換結果の検証はバックエンドで行い、失敗時は元ファイルを残す。
@@ -180,6 +171,11 @@ export function enqueueTranscode(
       }
       // ファイルはもう無いので、ライブラリから外せなくても整理画面の一覧からは外す
       useTranscodeStore.getState().markSourceRemoved(source.path);
+      try {
+        await invoke('db_take_over_group_cover', { sourceId: source.id, targetId: newId });
+      } catch (e) {
+        console.error('[transcode] グループの代表の引き継ぎに失敗:', e);
+      }
       try {
         await library.removeVideo(source.id);
       } catch (e) {

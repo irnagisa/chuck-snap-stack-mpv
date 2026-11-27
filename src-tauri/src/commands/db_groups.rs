@@ -482,6 +482,39 @@ pub fn remove_from_group(conn: &Connection, video_ids: &[i64]) -> Result<(), Str
     })
 }
 
+/// `video_id` を `anchor_id` と同じグループの、すぐ後ろに入れる (変換後のファイルを元の隣に置く)。
+/// `anchor_id` がグループに入っていなければ何もしない。呼び出し側でトランザクションにする
+pub fn insert_after(conn: &Connection, anchor_id: i64, video_id: i64) -> rusqlite::Result<()> {
+    if anchor_id == video_id {
+        return Ok(());
+    }
+    let anchor: Option<(i64, i64)> = conn
+        .query_row(
+            "SELECT group_id, COALESCE(group_position, 0) FROM videos WHERE id = ?1 AND group_id IS NOT NULL",
+            [anchor_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((group_id, pos)) = anchor else {
+        return Ok(());
+    };
+    conn.execute(
+        "UPDATE media_groups SET cover_video_id = NULL
+         WHERE cover_video_id = ?1 AND id != ?2",
+        params![video_id, group_id],
+    )?;
+    conn.execute(
+        "UPDATE videos SET group_position = group_position + 1
+         WHERE group_id = ?1 AND group_position > ?2 AND id != ?3",
+        params![group_id, pos, video_id],
+    )?;
+    conn.execute(
+        "UPDATE videos SET group_id = ?1, group_position = ?2 WHERE id = ?3",
+        params![group_id, pos + 1, video_id],
+    )?;
+    delete_empty_groups(conn)
+}
+
 pub fn reorder_group(conn: &Connection, group_id: i64, video_ids: &[i64]) -> Result<(), String> {
     with_transaction(conn, || {
         let mut stmt =
