@@ -12,6 +12,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     if user_version(conn)? == 0 && table_exists(conn, "videos")? {
         upgrade_unversioned(conn)?;
     }
+    // v1 → v2: media_transcode_discarded を足しただけ (テーブルは `init_db` の create_tables が作る)
     Ok(())
 }
 
