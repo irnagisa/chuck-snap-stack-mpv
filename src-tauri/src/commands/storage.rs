@@ -675,13 +675,20 @@ const LAST_SEEN_EXPR: &str = "NULLIF(MAX(COALESCE(datetime(last_viewed_at), ''),
 /// ビットレート (bps)。`duration > 0` の行でだけ使う
 const BITRATE_EXPR: &str = "(file_size * 8.0 / duration)";
 
-/// 高ビットレートの一覧に出す動画の条件 (`videos` の列だけを使う)。
-/// このアプリで再エンコードした出力 (`*.av1.mkv` / `*.hevc.mkv`) は対象外
+/// 高ビットレートの一覧に出す動画の条件。次のものは対象外:
+/// - このアプリで再エンコードした出力 (`*.av1.mkv` / `*.hevc.mkv`)
+/// - 調べてもとから AV1 だった動画 (変換しても縮まない)
+/// - 再エンコードしても十分に小さくならず、変換後のファイルを破棄した動画 (ファイルがその後変わっていないもの)
 fn high_bitrate_filter() -> String {
     format!(
         "AND media_type = 'video' AND duration > 0
          AND {BITRATE_EXPR} >= {HIGH_BITRATE_BPS}
-         AND path NOT LIKE '%.av1.mkv' AND path NOT LIKE '%.hevc.mkv'"
+         AND path NOT LIKE '%.av1.mkv' AND path NOT LIKE '%.hevc.mkv'
+         AND NOT EXISTS (SELECT 1 FROM media_probe av1
+                         WHERE av1.video_id = videos.id AND av1.video_codec = 'av1'
+                           AND av1.probe_key LIKE (videos.file_size || ':%'))
+         AND NOT EXISTS (SELECT 1 FROM media_transcode_discarded td
+                         WHERE td.video_id = videos.id AND td.file_key LIKE (videos.file_size || ':%'))"
     )
 }
 
@@ -1318,6 +1325,45 @@ mod tests {
         assert_eq!(c.unchecked_count, Some(2));
         // 件数を絞っても並びは同じ
         assert_eq!(ids(&query_candidates(&conn, "highBitrate", 1).unwrap()), vec![h264]);
+    }
+
+    #[test]
+    fn high_bitrate_skips_already_av1_and_discarded_transcodes_until_file_changes() {
+        let conn = setup();
+        let probe = |id: i64, size: i64, codec: &str| {
+            conn.execute(
+                "INSERT INTO media_probe (video_id, probe_key, video_codec, width, height, fps, video_bitrate)
+                 VALUES (?1, ?2, ?3, 1920, 1080, 30.0, 10000000)",
+                rusqlite::params![id, format!("{size}:1"), codec],
+            )
+            .unwrap();
+        };
+        let discard = |id: i64, size: i64, mode: &str| {
+            conn.execute(
+                "INSERT INTO media_transcode_discarded (video_id, mode, file_key, input_bytes, output_bytes)
+                 VALUES (?1, ?2, ?3, ?4, ?4)",
+                rusqlite::params![id, mode, format!("{size}:1"), size],
+            )
+            .unwrap();
+        };
+        let h264 = add_candidate(&conn, "/m/h264.mp4", 75_000_000, "duration = 60");
+        probe(h264, 75_000_000, "h264");
+        // もとから AV1 (このアプリの出力ではない名前)
+        let av1 = add_candidate(&conn, "/m/av1.mp4", 75_000_000, "duration = 60");
+        probe(av1, 75_000_000, "av1");
+        // AV1 / HEVC にしても縮まず破棄した
+        let no_gain = add_candidate(&conn, "/m/nogain.mp4", 75_000_000, "duration = 60");
+        discard(no_gain, 75_000_000, "av1");
+        let no_gain_hevc = add_candidate(&conn, "/m/nogain_hevc.mp4", 75_000_000, "duration = 60");
+        discard(no_gain_hevc, 75_000_000, "hevc");
+        // 破棄した後にファイルが差し替わった (サイズが違う) ものは一覧に戻す
+        let replaced = add_candidate(&conn, "/m/replaced.mp4", 90_000_000, "duration = 60");
+        discard(replaced, 80_000_000, "av1");
+
+        let c = query_candidates(&conn, "highBitrate", 100).unwrap();
+        assert_eq!(ids(&c), vec![h264, replaced]);
+        // 外したものは調べる対象にも入れない
+        assert_eq!(c.unchecked_count, Some(1));
     }
 
     #[test]

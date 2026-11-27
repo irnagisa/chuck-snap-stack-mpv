@@ -178,6 +178,25 @@ describe('discarded', () => {
   });
 });
 
+describe('discardedPaths', () => {
+  it('records only re-encodes (AV1 / HEVC) that were discarded', async () => {
+    useTranscodeStore.setState({ discardedPaths: new Set() });
+    const s = useTranscodeStore.getState();
+    s.enqueue(makeOpts('/v/av1.mp4'));
+    s.enqueue(makeOpts('/v/hevc.mp4', { mode: { kind: 'hevc', bitratePercent: 50 } }));
+    s.enqueue(makeOpts('/v/audio.mp4', { mode: { kind: 'audio' } }));
+    s.enqueue(makeOpts('/v/done.mp4'));
+    for (let i = 0; i < 3; i++) {
+      await flush();
+      pending[i].discard(1000, 990);
+    }
+    await flush();
+    pending[3].resolve('/v/done.av1.mkv');
+    await flush();
+    expect([...useTranscodeStore.getState().discardedPaths]).toEqual(['/v/av1.mp4', '/v/hevc.mp4']);
+  });
+});
+
 describe('cancel', () => {
   it('cancels only the running job and keeps processing the queue', async () => {
     const s = useTranscodeStore.getState();

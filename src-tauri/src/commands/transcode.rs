@@ -38,6 +38,12 @@ impl FileFingerprint {
         }
         Ok(Self { len: meta.len(), modified: meta.modified().ok() })
     }
+
+    /// 「サイズ:更新日時(ns)」(`media_probe.probe_key` と同じ形)。更新日時が読めなければ None
+    fn key(&self) -> Option<String> {
+        let mtime = self.modified?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
+        Some(format!("{}:{mtime}", self.len))
+    }
 }
 
 /// 直近に成功したトランスコードの記録。
@@ -94,6 +100,7 @@ pub enum TranscodeOutcome {
 pub async fn transcode_video(
     app: tauri::AppHandle,
     state: tauri::State<'_, TranscodeState>,
+    db_state: tauri::State<'_, DbState>,
     app_settings: tauri::State<'_, SharedAppSettings>,
     input_path: String,
     duration_secs: f64,
@@ -362,6 +369,15 @@ pub async fn transcode_video(
 
     if let Some((input_bytes, output_bytes)) = result? {
         log::info!("[transcode] 縮小が小さいため変換後のファイルを破棄しました ({input_bytes} → {output_bytes} bytes): {input_path}");
+        // 整理画面の高ビットレートの一覧に出し続けないように記録する
+        if let (Some(kind), Some(key)) = (mode.reencode_kind(), input_fingerprint.key()) {
+            let recorded = db_state.conn().and_then(|conn| {
+                record_discarded(&conn, &normalize_path_str(&input_path), kind, &key, input_bytes, output_bytes)
+            });
+            if let Err(e) = recorded {
+                log::warn!("[transcode] 破棄した変換の記録に失敗しました: {e}");
+            }
+        }
         notify(&app, "変換後のファイルを破棄しました", &format!(
             "{} は十分に小さくならなかったため、元のファイルを残しました",
             file_name_of(&input_path),
@@ -448,6 +464,25 @@ fn crash_signal(status: &std::process::ExitStatus) -> Option<i32> {
         let _ = status;
         None
     }
+}
+
+/// 再エンコードしても十分に小さくならなかったことを記録する (`media_transcode_discarded`)。
+/// ライブラリに無いファイルなら何もしない
+fn record_discarded(
+    conn: &rusqlite::Connection,
+    path: &str,
+    kind: &str,
+    file_key: &str,
+    input_bytes: u64,
+    output_bytes: u64,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO media_transcode_discarded (video_id, mode, file_key, input_bytes, output_bytes)
+         SELECT id, ?2, ?3, ?4, ?5 FROM videos WHERE path = ?1",
+        rusqlite::params![path, kind, file_key, input_bytes as i64, output_bytes as i64],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 fn take_child(slot: &Mutex<Option<Child>>) -> Option<Child> {
@@ -573,6 +608,15 @@ pub enum TranscodeMode {
 const OUTPUT_SUFFIXES: [&str; 4] = ["av1", "hevc", "opus", "slim"];
 
 impl TranscodeMode {
+    /// 映像を再エンコードする変換なら `media_transcode_discarded.mode` に入れる名前
+    fn reencode_kind(&self) -> Option<&'static str> {
+        match self {
+            Self::Av1 { .. } => Some("av1"),
+            Self::Hevc { .. } => Some("hevc"),
+            Self::Audio | Self::Remux { .. } | Self::DropStreams { .. } => None,
+        }
+    }
+
     fn suffix(&self) -> &'static str {
         match self {
             Self::Av1 { .. } => OUTPUT_SUFFIXES[0],
@@ -1994,6 +2038,26 @@ mod tests {
         for m in ["0:V", "0:a?", "0:s?", "0:t?"] {
             assert!(has_pair(&args, "-map", m), "-map {m}");
         }
+    }
+
+    #[test]
+    fn record_discarded_upserts_by_path_and_ignores_unknown_files() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::schema::init_db(&conn).unwrap();
+        conn.execute("INSERT INTO videos (path, file_size) VALUES ('/m/a.mp4', 100)", []).unwrap();
+        let rows = || -> Vec<(String, String, i64)> {
+            let mut stmt = conn
+                .prepare("SELECT mode, file_key, output_bytes FROM media_transcode_discarded ORDER BY mode")
+                .unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap().map(|r| r.unwrap()).collect()
+        };
+        record_discarded(&conn, "/m/a.mp4", "av1", "100:1", 100, 95).unwrap();
+        record_discarded(&conn, "/m/a.mp4", "av1", "100:2", 100, 97).unwrap();
+        record_discarded(&conn, "/m/a.mp4", "hevc", "100:2", 100, 99).unwrap();
+        record_discarded(&conn, "/m/unknown.mp4", "av1", "1:1", 1, 1).unwrap();
+        assert_eq!(rows(), vec![("av1".into(), "100:2".into(), 97), ("hevc".into(), "100:2".into(), 99)]);
+        assert_eq!(TranscodeMode::Audio.reencode_kind(), None);
+        assert_eq!(TranscodeMode::Hevc { bitrate_percent: 50 }.reencode_kind(), Some("hevc"));
     }
 
     #[test]

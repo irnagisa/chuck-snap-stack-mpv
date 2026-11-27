@@ -82,6 +82,12 @@ interface TranscodeStore {
    * 開いている整理画面の一覧から、読み直さずにすぐ外すのに使う
    */
   removedSourcePaths: ReadonlySet<string>;
+  /**
+   * 再エンコード (AV1 / HEVC) しても縮まず、変換後のファイルを破棄したパス (バッチをまたいで持つ)。
+   * 開いている整理画面の高ビットレートの一覧から、読み直さずにすぐ外すのに使う
+   * (バックエンドも記録するので、読み直した一覧にも出ない)
+   */
+  discardedPaths: ReadonlySet<string>;
 
   /** キューに追加する。同じファイルが実行中・待機中の場合は追加せず false を返す */
   enqueue(opts: EnqueueOptions): boolean;
@@ -140,8 +146,10 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
       });
       if (outcome.status === 'discarded') {
         // 変換後のファイルは破棄済み。元ファイル・メタデータには触らない (onSuccess も呼ばない)
+        const reencoded = mode.kind === 'av1' || mode.kind === 'hevc';
         set((s) => ({
           batch: { ...s.batch, discarded: s.batch.discarded + 1, lastDiscardedName: job.videoName },
+          ...(reencoded && { discardedPaths: new Set(s.discardedPaths).add(job.videoPath) }),
         }));
         const savedPercent = outcome.inputBytes > 0
           ? Math.max(0, (1 - outcome.outputBytes / outcome.inputBytes) * 100)
@@ -226,6 +234,7 @@ export const useTranscodeStore = create<TranscodeStore>((set, get) => {
     isDone: false,
     lastError: null,
     removedSourcePaths: new Set(),
+    discardedPaths: new Set(),
 
     enqueue(opts) {
       const { current, queue, isDone } = get();

@@ -118,6 +118,7 @@ export function StorageModal({ onClose }: Props) {
   const removeMultiple = useLibraryStore((s) => s.removeMultiple);
   const generateThumbnails = useLibraryStore((s) => s.generateThumbnails);
   const removedSourcePaths = useTranscodeStore((s) => s.removedSourcePaths);
+  const discardedPaths = useTranscodeStore((s) => s.discardedPaths);
 
   const [overview, setOverview] = useState<StorageOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -213,22 +214,23 @@ export function StorageModal({ onClose }: Props) {
   }, [kind, loadCandidates]);
 
   /**
-   * 変換後に元ファイルをゴミ箱へ移した動画は、一覧を読み直さずにすぐ外す
-   * (元ファイルを残した場合はそのまま表示する)。変換をこの画面から始める高ビットレート・無音の一覧だけ
+   * 一覧を読み直さずにすぐ外す動画。変換をこの画面から始める高ビットレート・無音の一覧だけ
+   * - 変換後に元ファイルをゴミ箱へ移した動画 (元ファイルを残した場合はそのまま表示する)
+   * - 高ビットレートの一覧では、再エンコードしても縮まず変換後のファイルを破棄した動画も
    */
   const candidates = useMemo(() => {
-    if (!loadedCandidates || (kind !== "highBitrate" && kind !== "silentAudio") || removedSourcePaths.size === 0) {
-      return loadedCandidates;
-    }
-    const removed = loadedCandidates.items.filter((i) => removedSourcePaths.has(i.path));
+    if (!loadedCandidates || (kind !== "highBitrate" && kind !== "silentAudio")) return loadedCandidates;
+    const hidden = (path: string) =>
+      removedSourcePaths.has(path) || (kind === "highBitrate" && discardedPaths.has(path));
+    const removed = loadedCandidates.items.filter((i) => hidden(i.path));
     if (removed.length === 0) return loadedCandidates;
     return {
       ...loadedCandidates,
-      items: loadedCandidates.items.filter((i) => !removedSourcePaths.has(i.path)),
+      items: loadedCandidates.items.filter((i) => !hidden(i.path)),
       totalCount: Math.max(0, loadedCandidates.totalCount - removed.length),
       totalBytes: Math.max(0, loadedCandidates.totalBytes - removed.reduce((s, i) => s + i.fileSize, 0)),
     };
-  }, [loadedCandidates, kind, removedSourcePaths]);
+  }, [loadedCandidates, kind, removedSourcePaths, discardedPaths]);
 
   // ── 内訳 ────────────────────────────────────────────────────────────────
 

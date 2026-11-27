@@ -5,7 +5,7 @@ use super::migrations;
 /// スキーマの版。`PRAGMA user_version` に入れる。
 /// 列やテーブルを変えるときは `TABLES` / `INDEXES` を直し、版を 1 つ上げて `migrations::migrate` に
 /// 前の版からの書き換えを足す。
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// 今の版のテーブル。新しく作る DB はこれと `INDEXES` だけで出来上がる。
 ///
@@ -114,6 +114,19 @@ CREATE TABLE IF NOT EXISTS media_probe (
   fps           REAL,
   video_bitrate INTEGER,                               -- 映像だけ (bps)
   probed_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 再エンコード (AV1 / HEVC) しても十分に小さくならず、変換後のファイルを破棄した動画 (commands/transcode.rs)。
+-- 整理画面の高ビットレートの一覧から外すのに使う。file_key は変換したときの元ファイルの
+-- 「サイズ:更新日時(ns)」で、サイズが videos.file_size と食い違えば (ファイルが変われば) 使わない
+CREATE TABLE IF NOT EXISTS media_transcode_discarded (
+  video_id     INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  mode         TEXT NOT NULL CHECK (mode IN ('av1', 'hevc')),
+  file_key     TEXT NOT NULL,
+  input_bytes  INTEGER NOT NULL,
+  output_bytes INTEGER NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (video_id, mode)
 );
 
 CREATE TABLE IF NOT EXISTS video_tags (

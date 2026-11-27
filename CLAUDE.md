@@ -179,6 +179,17 @@ CREATE TABLE media_probe (
   probed_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 再エンコード (AV1 / HEVC) しても十分に小さくならず、変換後のファイルを破棄した動画。整理画面の高ビットレートの一覧から外す
+CREATE TABLE media_transcode_discarded (
+  video_id     INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  mode         TEXT NOT NULL,    -- 'av1' | 'hevc' (CHECK)
+  file_key     TEXT NOT NULL,    -- 変換したときの元ファイルの「サイズ:更新日時(ns)」。サイズが videos.file_size と違えば使わない
+  input_bytes  INTEGER NOT NULL,
+  output_bytes INTEGER NOT NULL,
+  created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (video_id, mode)
+);
+
 -- カテゴリ (階層構造対応)
 CREATE TABLE categories (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -402,7 +413,7 @@ unlisten();
 - スキーマは `db/schema.rs` の `TABLES` / `INDEXES` が今の版のすべて。版は `PRAGMA user_version` (`SCHEMA_VERSION`) で持ち、変えるときは版を上げて `db/migrations.rs` の `migrate` に前の版からの書き換えを足す
 - 動画を消すときは `db_videos::delete_videos` (タグ付け・プレイリスト・キャッシュは CASCADE で消える。手で消さない)。複数の文を書くときは `conn.unchecked_transaction()` でトランザクションにする (`BEGIN` を手で書かない)
 - `Video` を読むときは `db_videos::VIDEO_COLUMNS` / `query_videos` を使う
-- 整理画面の高ビットレートは、AV1 にしたときに減る割合の見積もり (`media_probe::estimate_av1_saving`、解像度・fps・コーデック・ビットレートからの目安) の大きい順に並べる
+- 整理画面の高ビットレートは、AV1 にしたときに減る割合の見積もり (`media_probe::estimate_av1_saving`、解像度・fps・コーデック・ビットレートからの目安) の大きい順に並べる。もとから AV1 の動画と、再エンコードしても縮まず破棄した動画 (`media_transcode_discarded`) は出さない
 - 整理画面の確認 (映像の情報・pHash・無音の簡易判定) は `useBackgroundChecks` が何もしていないときに裏で進める (設定 `background_checks`、既定 on)。急がない ffmpeg は `utils::background_command` で起動し、macOS では `taskpolicy -c utility` で優先度を下げる
 - AI タグ提案は tract-onnx で ONNX モデルを実行 (WD ViT Tagger v3)。モデルは `download_ai_model` でダウンロード
 - rusqlite を直接使用 (tauri-plugin-sql は不使用)。SQL インジェクション対策でプリペアドステートメントを使う
