@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTagStore, buildCategoryTree, flattenCategoryTree, getCategoryPath } from '../../store/useTagStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
-import { useInboxStore } from '../../store/useInboxStore';
+import { notifyInboxChanged } from '../../store/useInboxStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { usePlayerStore } from '../../store/usePlayerStore';
 import { toast } from '../../store/useToastStore';
@@ -34,7 +34,6 @@ export function VideoOrganizerPanel({ video, dense = false }: Props) {
   const { tags, categories, videoTags, addTagToVideo, removeTagFromVideo, setVideoCategory, fetchVideoTags, createTag } =
     useTagStore();
   const { fetchVideos, updateVideo, watchDirs, moveVideoFile } = useLibraryStore();
-  const { fetchInbox } = useInboxStore();
   const { categoryMode } = useSettingsStore();
 
   const [localRating, setLocalRating] = useState(video.rating ?? 0);
@@ -98,14 +97,14 @@ export function VideoOrganizerPanel({ video, dense = false }: Props) {
     await updateVideo(video.id, { rating: next });
     // 再生中の動画ならプレイヤー側の値も合わせる
     usePlayerStore.getState().patchVideoFields(video.id, { rating: next });
-    // 自動卒業が発生した場合に InboxView を更新する (非ブロッキング)
-    fetchInbox().catch(() => {});
+    // 自動卒業で Inbox から外れることがあるため (非ブロッキング)
+    notifyInboxChanged();
   };
 
   const handleAddTag = async (tag: Tag) => {
     await addTagToVideo(video.id, tag.id);
     setTagInput('');
-    fetchInbox().catch(() => {});
+    notifyInboxChanged();
   };
 
   const handleCreateAndAdd = async () => {
@@ -113,7 +112,7 @@ export function VideoOrganizerPanel({ video, dense = false }: Props) {
     const tag = await createTag(tagInput.trim(), newTagColor, newTagIcon);
     await addTagToVideo(video.id, tag.id);
     setTagInput('');
-    fetchInbox().catch(() => {});
+    notifyInboxChanged();
   };
 
   const handleRemoveTag = async (tagId: number) => {
@@ -141,7 +140,7 @@ export function VideoOrganizerPanel({ video, dense = false }: Props) {
     }
 
     await fetchVideos();
-    fetchInbox().catch(() => {});
+    notifyInboxChanged();
   };
 
   const shownRating = hoverRating || localRating;
