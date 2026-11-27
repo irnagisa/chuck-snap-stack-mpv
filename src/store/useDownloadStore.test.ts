@@ -96,6 +96,26 @@ describe('dismissJob', () => {
 });
 
 // ---------------------------------------------------------------------------
+// clearFinished
+// ---------------------------------------------------------------------------
+
+describe('clearFinished', () => {
+  it('removes done / error / cancelled jobs and keeps queued / downloading ones', () => {
+    useDownloadStore.setState({
+      jobs: [
+        makeJob({ id: 'q', phase: 'queued' }),
+        makeJob({ id: 'd', phase: 'downloading' }),
+        makeJob({ id: 'ok', phase: 'done' }),
+        makeJob({ id: 'ng', phase: 'error' }),
+        makeJob({ id: 'c', phase: 'cancelled' }),
+      ],
+    });
+    useDownloadStore.getState().clearFinished();
+    expect(useDownloadStore.getState().jobs.map((j) => j.id)).toEqual(['q', 'd']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // cancelActive
 // ---------------------------------------------------------------------------
 

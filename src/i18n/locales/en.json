@@ -45,7 +45,8 @@
     "transcodeBatchPartial": "Transcode finished: {{failed}} of {{total}} failed",
     "storageTitle": "Storage cleanup",
     "transcodeDiscarded": "Converted file discarded: {{name}} (original kept)",
-    "transcodeBatchDiscarded": " ({{count}} discarded as not smaller)"
+    "transcodeBatchDiscarded": " ({{count}} discarded as not smaller)",
+    "thumbnailDone": "Thumbnails generated: {{count}}"
   },
   "sidebar": {
     "label": "Library navigation",
@@ -791,7 +792,10 @@
   "downloadQueue": {
     "queued": "Queued...",
     "downloading": "Downloading...",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "done": "Downloaded: {{name}}",
+    "error": "Download failed: {{name}}",
+    "cancelled": "Cancelled"
   },
   "confirm": {
     "cancel": "Cancel",
@@ -1019,5 +1023,18 @@
     "suggestApplyAll": "Group all ({{count}})",
     "suggestDone": "Grouped",
     "suggestCreated": "Created {{count}} groups"
+  },
+  "activity": {
+    "label": "Activity",
+    "title": "Activity",
+    "empty": "Nothing in progress",
+    "clearFinished": "Clear finished",
+    "dismiss": "Dismiss",
+    "thumbnails": "Thumbnails",
+    "transcode": "Conversion",
+    "downloads": "Downloads",
+    "running": "{{count}} in progress",
+    "finished": "Some tasks have finished",
+    "failed": "Some tasks have failed"
   }
 }

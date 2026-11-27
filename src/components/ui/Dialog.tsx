@@ -9,7 +9,7 @@ import styles from "./Dialog.module.css";
 export type DialogSize = "sm" | "md" | "lg" | "xl";
 
 /**
- * トースト・ダウンロードの進み具合など、モーダルより上に浮かぶ層の印 (`data-floating-layer`)。
+ * トーストなど、モーダルより上に浮かぶ層の印 (`data-floating-layer`)。
  * 見た目はモーダルより上なので、ここへの操作でモーダルが閉じないようにする。
  */
 function isInFloatingLayer(target: EventTarget | null) {
