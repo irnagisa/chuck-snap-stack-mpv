@@ -7,6 +7,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
-    exclude: ['e2e/**', 'node_modules/**'],
+    // .claude/skills の spec は WebdriverIO で実アプリに対して動かすもの (driver.sh run)
+    exclude: ['e2e/**', 'node_modules/**', '.claude/**'],
   },
 });
