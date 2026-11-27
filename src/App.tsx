@@ -28,7 +28,6 @@ import { WatchDirRemovedAlert } from "./components/WatchDirRemovedAlert";
 import { LibrarySidebar } from "./components/Library/LibrarySidebar";
 import { LibraryFilterBar } from "./components/Library/LibraryFilterBar";
 import { BatchActionBar } from "./components/Library/BatchActionBar";
-import InboxView from "./components/Inbox/InboxView";
 import { HomeView } from "./components/Home/HomeView";
 import {
   DetailPlaceholder,
@@ -37,12 +36,11 @@ import {
   ThreePaneLayout,
   layoutStyles as styles,
 } from "./components/Layout";
-import { useInboxStore } from "./store/useInboxStore";
 import { motion } from "motion/react";
 import { Button, Collapse, ConfirmDialog, EmptyState, motionPresets } from "./components/ui";
 import { FolderPlus, SearchX } from "lucide-react";
 
-type MainView = "home" | "library" | "inbox";
+type MainView = "home" | "library";
 
 const { viewEnter } = motionPresets;
 
@@ -53,7 +51,7 @@ function App() {
     videos, totalCount, currentPage, pageSize,
     filterSearch, filterCategoryId, filterTagIds, filterTagMode,
     filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-    filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups, filterSortBy, filterSortOrder,
+    filterWatchedStatus, filterNewOnly, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups, filterSortBy, filterSortOrder,
     isThumbnailGenerating, isDbReady, dbError,
   } = useLibraryStore(useShallow((s) => ({
     videos: s.videos,
@@ -70,6 +68,7 @@ function App() {
     filterMinDuration: s.filterMinDuration,
     filterMaxDuration: s.filterMaxDuration,
     filterWatchedStatus: s.filterWatchedStatus,
+    filterNewOnly: s.filterNewOnly,
     filterWatchDir: s.filterWatchDir,
     filterMediaType: s.filterMediaType,
     filterAv1: s.filterAv1,
@@ -106,8 +105,6 @@ function App() {
 
   const viewMode = useLibraryViewStore((s) => s.viewMode);
 
-  const inboxCount = useInboxStore((s) => s.stats?.inboxCount ?? 0);
-
   useTheme();
   useKeyboardShortcuts({ onEscape: () => { setViewingImage(null); closeAll(); } });
   useWatcher();
@@ -126,6 +123,16 @@ function App() {
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [useDirAsCategory, setUseDirAsCategory] = useState(false);
   const [viewingImage, setViewingImage] = useState<Video | null>(null);
+
+  // 画像はビューアで見たら (前後へ送った分も) 詳細を開いたのと同じく新着から外す
+  const viewingImageId = viewingImage?.id;
+  useEffect(() => {
+    if (viewingImageId == null) return;
+    useLibraryStore.getState().markSeen(viewingImageId);
+    invoke("db_update_last_viewed", { videoId: viewingImageId }).catch((e: unknown) => {
+      console.error("[App] db_update_last_viewed error:", e);
+    });
+  }, [viewingImageId]);
   const [pendingImport, setPendingImport] = useState<{
     path: string;
     fileCount: number;
@@ -161,7 +168,7 @@ function App() {
     const {
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
+      filterWatchedStatus, filterNewOnly, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
       filterSortBy, filterSortOrder,
     } = useLibraryStore.getState();
     invoke<number | null>('db_find_video_page', {
@@ -170,7 +177,7 @@ function App() {
         filterSearch, filterCategoryId, filterTagIds, filterTagMode,
         filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration,
         filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
-        filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
+        filterWatchedStatus, filterNewOnly, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
         filterSortBy, filterSortOrder,
         currentPage: 1, pageSize,
       },
@@ -227,6 +234,7 @@ function App() {
     filterMinDuration > 0 ||
     filterMaxDuration > 0 ||
     filterWatchedStatus !== "all" ||
+    filterNewOnly ||
     filterWatchDir !== null ||
     filterMediaType !== "all" ||
     filterAv1 !== "all";
@@ -261,13 +269,13 @@ function App() {
       [
         filterSearch, filterCategoryId, filterTagIds.join(","), filterTagMode,
         filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-        filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
+        filterWatchedStatus, filterNewOnly, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
         filterSortBy, filterSortOrder, currentPage,
       ].join("|"),
     [
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
+      filterWatchedStatus, filterNewOnly, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
       filterSortBy, filterSortOrder, currentPage,
     ]
   );
@@ -305,6 +313,11 @@ function App() {
     [openDetailVideo]
   );
 
+  const handleHomeShowNew = useCallback(() => {
+    setMainView("library");
+    useLibraryStore.getState().setNewOnly(true);
+  }, []);
+
   const handleHomeOpenFolder = useCallback(
     (dir: string) => {
       setMainView("library");
@@ -323,7 +336,6 @@ function App() {
         <motion.div key="full" className={styles.shell} {...viewEnter}>
           <AppHeader
             mainView={mainView}
-            inboxCount={inboxCount}
             searchInput={searchInput}
             useDirAsCategory={useDirAsCategory}
             onMainViewChange={setMainView}
@@ -342,14 +354,10 @@ function App() {
               {mainView === "home" ? (
                 <ErrorBoundary>
                   <HomeView
-                    onNavigate={setMainView}
+                    onShowNew={handleHomeShowNew}
                     onOpenVideo={handleHomeOpenVideo}
                     onOpenFolder={handleHomeOpenFolder}
                   />
-                </ErrorBoundary>
-              ) : mainView === "inbox" ? (
-                <ErrorBoundary>
-                  <InboxView />
                 </ErrorBoundary>
               ) : (
                 <ThreePaneLayout
@@ -446,7 +454,7 @@ function App() {
             </motion.div>
           </div>
 
-          {mainView !== "inbox" && <PlayerControls />}
+          <PlayerControls />
         </motion.div>
       )}
 

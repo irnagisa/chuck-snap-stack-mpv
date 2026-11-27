@@ -6,7 +6,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../../store/useSettingsStore";
 import { useDownloadStore } from "../../store/useDownloadStore";
 import { useLibraryStore } from "../../store/useLibraryStore";
-import { notifyInboxChanged } from "../../store/useInboxStore";
 import { Download, Link2 } from "lucide-react";
 import { Button, Dialog, Input, SegmentedControl, Switch, useDialogClose } from "../ui";
 import styles from "./LibraryModal.module.css";
@@ -126,7 +125,6 @@ export function DownloadModal({ onClose }: Props) {
         title: linkTitle || trimmed,
         thumbnailUrl: linkMeta?.thumbnailUrl ?? null,
       });
-      notifyInboxChanged();
       await fetchVideos();
       dialog.close();
     } catch (e) {

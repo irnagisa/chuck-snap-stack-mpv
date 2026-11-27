@@ -35,7 +35,6 @@ function setupLibraryStore(overrides: { isDbReady?: boolean; isScanning?: boolea
 function defaultProps(overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) {
   return {
     mainView: 'library' as const,
-    inboxCount: 0,
     searchInput: '',
     useDirAsCategory: false,
     onMainViewChange: vi.fn(),
@@ -68,26 +67,14 @@ describe('AppHeader', () => {
 
   it('clicking "ライブラリ" tab calls onMainViewChange("library")', () => {
     const onMainViewChange = vi.fn();
-    render(<AppHeader {...defaultProps({ mainView: 'inbox', onMainViewChange })} />);
+    render(<AppHeader {...defaultProps({ mainView: 'home', onMainViewChange })} />);
     fireEvent.click(screen.getByText('ライブラリ'));
     expect(onMainViewChange).toHaveBeenCalledWith('library');
   });
 
-  it('clicking "Inbox" tab calls onMainViewChange("inbox")', () => {
-    const onMainViewChange = vi.fn();
-    render(<AppHeader {...defaultProps({ onMainViewChange })} />);
-    fireEvent.click(screen.getByText('Inbox'));
-    expect(onMainViewChange).toHaveBeenCalledWith('inbox');
-  });
-
-  it('shows inbox badge when inboxCount > 0', () => {
-    render(<AppHeader {...defaultProps({ inboxCount: 7 })} />);
-    expect(screen.getByText('7')).toBeInTheDocument();
-  });
-
-  it('inbox badge shows "999+" when count exceeds 999', () => {
-    render(<AppHeader {...defaultProps({ inboxCount: 1000 })} />);
-    expect(screen.getByText('999+')).toBeInTheDocument();
+  it('has no Inbox tab (new items are shown in the library)', () => {
+    render(<AppHeader {...defaultProps()} />);
+    expect(screen.queryByText('Inbox')).not.toBeInTheDocument();
   });
 
   it('add folder button is disabled when isDbReady is false', () => {

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useHomeStore } from "../../store/useHomeStore";
-import { InboxSummaryCard } from "./InboxSummaryCard";
+import { NewItemsCard } from "./NewItemsCard";
 import { ResumeCard } from "./ResumeCard";
 import { RecentlyAddedCard } from "./RecentlyAddedCard";
 import { RecentFoldersCard } from "./RecentFoldersCard";
@@ -12,12 +12,13 @@ import type { Video } from "../../types";
 import styles from "./Home.module.css";
 
 interface Props {
-  onNavigate: (view: "library" | "inbox") => void;
+  /** ライブラリを新着だけに絞り込んで開く */
+  onShowNew: () => void;
   onOpenVideo: (video: Video) => void;
   onOpenFolder: (dir: string) => void;
 }
 
-export function HomeView({ onNavigate, onOpenVideo, onOpenFolder }: Props) {
+export function HomeView({ onShowNew, onOpenVideo, onOpenFolder }: Props) {
   const fetchHomeData = useHomeStore((s) => s.fetchHomeData);
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export function HomeView({ onNavigate, onOpenVideo, onOpenFolder }: Props) {
   return (
     <div className={styles.view}>
       <div className={styles.column}>
-        <InboxSummaryCard onOrganize={() => onNavigate("inbox")} />
+        <NewItemsCard onShow={onShowNew} />
         <TodayStatsCard />
         <RandomPlayCard onOpen={onOpenVideo} />
         <ResumeCard onOpen={onOpenVideo} />

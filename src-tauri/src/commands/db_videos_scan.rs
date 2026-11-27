@@ -136,6 +136,8 @@ fn assign_categories_for_ids(
 
 // ── scan & import ─────────────────────────────────────────────────────────────
 
+/// フォルダを登録したときの取り込み。前からあるファイルなので新着 (`inbox`) にはしない
+/// (再スキャン・監視で見つかったものは新着にする)
 #[tauri::command]
 pub async fn db_scan_and_import(
     app: tauri::AppHandle,
@@ -214,7 +216,7 @@ pub async fn db_scan_and_import(
     let mut new_count: i64 = 0;
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     for chunk in scan.files.chunks(INSERT_BATCH_4) {
-        let ph = chunk.iter().map(|_| "(?, ?, ?, ?, 'inbox', 'import')").collect::<Vec<_>>().join(", ");
+        let ph = chunk.iter().map(|_| "(?, ?, ?, ?, 'active', 'import')").collect::<Vec<_>>().join(", ");
         let sql = format!(
             "INSERT INTO videos (path, title, category_id, media_type, status, source_type) VALUES {ph} \
              ON CONFLICT(path) DO NOTHING"

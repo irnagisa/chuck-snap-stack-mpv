@@ -5,11 +5,12 @@ use super::migrations;
 /// スキーマの版。`PRAGMA user_version` に入れる。
 /// 列やテーブルを変えるときは `TABLES` / `INDEXES` を直し、版を 1 つ上げて `migrations::migrate` に
 /// 前の版からの書き換えを足す。
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// 今の版のテーブル。新しく作る DB はこれと `INDEXES` だけで出来上がる。
 ///
-/// - `videos.status`: `'inbox'` (未整理) / `'active'` (整理済み) / `'missing'` (ファイルが見つからない)
+/// - `videos.status`: `'inbox'` (新着: 取り込んでからまだ詳細を開いても再生してもいない) / `'active'` /
+///   `'missing'` (ファイルが見つからない)
 /// - `videos.media_type`: `'video'` / `'audio'` / `'image'` / `'link'`
 /// - 計算し直せる解析結果のキャッシュは `videos` に列を足さず、`media_probe` のように
 ///   video_id を主キーにした別テーブルにする

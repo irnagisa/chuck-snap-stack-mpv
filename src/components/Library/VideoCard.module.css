@@ -214,6 +214,14 @@
   .pill[data-tone="danger"] {
     background: var(--palette-red-600);
   }
+  .pill[data-tone="new"],
+  .softPill[data-tone="new"] {
+    background: var(--color-badge);
+    color: var(--color-badge-fg);
+    backdrop-filter: none;
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.04em;
+  }
 
   .topLeft,
   .topRight,
@@ -658,7 +666,7 @@
     color: var(--color-danger-fg);
   }
 
-  /* ---- 横並びの小さなカード (ホーム・Inbox) ---- */
+  /* ---- 横並びの小さなカード (ホーム) ---- */
   .tile {
     position: relative;
     flex-shrink: 0;

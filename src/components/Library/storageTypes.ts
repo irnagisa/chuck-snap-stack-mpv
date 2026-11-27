@@ -88,7 +88,7 @@ export interface QuarantineCleanupResult {
 }
 
 /** get_cleanup_candidates の種類 */
-export type ListKind = "large" | "highBitrate" | "unwatched" | "staleInbox" | "longUnviewed" | "silentAudio";
+export type ListKind = "large" | "highBitrate" | "unwatched" | "longUnviewed" | "silentAudio";
 /** 画面で選べる整理候補の種類 (重複は別のコマンドで取る) */
 export type CandidateKind = ListKind | "duplicates";
 

@@ -9,10 +9,29 @@ use super::schema::user_version;
 
 /// 必要な書き換えをする。新しい DB では何もしない (テーブルは `init_db` が作る)。
 pub fn migrate(conn: &Connection) -> Result<()> {
-    if user_version(conn)? == 0 && table_exists(conn, "videos")? {
+    let version = user_version(conn)?;
+    if !table_exists(conn, "videos")? {
+        return Ok(());
+    }
+    if version == 0 {
         upgrade_unversioned(conn)?;
     }
     // v1 → v2: media_transcode_discarded を足しただけ (テーブルは `init_db` の create_tables が作る)
+    if version < 3 {
+        inbox_to_new(conn)?;
+    }
+    Ok(())
+}
+
+/// v2 → v3: `status = 'inbox'` の意味を「未整理 (カテゴリ・評価・タグが揃っていない)」から
+/// 「新着 (まだ詳細を開いても再生してもいない)」に変えた。一度でも見たものは新着から外す。
+fn inbox_to_new(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "UPDATE videos SET status = 'active'
+         WHERE status = 'inbox'
+           AND (last_viewed_at IS NOT NULL OR watched_at IS NOT NULL OR watch_count > 0)",
+        [],
+    )?;
     Ok(())
 }
 
@@ -293,6 +312,30 @@ mod tests {
         // 2 回目も何もしない
         init_db(&conn).unwrap();
         assert_eq!(user_version(&conn).unwrap(), SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn v2_inbox_items_already_seen_are_no_longer_new() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO videos (id, path, status) VALUES (1, '/never', 'inbox');
+             INSERT INTO videos (id, path, status, last_viewed_at) VALUES (2, '/viewed', 'inbox', '2026-01-01');
+             INSERT INTO videos (id, path, status, watch_count) VALUES (3, '/played', 'inbox', 1);
+             INSERT INTO videos (id, path, status, watched_at) VALUES (4, '/watched', 'inbox', '2026-01-01');
+             INSERT INTO videos (id, path, status, last_viewed_at) VALUES (5, '/gone', 'missing', '2026-01-01');
+             PRAGMA user_version = 2;",
+        )
+        .unwrap();
+        init_db(&conn).unwrap();
+        let status = |id: i64| -> String {
+            conn.query_row("SELECT status FROM videos WHERE id = ?1", [id], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(status(1), "inbox");
+        assert_eq!(status(2), "active");
+        assert_eq!(status(3), "active");
+        assert_eq!(status(4), "active");
+        assert_eq!(status(5), "missing");
     }
 
     #[test]

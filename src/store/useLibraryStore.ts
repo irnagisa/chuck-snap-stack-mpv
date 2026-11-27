@@ -8,7 +8,6 @@ import {
 } from './thumbnailUtils';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
-import { notifyInboxChanged } from './useInboxStore';
 import { usePlaylistStore } from './usePlaylistStore';
 import { useToastStore, toast } from './useToastStore';
 import { RECENT_FOLDERS_SETTING_KEY, type RecentFolderEntry } from './useHomeStore';
@@ -75,6 +74,8 @@ interface LibraryState {
   filterMinDuration: number;
   filterMaxDuration: number;
   filterWatchedStatus: WatchedStatus;
+  /** 新着 (まだ詳細を開いても再生してもいない) だけにする */
+  filterNewOnly: boolean;
   filterWatchDir: string | null;
   filterMediaType: MediaTypeFilter;
   filterAv1: Av1Filter;
@@ -113,6 +114,9 @@ interface LibraryActions {
   setMinDuration: (seconds: number) => Promise<void>;
   setMaxDuration: (seconds: number) => Promise<void>;
   setWatchedStatus: (status: WatchedStatus) => Promise<void>;
+  setNewOnly: (newOnly: boolean) => Promise<void>;
+  /** 詳細を開いた・再生した動画を一覧の上で新着から外す (DB はコマンド側で外している) */
+  markSeen: (videoId: number) => void;
   setWatchDirFilter: (dir: string | null) => Promise<void>;
   setMediaType: (mediaType: MediaTypeFilter) => Promise<void>;
   setAv1Filter: (av1: Av1Filter) => Promise<void>;
@@ -193,6 +197,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
   filterMinDuration: 0,
   filterMaxDuration: 0,
   filterWatchedStatus: 'all',
+  filterNewOnly: false,
   filterWatchDir: null,
   filterMediaType: 'all',
   filterAv1: 'all',
@@ -245,7 +250,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       currentPage, pageSize, filterSortBy, filterSortOrder,
       filterSearch, filterCategoryId, filterTagIds, filterTagMode,
       filterMinRating, filterRatingMode, filterHasAudio, filterMinDuration, filterMaxDuration,
-      filterWatchedStatus, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
+      filterWatchedStatus, filterNewOnly, filterWatchDir, filterMediaType, filterAv1, filterCollapseGroups,
     } = get();
 
     const result = await invoke<{
@@ -265,6 +270,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterMinDuration,
         filterMaxDuration: filterMaxDuration > 0 ? filterMaxDuration : null,
         filterWatchedStatus,
+        filterNewOnly,
         filterWatchDir,
         filterMediaType,
         filterAv1,
@@ -321,6 +327,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         filterMinDuration: get().filterMinDuration,
         filterMaxDuration: get().filterMaxDuration > 0 ? get().filterMaxDuration : null,
         filterWatchedStatus: get().filterWatchedStatus,
+        filterNewOnly: get().filterNewOnly,
         filterWatchDir: get().filterWatchDir,
         filterMediaType: get().filterMediaType,
         filterAv1: get().filterAv1,
@@ -397,6 +404,18 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await get().fetchVideos();
   },
 
+  setNewOnly: async (newOnly: boolean) => {
+    set({ filterNewOnly: newOnly, currentPage: 1 });
+    await get().fetchVideos();
+  },
+
+  markSeen: (videoId: number) => {
+    // 新着だけの絞り込み中でも一覧からは外さない (見ている最中に消えないように。次に読み直すと外れる)
+    set((state) => ({
+      videos: state.videos.map((v) => (v.id === videoId && v.status === 'inbox' ? { ...v, status: 'active' } : v)),
+    }));
+  },
+
   setWatchDirFilter: async (dir: string | null) => {
     set({ filterWatchDir: dir, currentPage: 1 });
     if (dir) {
@@ -457,7 +476,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         path: canonicalPath,
         useDirAsCategory: useDirectoryAsCategory,
       });
-      notifyInboxChanged();
 
       notifyScanResult(result);
 
@@ -478,7 +496,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     try {
       const { downloadDir, categoryMode } = useSettingsStore.getState();
 
-      // Sync モード: ルート直下ファイルを Inbox サブフォルダへ移行
+      // Sync モード: ルート直下ファイルを Unsorted サブフォルダへ移行
       if (categoryMode === 'sync') {
         const dirsToMigrate = targetDir ? [targetDir] : get().watchDirs;
         for (const dir of dirsToMigrate) {
@@ -488,15 +506,15 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
               { watchDir: dir }
             );
             if (migrateResult.moved > 0) {
-              toast.success(`${migrateResult.moved}件のファイルを Inbox に移動しました`);
+              toast.success(`${migrateResult.moved}件のファイルを Unsorted フォルダに移動しました`);
             }
             for (const err of migrateResult.errors) {
               console.error('[migrateRootToInbox]', err);
-              toast.error(`Inbox 移行エラー: ${err}`, 8000);
+              toast.error(`Unsorted フォルダへの移動エラー: ${err}`, 8000);
             }
           } catch (migrateErr) {
             console.error('[migrateRootToInbox] 失敗:', migrateErr);
-            toast.error(`Inbox 移行に失敗しました: ${String(migrateErr)}`, 8000);
+            toast.error(`Unsorted フォルダへの移動に失敗しました: ${String(migrateErr)}`, 8000);
           }
         }
       }
@@ -505,7 +523,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         targetDir: targetDir ?? null,
         downloadDir: downloadDir || null,
       });
-      notifyInboxChanged();
 
       notifyScanResult(result);
 
@@ -525,7 +542,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   removeWatchDir: async (path: string) => {
     await invoke('db_remove_watch_dir', { path });
-    notifyInboxChanged();
     await invoke('stop_watching', { path }).catch((e: unknown) => {
       console.error(`[removeWatchDir] ウォッチャー停止に失敗しました (${path}):`, e);
       toast.error(`フォルダ監視の停止に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
@@ -595,20 +611,17 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   deleteVideo: async (videoId: number) => {
     await invoke('db_delete_video', { videoId });
-    notifyInboxChanged();
     await get().fetchVideos();
   },
 
   removeVideo: async (videoId: number) => {
     await invoke('db_remove_video', { videoId });
-    notifyInboxChanged();
     await get().fetchVideos();
   },
 
   removeMultiple: async (videoIds: number[]) => {
     if (videoIds.length === 0) return;
     await invoke('db_remove_multiple', { videoIds });
-    notifyInboxChanged();
     await get().fetchVideos();
   },
 
@@ -620,7 +633,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const toastId = addToast(`カテゴリ割り当て中... 0 / ${total}`, 'info', 0);
     try {
       const assigned = await invoke<number>('db_assign_category_from_path', { videoIds });
-      notifyInboxChanged();
       await useTagStore.getState().fetchCategories();
       await get().fetchVideos();
       removeToast(toastId);
@@ -641,7 +653,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       sourceUrl: sourceUrl ?? null,
       sourceType: sourceType ?? null,
     });
-    notifyInboxChanged();
     await get().fetchVideos();
     get().generateThumbnails().catch((e: unknown) => {
       console.error('[addVideoFromPath] サムネイル生成エラー:', e);
@@ -651,7 +662,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   removeVideoByPath: async (path: string) => {
     await invoke('db_remove_video_by_path', { path });
-    notifyInboxChanged();
     await get().fetchVideos();
   },
 
@@ -661,7 +671,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       removes,
       renames: renames.map((r) => ({ oldPath: r.old_path, newPath: r.new_path, title: r.title })),
     });
-    notifyInboxChanged();
     await get().fetchVideos();
     get().generateThumbnails().catch((e: unknown) => {
       console.error('[batchWatcherUpdate] サムネイル生成エラー:', e);
@@ -728,7 +737,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   confirmDirMissing: async (dir: string) => {
     await invoke('db_mark_dir_missing', { dirPath: dir });
-    notifyInboxChanged();
     await invoke('stop_watching', { path: dir }).catch((e: unknown) => {
       console.error(`[confirmDirMissing] ウォッチャー停止に失敗しました (${dir}):`, e);
     });
@@ -767,7 +775,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     await invoke('db_increment_watch_count', { videoId });
     set((state) => ({
       videos: state.videos.map((v) =>
-        v.id === videoId ? { ...v, watch_count: (v.watch_count ?? 0) + 1 } : v
+        v.id === videoId
+          ? { ...v, watch_count: (v.watch_count ?? 0) + 1, status: v.status === 'inbox' ? 'active' : v.status }
+          : v
       ),
     }));
   },

@@ -1,6 +1,4 @@
-import { useEffect, useMemo } from "react";
 import { useHomeStore, type DiskInfo } from "../../store/useHomeStore";
-import { useInboxStore, buildStacks } from "../../store/useInboxStore";
 import { useTagStore } from "../../store/useTagStore";
 import homeStyles from "./Home.module.css";
 
@@ -40,25 +38,7 @@ function DiskBar({ disk }: { disk: DiskInfo }) {
 export function LibraryInfoCard() {
   const libraryStats = useHomeStore((s) => s.libraryStats);
   const diskInfo = useHomeStore((s) => s.diskInfo);
-  const inboxVideos = useInboxStore((s) => s.videos);
   const tags = useTagStore((s) => s.tags);
-  const categories = useTagStore((s) => s.categories);
-  const videoTags = useTagStore((s) => s.videoTags);
-  const fetchVideoTagsForIds = useTagStore((s) => s.fetchVideoTagsForIds);
-
-  useEffect(() => {
-    const newIds = inboxVideos.map((v) => v.id).filter((id) => !(id in videoTags));
-    if (newIds.length > 0) {
-      fetchVideoTagsForIds(newIds);
-    }
-    // videoTags is intentionally excluded: we only re-fetch when the inbox video list changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inboxVideos, fetchVideoTagsForIds]);
-
-  const stackCount = useMemo(
-    () => buildStacks(inboxVideos, videoTags, categories).length,
-    [inboxVideos, videoTags, categories]
-  );
 
   const videoCount = libraryStats?.videoCount ?? 0;
   const watchedCount = libraryStats?.watchedCount ?? 0;
@@ -68,10 +48,9 @@ export function LibraryInfoCard() {
   return (
     <section className={homeStyles.section}>
       <h2 className={homeStyles.heading}>ライブラリ情報</h2>
-      <div className={`${homeStyles.stats} ${homeStyles.stats4}`}>
+      <div className={`${homeStyles.stats} ${homeStyles.stats3}`}>
         <StatTile label="画像" value={libraryStats?.imageCount ?? 0} />
         <StatTile label="動画" value={videoCount} />
-        <StatTile label="Stack" value={stackCount} />
         <StatTile label="タグ" value={tags.length} />
       </div>
       {videoCount > 0 && (

@@ -1,5 +1,5 @@
 /**
- * ナビゲーションテスト: ホーム・ライブラリ・Inbox 間の遷移を検証する
+ * ナビゲーションテスト: ホーム・ライブラリ間の遷移を検証する
  */
 describe('Chuck Snap Stack - Navigation', () => {
   it('ライブラリビューに遷移するとフィルターバーが表示される', async () => {
@@ -13,7 +13,7 @@ describe('Chuck Snap Stack - Navigation', () => {
   it('ホームビューに遷移するとライブラリサマリーが表示される', async () => {
     const homeBtn = await $('button=ホーム')
     await homeBtn.click()
-    // InboxSummaryCard が h2 "ライブラリ" を持つ (ホームビュー固有)
+    // NewItemsCard が h2 "ライブラリ" を持つ (ホームビュー固有)
     const homeHeading = await $('h2=ライブラリ')
     await expect(homeHeading).toExist()
     // ライブラリのフィルターバーは表示されていない
@@ -21,21 +21,14 @@ describe('Chuck Snap Stack - Navigation', () => {
     await expect(ratingFilter).not.toExist()
   })
 
-  it('Inbox ビューに遷移すると Inbox ヘッダーが表示される', async () => {
-    // Inbox ナビボタン (件数バッジが付く場合があるため部分一致)
-    const inboxBtn = await $('button*=Inbox')
-    await inboxBtn.click()
-    // InboxView の h2 "Inbox"
-    const inboxHeading = await $('h2=Inbox')
-    await expect(inboxHeading).toExist()
-  })
-
-  it('ライブラリビューに戻ると Inbox ヘッダーが消える', async () => {
+  it('ライブラリの「新着」で新着だけに絞り込める', async () => {
     const libBtn = await $('button=ライブラリ')
     await libBtn.click()
-    const ratingFilter = await $('button[title="絞り込み"]')
-    await expect(ratingFilter).toExist()
-    const inboxHeading = await $('h2=Inbox')
-    await expect(inboxHeading).not.toExist()
+    const newBtn = await $('button*=新着')
+    await expect(newBtn).toHaveAttribute('aria-pressed', 'false')
+    await newBtn.click()
+    await expect(newBtn).toHaveAttribute('aria-pressed', 'true')
+    await newBtn.click()
+    await expect(newBtn).toHaveAttribute('aria-pressed', 'false')
   })
 })

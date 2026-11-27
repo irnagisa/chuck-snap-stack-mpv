@@ -24,8 +24,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let db_path = app.path().app_data_dir()?.join("videos.db");
-            app.manage(DbState::open(&db_path)?);
+            let data_dir = app.path().app_data_dir()?;
+            // 初回起動ではフォルダがまだ無く、SQLite はフォルダを作らないので開けない
+            std::fs::create_dir_all(&data_dir)?;
+            app.manage(DbState::open(&data_dir.join("videos.db"))?);
             // 前回の強制終了・クラッシュで残った AV1 変換の一時ファイルを掃除する
             {
                 let handle = app.handle().clone();
@@ -220,13 +222,10 @@ pub fn run() {
             commands::db_videos::db_update_thumbnails_batch,
             commands::db_videos::db_update_audio_only_batch,
             commands::db_videos::db_reset_jpg_thumbnails,
-            commands::db_videos::db_get_inbox_videos,
+            commands::db_videos::db_count_new_videos,
             commands::db_videos::db_get_recent_videos,
             commands::db_videos::db_get_last_viewed_video,
             commands::db_videos::db_update_last_viewed,
-            commands::db_videos::db_get_inbox_stats,
-            commands::db_videos::db_graduate_from_inbox,
-            commands::db_videos::db_sample_inbox_videos,
             commands::library::cleanup_jpg_thumbnails,
             commands::library::migrate_root_files_to_inbox,
             // phash
