@@ -715,32 +715,40 @@ pub async fn db_update_last_viewed(state: State<'_, DbState>, video_id: i64) -> 
 
 #[tauri::command]
 pub async fn db_get_inbox_stats(state: State<'_, DbState>) -> Result<InboxStats, String> {
-    // 6本の独立クエリを2本に統合 (total は inbox 集計と独立なので別クエリ)
     let conn = state.conn_read()?;
-    let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    // inbox 内の各統計を1本の集計クエリで取得
-    let (inbox_count, missing_category, missing_tags, missing_rating, almost_done):
-        (i64, i64, i64, i64, i64) = conn
-        .query_row(
-            "SELECT
-               COUNT(*),
-               SUM(CASE WHEN category_id IS NULL THEN 1 ELSE 0 END),
-               SUM(CASE WHEN id NOT IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END),
-               SUM(CASE WHEN rating = 0 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN (
-                     CASE WHEN category_id IS NULL THEN 0 ELSE 1 END +
-                     CASE WHEN id IN (SELECT DISTINCT video_id FROM video_tags) THEN 1 ELSE 0 END +
-                     CASE WHEN rating > 0 THEN 1 ELSE 0 END
-                   ) = 2 THEN 1 ELSE 0 END)
-             FROM videos
-             WHERE status = 'inbox'",
-            [],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-        )
-        .map_err(|e| e.to_string())?;
-    Ok(InboxStats { total, inbox_count, missing_category, missing_tags, missing_rating, almost_done })
+    inbox_stats(&conn).map_err(|e| e.to_string())
+}
+
+/// ライブラリ全体の件数と、Inbox の件数・足りない項目ごとの件数
+fn inbox_stats(conn: &rusqlite::Connection) -> rusqlite::Result<InboxStats> {
+    let total: i64 = conn.query_row("SELECT COUNT(*) FROM videos", [], |r| r.get(0))?;
+    // タグの有無は Inbox の行ごとに video_tags の主キー (video_id, tag_id) を引いて 1 回だけ調べる
+    // (video_tags 全体から DISTINCT を作らない)。Inbox が空だと SUM は NULL になるので 0 にする
+    conn.query_row(
+        "SELECT
+           COUNT(*),
+           COALESCE(SUM(category_id IS NULL), 0),
+           COALESCE(SUM(NOT has_tag), 0),
+           COALESCE(SUM(rating = 0), 0),
+           COALESCE(SUM((category_id IS NOT NULL) + has_tag + (rating > 0) = 2), 0)
+         FROM (
+           SELECT category_id, rating,
+                  EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.id) AS has_tag
+           FROM videos v
+           WHERE status = 'inbox'
+         )",
+        [],
+        |r| {
+            Ok(InboxStats {
+                total,
+                inbox_count: r.get(0)?,
+                missing_category: r.get(1)?,
+                missing_tags: r.get(2)?,
+                missing_rating: r.get(3)?,
+                almost_done: r.get(4)?,
+            })
+        },
+    )
 }
 
 #[tauri::command]
@@ -1221,7 +1229,7 @@ pub async fn db_get_random_video(state: State<'_, DbState>) -> Result<Vec<Video>
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
-    use super::{delete_videos, move_video_path};
+    use super::{delete_videos, inbox_stats, move_video_path};
     use crate::db::schema::init_db;
 
     fn setup() -> Connection {
@@ -1584,5 +1592,53 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(filter.filter_av1, "all");
+    }
+
+    #[test]
+    fn inbox_stats_is_zero_for_empty_inbox() {
+        let conn = setup();
+        insert_video(&conn, "/v/active.mp4");
+        let stats = inbox_stats(&conn).unwrap();
+        assert_eq!(stats.total, 1);
+        assert_eq!(stats.inbox_count, 0);
+        assert_eq!(stats.missing_category, 0);
+        assert_eq!(stats.missing_tags, 0);
+        assert_eq!(stats.missing_rating, 0);
+        assert_eq!(stats.almost_done, 0);
+    }
+
+    #[test]
+    fn inbox_stats_counts_missing_fields() {
+        let conn = setup();
+        conn.execute("INSERT INTO categories (name) VALUES ('c')", []).unwrap();
+        let cat = conn.last_insert_rowid();
+        let tag = insert_tag(&conn, "t");
+        let inbox = |path: &str, category: Option<i64>, rating: i64, tagged: bool| {
+            conn.execute(
+                "INSERT INTO videos (path, status, category_id, rating) VALUES (?1, 'inbox', ?2, ?3)",
+                rusqlite::params![path, category, rating],
+            )
+            .unwrap();
+            let id = conn.last_insert_rowid();
+            if tagged {
+                conn.execute("INSERT INTO video_tags (video_id, tag_id) VALUES (?1, ?2)", [id, tag]).unwrap();
+            }
+        };
+        inbox("/v/none.mp4", None, 0, false); // 3 つとも無い
+        inbox("/v/cat_rating.mp4", Some(cat), 3, false); // タグだけ無い (もう少し)
+        inbox("/v/tag_rating.mp4", None, 2, true); // カテゴリだけ無い (もう少し)
+        inbox("/v/cat_tag.mp4", Some(cat), 0, true); // 評価だけ無い (もう少し)
+        inbox("/v/tag.mp4", None, 0, true); // タグだけある
+        // 整理済みの動画は数えない (タグが無くても)
+        let active = insert_video(&conn, "/v/active.mp4");
+        conn.execute("UPDATE videos SET rating = 0 WHERE id = ?1", [active]).unwrap();
+
+        let stats = inbox_stats(&conn).unwrap();
+        assert_eq!(stats.total, 6);
+        assert_eq!(stats.inbox_count, 5);
+        assert_eq!(stats.missing_category, 3);
+        assert_eq!(stats.missing_tags, 2);
+        assert_eq!(stats.missing_rating, 3);
+        assert_eq!(stats.almost_done, 3);
     }
 }

@@ -35,7 +35,12 @@ interface InboxState {
 }
 
 interface InboxActions {
+  /** Inbox の一覧と集計を読み直す (読み込み中の表示を出す。Inbox 画面を開いたとき・更新ボタン用) */
   fetchInbox: () => Promise<void>;
+  /** Inbox の一覧と集計を表示を出さずに読み直す (Inbox 画面での整理の後) */
+  refreshInbox: () => Promise<void>;
+  /** 集計だけ読み直す (Inbox 画面の外での整理の後。ヘッダーの件数バッジ用) */
+  refreshInboxStats: () => Promise<void>;
   graduateFromInbox: (videoIds: number[]) => Promise<void>;
   setActiveStack: (stack: InboxStack | null) => void;
   setQuickSortIndex: (index: number) => void;
@@ -237,50 +242,120 @@ function buildStacks(
   return stacks;
 }
 
-export const useInboxStore = create<InboxState & InboxActions>((set, get) => ({
-  videos: [],
-  stats: null,
-  isLoading: false,
-  activeStack: null,
-  quickSortIndex: 0,
-  batchVideos: null,
-
-  fetchInbox: async () => {
-    set({ isLoading: true });
-    try {
-      const [videos, stats] = await Promise.all([
-        invoke<Video[]>('db_get_inbox_videos'),
-        invoke<InboxStats>('db_get_inbox_stats'),
-      ]);
-      set({ videos, stats, isLoading: false });
-    } catch (e) {
-      console.error('[useInboxStore] fetchInbox error:', e);
-      toast.error(`Inbox の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
-      set({ isLoading: false });
+/**
+ * 読み込みを 1 本ずつに絞る。実行中に呼ばれたら、終わった後にもう 1 回だけ読み直す
+ * (続けて呼ばれても読み込みは重ならず、最後の変更は必ず反映される)。
+ */
+export function coalesce(run: () => Promise<void>): () => Promise<void> {
+  let inFlight: Promise<void> | null = null;
+  let again = false;
+  return () => {
+    if (inFlight) {
+      again = true;
+      return inFlight;
     }
-  },
+    inFlight = (async () => {
+      try {
+        do {
+          again = false;
+          await run();
+        } while (again);
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
+  };
+}
 
-  graduateFromInbox: async (videoIds: number[]) => {
-    if (videoIds.length === 0) return;
-    await invoke('db_graduate_from_inbox', { videoIds });
-    await get().fetchInbox();
-  },
+export const useInboxStore = create<InboxState & InboxActions>((set) => {
+  const loadInbox = coalesce(async () => {
+    const [videos, stats] = await Promise.all([
+      invoke<Video[]>('db_get_inbox_videos'),
+      invoke<InboxStats>('db_get_inbox_stats'),
+    ]);
+    set({ videos, stats });
+  });
 
-  setActiveStack: (stack) => set({ activeStack: stack, quickSortIndex: 0 }),
+  const loadStats = coalesce(async () => {
+    set({ stats: await invoke<InboxStats>('db_get_inbox_stats') });
+  });
 
-  setQuickSortIndex: (index) => set({ quickSortIndex: index }),
+  const refreshInbox = () =>
+    loadInbox().catch((e: unknown) => {
+      console.error('[useInboxStore] refreshInbox error:', e);
+    });
 
-  startBatch: async (count: number) => {
-    try {
-      const videos = await invoke<Video[]>('db_sample_inbox_videos', { count });
-      set({ batchVideos: videos, quickSortIndex: 0 });
-    } catch (e) {
-      console.error('[useInboxStore] startBatch error:', e);
-      toast.error(`バッチの取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  },
+  return {
+    videos: [],
+    stats: null,
+    isLoading: false,
+    activeStack: null,
+    quickSortIndex: 0,
+    batchVideos: null,
 
-  clearBatch: () => set({ batchVideos: null, quickSortIndex: 0 }),
-}));
+    fetchInbox: async () => {
+      set({ isLoading: true });
+      try {
+        await loadInbox();
+      } catch (e) {
+        console.error('[useInboxStore] fetchInbox error:', e);
+        toast.error(`Inbox の読み込みに失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        set({ isLoading: false });
+      }
+    },
+
+    refreshInbox,
+
+    refreshInboxStats: () =>
+      loadStats().catch((e: unknown) => {
+        console.error('[useInboxStore] refreshInboxStats error:', e);
+      }),
+
+    graduateFromInbox: async (videoIds: number[]) => {
+      if (videoIds.length === 0) return;
+      await invoke('db_graduate_from_inbox', { videoIds });
+      await refreshInbox();
+    },
+
+    setActiveStack: (stack) => set({ activeStack: stack, quickSortIndex: 0 }),
+
+    setQuickSortIndex: (index) => set({ quickSortIndex: index }),
+
+    startBatch: async (count: number) => {
+      try {
+        const videos = await invoke<Video[]>('db_sample_inbox_videos', { count });
+        set({ batchVideos: videos, quickSortIndex: 0 });
+      } catch (e) {
+        console.error('[useInboxStore] startBatch error:', e);
+        toast.error(`バッチの取得に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+
+    clearBatch: () => set({ batchVideos: null, quickSortIndex: 0 }),
+  };
+});
 
 export { buildStacks };
+
+/** Inbox 画面 (一覧) が開いている数。開いている間は一覧も読み直す */
+let inboxViewsShown = 0;
+
+/** Inbox 画面が開いている間だけ true にする (InboxView がマウント中に呼ぶ) */
+export function markInboxViewShown(): () => void {
+  inboxViewsShown += 1;
+  return () => {
+    inboxViewsShown -= 1;
+  };
+}
+
+/**
+ * Inbox に入る・出る動画があったかもしれないときに呼ぶ (追加・削除・整理・自動卒業)。
+ * Inbox 画面が開いていれば一覧ごと、そうでなければヘッダーの件数バッジ用の集計だけを読み直す。
+ * 待たずに裏で読む。
+ */
+export function notifyInboxChanged(): void {
+  const { refreshInbox, refreshInboxStats } = useInboxStore.getState();
+  void (inboxViewsShown > 0 ? refreshInbox() : refreshInboxStats());
+}

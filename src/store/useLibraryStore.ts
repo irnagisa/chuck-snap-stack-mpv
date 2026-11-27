@@ -8,6 +8,7 @@ import {
 } from './thumbnailUtils';
 import { useSettingsStore } from './useSettingsStore';
 import { useTagStore } from './useTagStore';
+import { notifyInboxChanged } from './useInboxStore';
 import { usePlaylistStore } from './usePlaylistStore';
 import { useToastStore, toast } from './useToastStore';
 import { RECENT_FOLDERS_SETTING_KEY, type RecentFolderEntry } from './useHomeStore';
@@ -456,6 +457,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         path: canonicalPath,
         useDirAsCategory: useDirectoryAsCategory,
       });
+      notifyInboxChanged();
 
       notifyScanResult(result);
 
@@ -503,6 +505,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
         targetDir: targetDir ?? null,
         downloadDir: downloadDir || null,
       });
+      notifyInboxChanged();
 
       notifyScanResult(result);
 
@@ -522,6 +525,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   removeWatchDir: async (path: string) => {
     await invoke('db_remove_watch_dir', { path });
+    notifyInboxChanged();
     await invoke('stop_watching', { path }).catch((e: unknown) => {
       console.error(`[removeWatchDir] ウォッチャー停止に失敗しました (${path}):`, e);
       toast.error(`フォルダ監視の停止に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
@@ -591,17 +595,20 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   deleteVideo: async (videoId: number) => {
     await invoke('db_delete_video', { videoId });
+    notifyInboxChanged();
     await get().fetchVideos();
   },
 
   removeVideo: async (videoId: number) => {
     await invoke('db_remove_video', { videoId });
+    notifyInboxChanged();
     await get().fetchVideos();
   },
 
   removeMultiple: async (videoIds: number[]) => {
     if (videoIds.length === 0) return;
     await invoke('db_remove_multiple', { videoIds });
+    notifyInboxChanged();
     await get().fetchVideos();
   },
 
@@ -613,6 +620,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
     const toastId = addToast(`カテゴリ割り当て中... 0 / ${total}`, 'info', 0);
     try {
       const assigned = await invoke<number>('db_assign_category_from_path', { videoIds });
+      notifyInboxChanged();
       await useTagStore.getState().fetchCategories();
       await get().fetchVideos();
       removeToast(toastId);
@@ -633,6 +641,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       sourceUrl: sourceUrl ?? null,
       sourceType: sourceType ?? null,
     });
+    notifyInboxChanged();
     await get().fetchVideos();
     get().generateThumbnails().catch((e: unknown) => {
       console.error('[addVideoFromPath] サムネイル生成エラー:', e);
@@ -642,6 +651,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   removeVideoByPath: async (path: string) => {
     await invoke('db_remove_video_by_path', { path });
+    notifyInboxChanged();
     await get().fetchVideos();
   },
 
@@ -651,6 +661,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
       removes,
       renames: renames.map((r) => ({ oldPath: r.old_path, newPath: r.new_path, title: r.title })),
     });
+    notifyInboxChanged();
     await get().fetchVideos();
     get().generateThumbnails().catch((e: unknown) => {
       console.error('[batchWatcherUpdate] サムネイル生成エラー:', e);
@@ -717,6 +728,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>((set, get) 
 
   confirmDirMissing: async (dir: string) => {
     await invoke('db_mark_dir_missing', { dirPath: dir });
+    notifyInboxChanged();
     await invoke('stop_watching', { path: dir }).catch((e: unknown) => {
       console.error(`[confirmDirMissing] ウォッチャー停止に失敗しました (${dir}):`, e);
     });
