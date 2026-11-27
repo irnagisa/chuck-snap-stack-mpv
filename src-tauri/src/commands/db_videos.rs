@@ -885,6 +885,121 @@ pub async fn db_add_video_from_path(
     Ok(id)
 }
 
+/// 変換元 `source_id` のユーザーが付けた情報を、変換後のファイル `target_id` へ写す。
+///
+/// 写すもの: タイトル・評価・追加日・カテゴリ・整理の状態 (inbox / active)・視聴履歴
+/// (最終視聴・再生位置・視聴回数)・取得元 (source_url / source_type)・タグ・グループとプレイリスト
+/// (どちらも元のすぐ後ろ)。
+/// 写さないもの: パス・長さ・サムネイル・音声の有無・サイズと、解析キャッシュ (中身が変わるため)。
+/// グループの代表は、元ファイルを消すときだけ `take_over_group_cover` で移す
+pub(crate) fn inherit_video_metadata(
+    conn: &rusqlite::Connection,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    if source_id == target_id {
+        return Err("変換元と変換後が同じ動画です".to_string());
+    }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let updated = tx
+        .execute(
+            "UPDATE videos SET
+                title          = COALESCE(s.title, videos.title),
+                rating         = s.rating,
+                created_at     = s.created_at,
+                category_id    = s.category_id,
+                status         = CASE WHEN s.status = 'missing' THEN videos.status ELSE s.status END,
+                watched_at     = s.watched_at,
+                progress       = s.progress,
+                watch_count    = s.watch_count,
+                last_viewed_at = s.last_viewed_at,
+                source_url     = COALESCE(s.source_url, videos.source_url),
+                source_type    = COALESCE(s.source_type, videos.source_type)
+             FROM (SELECT * FROM videos WHERE id = ?1) AS s
+             WHERE videos.id = ?2",
+            rusqlite::params![source_id, target_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if updated == 0 {
+        return Err("変換元か変換後の動画がライブラリに見つかりません".to_string());
+    }
+    tx.execute(
+        "INSERT OR IGNORE INTO video_tags (video_id, tag_id)
+         SELECT ?2, tag_id FROM video_tags WHERE video_id = ?1",
+        rusqlite::params![source_id, target_id],
+    )
+    .map_err(|e| e.to_string())?;
+    db_groups::insert_after(&tx, source_id, target_id).map_err(|e| e.to_string())?;
+    insert_after_in_playlists(&tx, source_id, target_id).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// 元が入っているプレイリストそれぞれで、`target_id` を元のすぐ後ろに入れる (後ろの項目は 1 つずつずらす)。
+/// すでに入っているプレイリストはそのまま
+fn insert_after_in_playlists(
+    conn: &rusqlite::Connection,
+    source_id: i64,
+    target_id: i64,
+) -> rusqlite::Result<()> {
+    let slots: Vec<(i64, i64)> = {
+        let mut stmt = conn.prepare(
+            "SELECT playlist_id, COALESCE(position, 0) FROM playlist_items
+             WHERE video_id = ?1
+               AND playlist_id NOT IN (SELECT playlist_id FROM playlist_items WHERE video_id = ?2)",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![source_id, target_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for (playlist_id, pos) in slots {
+        conn.execute(
+            "UPDATE playlist_items SET position = position + 1 WHERE playlist_id = ?1 AND position > ?2",
+            rusqlite::params![playlist_id, pos],
+        )?;
+        conn.execute(
+            "INSERT INTO playlist_items (playlist_id, video_id, position) VALUES (?1, ?2, ?3)",
+            rusqlite::params![playlist_id, target_id, pos + 1],
+        )?;
+    }
+    Ok(())
+}
+
+/// 元ファイルを消す前に、元がグループの代表なら変換後を代表にする
+pub(crate) fn take_over_group_cover(
+    conn: &rusqlite::Connection,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    if source_id == target_id {
+        return Err("変換元と変換後が同じ動画です".to_string());
+    }
+    conn.execute(
+        "UPDATE media_groups SET cover_video_id = ?2
+         WHERE cover_video_id = ?1
+           AND EXISTS (SELECT 1 FROM videos WHERE id = ?2 AND group_id = media_groups.id)",
+        rusqlite::params![source_id, target_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn db_inherit_video_metadata(
+    state: State<'_, DbState>,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    inherit_video_metadata(&*state.conn()?, source_id, target_id)
+}
+
+#[tauri::command]
+pub async fn db_take_over_group_cover(
+    state: State<'_, DbState>,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    take_over_group_cover(&*state.conn()?, source_id, target_id)
+}
+
 #[tauri::command]
 pub async fn db_remove_video_by_path(
     app: tauri::AppHandle,
@@ -1229,7 +1344,7 @@ pub async fn db_get_random_video(state: State<'_, DbState>) -> Result<Vec<Video>
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
-    use super::{delete_videos, inbox_stats, move_video_path};
+    use super::{delete_videos, inbox_stats, inherit_video_metadata, move_video_path, take_over_group_cover};
     use crate::db::schema::init_db;
 
     fn setup() -> Connection {
@@ -1640,5 +1755,82 @@ mod tests {
         assert_eq!(stats.missing_tags, 2);
         assert_eq!(stats.missing_rating, 3);
         assert_eq!(stats.almost_done, 3);
+    }
+
+    #[test]
+    fn transcoded_copy_inherits_metadata_tags_and_group_slot() {
+        let conn = setup();
+        let a = insert_video(&conn, "/m/ep1.mp4");
+        let src = insert_video(&conn, "/m/ep2.mp4");
+        let c = insert_video(&conn, "/m/ep3.mp4");
+        conn.execute("INSERT INTO categories (name) VALUES ('cat')", []).unwrap();
+        let cat = conn.last_insert_rowid();
+        conn.execute(
+            "UPDATE videos SET title = 'Ep 2', rating = 4, created_at = '2020-01-01 00:00:00', category_id = ?2,
+                    watched_at = '2024-05-01', progress = 12.5, watch_count = 3, last_viewed_at = '2024-05-02',
+                    source_url = 'https://example.com/v', source_type = 'import'
+             WHERE id = ?1",
+            rusqlite::params![src, cat],
+        ).unwrap();
+        let tag = insert_tag(&conn, "t");
+        conn.execute("INSERT INTO video_tags (video_id, tag_id) VALUES (?1, ?2)", [src, tag]).unwrap();
+        let gid = super::db_groups::create_group(&conn, "S", "series", &[a, src, c]).unwrap();
+        conn.execute(
+            "INSERT INTO videos (path, title, status, source_type) VALUES ('/m/ep2.av1.mkv', 'ep2', 'inbox', 'download')",
+            [],
+        ).unwrap();
+        let dst = conn.last_insert_rowid();
+
+        inherit_video_metadata(&conn, src, dst).unwrap();
+
+        let row: (String, i64, String, i64, String, f64, i64, String, String, String) = conn.query_row(
+            "SELECT title, rating, created_at, category_id, status, progress, watch_count, last_viewed_at, source_url, source_type
+             FROM videos WHERE id = ?1",
+            [dst],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)),
+        ).unwrap();
+        assert_eq!(row, ("Ep 2".into(), 4, "2020-01-01 00:00:00".into(), cat, "active".into(), 12.5, 3,
+                         "2024-05-02".into(), "https://example.com/v".into(), "import".into()));
+        let tags: i64 = conn.query_row("SELECT COUNT(*) FROM video_tags WHERE video_id = ?1", [dst], |r| r.get(0)).unwrap();
+        assert_eq!(tags, 1);
+        let members: Vec<i64> = super::db_groups::get_group(&conn, gid).unwrap().unwrap()
+            .members.into_iter().map(|v| v.id).collect();
+        assert_eq!(members, vec![a, src, dst, c]);
+    }
+
+    #[test]
+    fn transcoded_copy_joins_playlists_right_after_source_and_takes_over_cover() {
+        let conn = setup();
+        let other = insert_video(&conn, "/m/a.mp4");
+        let src = insert_video(&conn, "/m/b.mp4");
+        let dst = insert_video(&conn, "/m/b.av1.mkv");
+        let pl = insert_playlist(&conn, "p");
+        conn.execute("INSERT INTO playlist_items VALUES (?1, ?2, 1)", [pl, other]).unwrap();
+        conn.execute("INSERT INTO playlist_items VALUES (?1, ?2, 2)", [pl, src]).unwrap();
+        let last = insert_video(&conn, "/m/c.mp4");
+        conn.execute("INSERT INTO playlist_items VALUES (?1, ?2, 3)", [pl, last]).unwrap();
+        let gid = super::db_groups::create_group(&conn, "g", "variants", &[other, src]).unwrap();
+        conn.execute("UPDATE media_groups SET cover_video_id = ?1 WHERE id = ?2", [src, gid]).unwrap();
+
+        inherit_video_metadata(&conn, src, dst).unwrap();
+        let order = |conn: &Connection| -> Vec<i64> {
+            let mut stmt = conn
+                .prepare("SELECT video_id FROM playlist_items WHERE playlist_id = ?1 ORDER BY position")
+                .unwrap();
+            stmt.query_map([pl], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+        };
+        // 元を残しても、元のすぐ後ろに入る
+        assert_eq!(order(&conn), vec![other, src, dst, last]);
+        // もう一度呼んでも二重には入らない
+        inherit_video_metadata(&conn, src, dst).unwrap();
+        assert_eq!(order(&conn), vec![other, src, dst, last]);
+
+        take_over_group_cover(&conn, src, dst).unwrap();
+        delete_videos(&conn, &[src]).unwrap();
+        assert_eq!(order(&conn), vec![other, dst, last]);
+        let cover: Option<i64> = conn.query_row(
+            "SELECT cover_video_id FROM media_groups WHERE id = ?1", [gid], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(cover, Some(dst));
     }
 }

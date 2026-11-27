@@ -200,6 +200,8 @@ pub fn run() {
             commands::db_videos::db_remove_video,
             commands::db_videos::db_remove_multiple,
             commands::db_videos::db_add_video_from_path,
+            commands::db_videos::db_inherit_video_metadata,
+            commands::db_videos::db_take_over_group_cover,
             commands::db_videos::db_remove_video_by_path,
             commands::db_videos::db_update_video_path,
             commands::db_videos::db_rename_video_file,
